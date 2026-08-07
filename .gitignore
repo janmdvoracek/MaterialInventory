@@ -1,5 +1,6 @@
 __pycache__/
 *.pyc
+seed_data/
 .claude
 .venv/
 .vscode*
