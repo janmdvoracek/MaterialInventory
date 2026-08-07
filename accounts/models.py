@@ -10,5 +10,9 @@ class User(AbstractUser):
 
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.WORKER)
 
+    @property
+    def is_manager_or_admin(self):
+        return self.role in (self.Role.MANAGER, self.Role.ADMIN)
+
     def __str__(self):
         return self.get_full_name() or self.username

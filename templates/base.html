@@ -107,6 +107,7 @@
         <a href="{% url 'receipt_create' %}">Receive</a>
         <a href="{% url 'shipment_create' %}">Ship</a>
         <a href="{% url 'transform_create' %}">Transform</a>
+        {% if user.is_manager_or_admin %}<a href="{% url 'adjustment_create' %}">Adjust</a>{% endif %}
     </nav>
     {% endif %}
 </body>
