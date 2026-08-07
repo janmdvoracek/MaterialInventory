@@ -9,3 +9,5 @@ staticfiles/
 .env
 *.egg-info/
 .DS_Store
+seed_data/*.csv
+!seed_data/*.example.csv

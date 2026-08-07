@@ -14,13 +14,13 @@ Django 6 + Django REST Framework, PostgreSQL, server-rendered templates with HTM
 
 Modular monolith, one Django project (`config`) with these apps:
 
-- `accounts` — custom `User` model with a `role` field (`WORKER`/`MANAGER`/`ADMIN`)
-- `materials` — `Material` catalog (SKU, unit of measure, category) and `Location` (depot zones/bins)
-- `inventory` — `StockMovement`, an **append-only ledger**. Current stock is always derived by summing signed quantities per material/location, never stored as a mutable counter. `movement_type` is one of `RECEIPT`, `SHIPMENT`, `TRANSFORM_CONSUME`, `TRANSFORM_PRODUCE`, `ADJUSTMENT`.
-- `workorders` — `WorkOrder` groups the set of `StockMovement`s from a single transformation job (materials consumed + materials produced), created atomically in one form submission.
+- `accounts` — custom `User` model with a `role` field (`WORKER`/`MANAGER`/`ADMIN`) and an `is_manager_or_admin` property. `accounts/decorators.py::role_required(*roles)` gates privileged views (401/redirect if anonymous, 403 if wrong role).
+- `materials` — `Material` catalog (SKU, unit of measure, category) and `Location` (depot zones/bins). `materials/management/commands/seed_data.py` bulk-loads materials/locations/users from CSV (see Commands below).
+- `inventory` — `StockMovement`, an **append-only ledger**. Current stock is always derived by summing signed quantities per material/location, never stored as a mutable counter. `movement_type` is one of `RECEIPT`, `SHIPMENT`, `TRANSFORM_CONSUME`, `TRANSFORM_PRODUCE`, `ADJUSTMENT` (the last restricted to Manager/Admin). `inventory/services.py::get_available_quantity(material, location, lock=False)` is the shared stock-check helper, used with `lock=True` inside `transaction.atomic()` to close check-then-write races on shipments and transform-consume. `inventory/views.py` also has a filterable, paginated movement history view plus a streaming CSV export.
+- `workorders` — `WorkOrder` groups the set of `StockMovement`s from a single transformation job (materials consumed + materials produced). Consumed quantities for the same material+location are combined across formset rows and stock-checked before any writes; the whole submission is atomic.
 - `api` — reserved for DRF endpoints if a non-HTML client is ever needed; not yet built.
 
-Mobile forms (receive / ship / transform) live under `inventory/` and `workorders/` views+templates, styled mobile-first, with a bottom nav for the three actions plus a stock dashboard.
+Mobile forms (receive / ship / transform / adjust) live under `inventory/` and `workorders/` views+templates, styled mobile-first, with a bottom nav (Adjust hidden from plain Workers) plus a stock dashboard and movement history/export.
 
 ## Commands
 
@@ -42,6 +42,18 @@ python manage.py createsuperuser
 ```bash
 python manage.py test
 ```
+
+Seed the material catalog, depot locations, and employee accounts from CSV (idempotent — safe to re-run; matches the `.env`/`.env.example` pattern, real files are gitignored):
+
+```bash
+cp seed_data/materials.example.csv seed_data/materials.csv
+cp seed_data/locations.example.csv seed_data/locations.csv
+cp seed_data/users.example.csv seed_data/users.csv
+# edit those three files with real data, then:
+python manage.py seed_data
+```
+
+New users get a random temporary password printed to the console (share it securely); only `ADMIN`-role users get Django admin (`is_staff`) access.
 
 Full stack via Docker Compose (Django + Postgres):
 
