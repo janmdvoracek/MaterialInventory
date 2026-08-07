@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Current stock{% endblock %}
+{% block content %}
+<h1>Current stock</h1>
+{% if stock %}
+<div class="card">
+    <table>
+        <thead>
+            <tr><th>Material</th><th>Location</th><th>Qty</th></tr>
+        </thead>
+        <tbody>
+        {% for row in stock %}
+            <tr>
+                <td>{{ row.material__name }} <small>({{ row.material__sku }})</small></td>
+                <td>{{ row.location__name }}</td>
+                <td>{{ row.quantity }} {{ row.material__unit_of_measure }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<p>No stock recorded yet.</p>
+{% endif %}
+{% endblock %}

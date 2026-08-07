@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Record transformation{% endblock %}
+{% block content %}
+<div class="card">
+    <h1>Record transformation</h1>
+    <p>List what was consumed and what was produced in this job.</p>
+    <form method="post">
+        {% csrf_token %}
+        <label for="{{ order_form.description.id_for_label }}">Description</label>
+        {{ order_form.description }}
+
+        <h2>Consumed</h2>
+        {{ consumed_formset.management_form }}
+        {% for form in consumed_formset %}
+            <div class="item-row">
+                <div>{{ form.material }}</div>
+                <div>{{ form.location }}</div>
+                <div>{{ form.quantity }}</div>
+            </div>
+            {% for error in form.non_field_errors %}<p class="messages error">{{ error }}</p>{% endfor %}
+        {% endfor %}
+
+        <h2>Produced</h2>
+        {{ produced_formset.management_form }}
+        {% for form in produced_formset %}
+            <div class="item-row">
+                <div>{{ form.material }}</div>
+                <div>{{ form.location }}</div>
+                <div>{{ form.quantity }}</div>
+            </div>
+            {% for error in form.non_field_errors %}<p class="messages error">{{ error }}</p>{% endfor %}
+        {% endfor %}
+
+        <button type="submit">Record transformation</button>
+    </form>
+</div>
+{% endblock %}
