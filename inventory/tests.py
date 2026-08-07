@@ -1,8 +1,12 @@
+import csv
+import io
+from datetime import date, timedelta
 from decimal import Decimal
 
 from django.db import transaction
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from accounts.models import User
 from materials.models import Location, Material
@@ -168,3 +172,207 @@ class AdjustmentCreateTests(InventoryTestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertFalse(StockMovement.objects.filter(movement_type=StockMovement.MovementType.ADJUSTMENT).exists())
+
+
+class MovementHistoryTests(InventoryTestCase):
+    def test_history_requires_login(self):
+        response = self.client.get(reverse('movement_history'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/login/', response.url)
+
+    def test_history_lists_all_movements_by_default(self):
+        self._movement(Decimal('10'), StockMovement.MovementType.RECEIPT)
+        self._movement(Decimal('-3'), StockMovement.MovementType.SHIPMENT)
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('movement_history'))
+        self.assertEqual(len(response.context['page_obj'].object_list), 2)
+
+    def test_history_filters_by_material(self):
+        other_material = Material.objects.create(sku='SKU2', name='Copper Wire', unit_of_measure='m')
+        self._movement(Decimal('10'))
+        StockMovement.objects.create(
+            material=other_material,
+            location=self.location,
+            quantity=Decimal('5'),
+            movement_type=StockMovement.MovementType.RECEIPT,
+            created_by=self.worker,
+        )
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('movement_history'), {'material': self.material.pk})
+        movements = response.context['page_obj'].object_list
+        self.assertEqual(len(movements), 1)
+        self.assertEqual(movements[0].material, self.material)
+
+    def test_history_filters_by_location(self):
+        other_location = Location.objects.create(name='Overflow Yard')
+        self._movement(Decimal('10'))
+        StockMovement.objects.create(
+            material=self.material,
+            location=other_location,
+            quantity=Decimal('5'),
+            movement_type=StockMovement.MovementType.RECEIPT,
+            created_by=self.worker,
+        )
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('movement_history'), {'location': other_location.pk})
+        movements = response.context['page_obj'].object_list
+        self.assertEqual(len(movements), 1)
+        self.assertEqual(movements[0].location, other_location)
+
+    def test_history_filters_by_movement_type(self):
+        self._movement(Decimal('10'), StockMovement.MovementType.RECEIPT)
+        self._movement(Decimal('-3'), StockMovement.MovementType.SHIPMENT)
+        self._movement(Decimal('-1'), StockMovement.MovementType.ADJUSTMENT)
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('movement_history'), {'movement_type': 'SHIPMENT'})
+        movements = response.context['page_obj'].object_list
+        self.assertEqual(len(movements), 1)
+        self.assertEqual(movements[0].movement_type, StockMovement.MovementType.SHIPMENT)
+
+    def test_history_filters_by_created_by(self):
+        self._movement(Decimal('10'), user=self.worker)
+        self._movement(Decimal('5'), user=self.manager)
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('movement_history'), {'created_by': self.manager.pk})
+        movements = response.context['page_obj'].object_list
+        self.assertEqual(len(movements), 1)
+        self.assertEqual(movements[0].created_by, self.manager)
+
+    def test_history_filters_by_date_range(self):
+        old = self._movement(Decimal('10'))
+        recent = self._movement(Decimal('5'))
+        StockMovement.objects.filter(pk=old.pk).update(created_at=timezone.now() - timedelta(days=10))
+        StockMovement.objects.filter(pk=recent.pk).update(created_at=timezone.now())
+        self.client.force_login(self.worker)
+        response = self.client.get(
+            reverse('movement_history'), {'date_from': (date.today() - timedelta(days=1)).isoformat()}
+        )
+        movements = response.context['page_obj'].object_list
+        self.assertEqual(list(movements), [recent])
+
+    def test_history_filters_combined(self):
+        other_material = Material.objects.create(sku='SKU2', name='Copper Wire', unit_of_measure='m')
+        matching = self._movement(Decimal('10'), StockMovement.MovementType.RECEIPT)
+        self._movement(Decimal('-3'), StockMovement.MovementType.SHIPMENT)
+        StockMovement.objects.create(
+            material=other_material,
+            location=self.location,
+            quantity=Decimal('5'),
+            movement_type=StockMovement.MovementType.RECEIPT,
+            created_by=self.worker,
+        )
+        self.client.force_login(self.worker)
+        response = self.client.get(
+            reverse('movement_history'),
+            {'material': self.material.pk, 'movement_type': 'RECEIPT'},
+        )
+        movements = response.context['page_obj'].object_list
+        self.assertEqual(list(movements), [matching])
+
+    def test_history_invalid_date_range_rerenders_with_error(self):
+        self.client.force_login(self.worker)
+        response = self.client.get(
+            reverse('movement_history'),
+            {'date_from': date.today().isoformat(), 'date_to': (date.today() - timedelta(days=1)).isoformat()},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.context['form'].is_valid())
+
+    def test_history_pagination_default_page_size(self):
+        for _ in range(60):
+            self._movement(Decimal('1'))
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('movement_history'))
+        page_obj = response.context['page_obj']
+        self.assertEqual(len(page_obj.object_list), 50)
+        self.assertTrue(page_obj.has_next())
+
+    def test_history_pagination_second_page(self):
+        for _ in range(60):
+            self._movement(Decimal('1'))
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('movement_history'), {'page': '2'})
+        page_obj = response.context['page_obj']
+        self.assertEqual(len(page_obj.object_list), 10)
+
+    def test_history_pagination_out_of_range_page_clamps(self):
+        self._movement(Decimal('10'))
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('movement_history'), {'page': '999'})
+        self.assertEqual(response.status_code, 200)
+        page_obj = response.context['page_obj']
+        self.assertEqual(page_obj.number, page_obj.paginator.num_pages)
+
+    def test_history_ordering_most_recent_first(self):
+        first = self._movement(Decimal('10'))
+        StockMovement.objects.filter(pk=first.pk).update(created_at=timezone.now() - timedelta(days=1))
+        second = self._movement(Decimal('5'))
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('movement_history'))
+        movements = list(response.context['page_obj'].object_list)
+        self.assertEqual(movements, [second, first])
+
+    def test_worker_can_view_history(self):
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('movement_history'))
+        self.assertEqual(response.status_code, 200)
+
+    def test_manager_can_view_history(self):
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('movement_history'))
+        self.assertEqual(response.status_code, 200)
+
+
+class MovementHistoryExportTests(InventoryTestCase):
+    def test_export_requires_login(self):
+        response = self.client.get(reverse('movement_history_export'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/login/', response.url)
+
+    def test_export_content_type_is_csv(self):
+        self._movement(Decimal('10'))
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('movement_history_export'))
+        self.assertEqual(response['Content-Type'], 'text/csv')
+
+    def test_export_content_disposition_filename(self):
+        self._movement(Decimal('10'))
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('movement_history_export'))
+        self.assertIn('attachment; filename="movement_history.csv"', response['Content-Disposition'])
+
+    def test_export_header_row(self):
+        self._movement(Decimal('10'))
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('movement_history_export'))
+        content = b''.join(response.streaming_content).decode()
+        rows = list(csv.reader(io.StringIO(content)))
+        self.assertEqual(
+            rows[0],
+            ['Date', 'SKU', 'Material', 'Location', 'Type', 'Quantity', 'Unit', 'Work order', 'Created by', 'Notes'],
+        )
+
+    def test_export_row_count_matches_filtered_queryset(self):
+        for _ in range(60):
+            self._movement(Decimal('1'))
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('movement_history_export'))
+        content = b''.join(response.streaming_content).decode()
+        rows = list(csv.reader(io.StringIO(content)))
+        self.assertEqual(len(rows) - 1, 60)
+
+    def test_export_respects_filters(self):
+        self._movement(Decimal('10'), StockMovement.MovementType.RECEIPT)
+        self._movement(Decimal('-3'), StockMovement.MovementType.SHIPMENT)
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('movement_history_export'), {'movement_type': 'SHIPMENT'})
+        content = b''.join(response.streaming_content).decode()
+        rows = list(csv.reader(io.StringIO(content)))
+        self.assertEqual(len(rows) - 1, 1)
+        self.assertEqual(rows[1][4], 'Shipment (outgoing)')
+
+    def test_worker_can_export_csv(self):
+        self._movement(Decimal('10'))
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('movement_history_export'))
+        self.assertEqual(response.status_code, 200)

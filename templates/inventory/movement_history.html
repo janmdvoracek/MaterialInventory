@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Movement history{% endblock %}
+{% block content %}
+<h1>Movement history</h1>
+<div class="card">
+    <form method="get">
+        {{ form.as_p }}
+        <button type="submit">Filter</button>
+    </form>
+</div>
+<p><a href="{% url 'movement_history_export' %}?{{ querystring }}">Export CSV</a></p>
+<div class="card">
+    <table>
+        <thead>
+            <tr><th>Date</th><th>Material</th><th>Location</th><th>Type</th><th>Qty</th><th>By</th></tr>
+        </thead>
+        <tbody>
+        {% for movement in page_obj %}
+            <tr>
+                <td>{{ movement.created_at|date:"Y-m-d H:i" }}</td>
+                <td>{{ movement.material.name }} <small>({{ movement.material.sku }})</small></td>
+                <td>{{ movement.location.name }}</td>
+                <td>{{ movement.get_movement_type_display }}</td>
+                <td>{{ movement.quantity }} {{ movement.material.unit_of_measure }}</td>
+                <td>{{ movement.created_by.username }}</td>
+            </tr>
+        {% empty %}
+            <tr><td colspan="6">No movements match these filters.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% if page_obj.has_other_pages %}
+<p>
+    {% if page_obj.has_previous %}<a href="?{{ querystring }}&page={{ page_obj.previous_page_number }}">Previous</a>{% endif %}
+    Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+    {% if page_obj.has_next %}<a href="?{{ querystring }}&page={{ page_obj.next_page_number }}">Next</a>{% endif %}
+</p>
+{% endif %}
+{% endblock %}

@@ -1,28 +1,107 @@
+import csv
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Sum
+from django.http import StreamingHttpResponse
 from django.shortcuts import redirect, render
 
 from accounts.decorators import role_required
 from accounts.models import User
 
-from .forms import AdjustmentForm, ReceiptForm, ShipmentForm
+from .forms import AdjustmentForm, HistoryFilterForm, ReceiptForm, ShipmentForm
 from .models import StockMovement
 from .services import get_available_quantity
+
+HISTORY_PAGE_SIZE = 50
 
 
 @login_required
 def dashboard(request):
     stock = (
         StockMovement.objects.values(
-            'material__id', 'material__name', 'material__sku', 'material__unit_of_measure', 'location__name'
+            'material__id',
+            'material__name',
+            'material__sku',
+            'material__unit_of_measure',
+            'location__id',
+            'location__name',
         )
         .annotate(quantity=Sum('quantity'))
         .filter(quantity__gt=0)
         .order_by('material__name', 'location__name')
     )
     return render(request, 'inventory/dashboard.html', {'stock': stock})
+
+
+def _filtered_movements(request):
+    form = HistoryFilterForm(request.GET or None)
+    movements = StockMovement.objects.select_related('material', 'location', 'created_by', 'work_order')
+    if form.is_valid():
+        data = form.cleaned_data
+        if data.get('material'):
+            movements = movements.filter(material=data['material'])
+        if data.get('location'):
+            movements = movements.filter(location=data['location'])
+        if data.get('movement_type'):
+            movements = movements.filter(movement_type=data['movement_type'])
+        if data.get('created_by'):
+            movements = movements.filter(created_by=data['created_by'])
+        if data.get('date_from'):
+            movements = movements.filter(created_at__date__gte=data['date_from'])
+        if data.get('date_to'):
+            movements = movements.filter(created_at__date__lte=data['date_to'])
+    return form, movements
+
+
+@login_required
+def movement_history(request):
+    form, movements = _filtered_movements(request)
+    page_obj = Paginator(movements, HISTORY_PAGE_SIZE).get_page(request.GET.get('page'))
+    querystring = request.GET.copy()
+    querystring.pop('page', None)
+    return render(
+        request,
+        'inventory/movement_history.html',
+        {'form': form, 'page_obj': page_obj, 'querystring': querystring.urlencode()},
+    )
+
+
+class _Echo:
+    def write(self, value):
+        return value
+
+
+@login_required
+def movement_history_export(request):
+    _, movements = _filtered_movements(request)
+    writer = csv.writer(_Echo())
+
+    def rows():
+        yield writer.writerow(
+            ['Date', 'SKU', 'Material', 'Location', 'Type', 'Quantity', 'Unit', 'Work order', 'Created by', 'Notes']
+        )
+        for movement in movements.iterator(chunk_size=2000):
+            yield writer.writerow(
+                [
+                    movement.created_at.isoformat(timespec='seconds'),
+                    movement.material.sku,
+                    movement.material.name,
+                    movement.location.name,
+                    movement.get_movement_type_display(),
+                    movement.quantity,
+                    movement.material.unit_of_measure,
+                    movement.work_order_id or '',
+                    movement.created_by.username,
+                    movement.notes,
+                ]
+            )
+
+    response = StreamingHttpResponse(rows(), content_type='text/csv')
+    response['Content-Disposition'] = 'attachment; filename="movement_history.csv"'
+    return response
 
 
 @login_required

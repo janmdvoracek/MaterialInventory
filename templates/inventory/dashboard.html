@@ -11,7 +11,11 @@
         <tbody>
         {% for row in stock %}
             <tr>
-                <td>{{ row.material__name }} <small>({{ row.material__sku }})</small></td>
+                <td>
+                    <a href="{% url 'movement_history' %}?material={{ row.material__id }}&location={{ row.location__id }}">
+                        {{ row.material__name }} <small>({{ row.material__sku }})</small>
+                    </a>
+                </td>
                 <td>{{ row.location__name }}</td>
                 <td>{{ row.quantity }} {{ row.material__unit_of_measure }}</td>
             </tr>
@@ -22,4 +26,5 @@
 {% else %}
 <p>No stock recorded yet.</p>
 {% endif %}
+<p><a href="{% url 'movement_history' %}">View full history →</a></p>
 {% endblock %}
