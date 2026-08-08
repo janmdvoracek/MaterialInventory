@@ -4,12 +4,10 @@ from decimal import Decimal
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
-from django.db.models import F
 from django.shortcuts import redirect, render
 
 from inventory.models import StockMovement
 from inventory.services import get_available_quantity
-from materials.models import Machine
 
 from .forms import ConsumedFormSet, MachineUsageFormSet, ProducedFormSet, WorkOrderForm
 from .models import MachineUsage, WorkOrder
@@ -76,13 +74,11 @@ def transform_create(request):
                                 created_by=request.user,
                             )
                         for row in machine_rows:
+                            # MachineUsage.save() keeps Machine.total_hours in sync.
                             MachineUsage.objects.create(
                                 work_order=work_order,
                                 machine=row['machine'],
                                 hours=row['hours'],
-                            )
-                            Machine.objects.filter(pk=row['machine'].pk).update(
-                                total_hours=F('total_hours') + row['hours']
                             )
                         messages.success(request, 'Zpracování bylo zaznamenáno.')
                         return redirect('dashboard')

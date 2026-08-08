@@ -33,6 +33,13 @@
         }
         header a { color: white; text-decoration: none; font-weight: 700; letter-spacing: 0.02em; }
         header .logo { height: 32px; width: auto; display: block; }
+        header .header-actions { display: flex; align-items: center; gap: 1rem; }
+        header a.admin-link {
+            color: #d1d5db;
+            font-weight: 600;
+            letter-spacing: normal;
+        }
+        header a.admin-link:hover { color: var(--brand-green); text-decoration: underline; }
         header form.logout-form { margin: 0; }
         header button.logout-link {
             width: auto;
@@ -119,10 +126,15 @@
     <header>
         <a href="{% url 'dashboard' %}"><img class="logo" src="{% static 'img/logo.png' %}" alt="Petrokámen"></a>
         {% if user.is_authenticated %}
-            <form class="logout-form" method="post" action="{% url 'logout' %}">
-                {% csrf_token %}
-                <button class="logout-link" type="submit">Odhlásit se</button>
-            </form>
+            <div class="header-actions">
+                {% if user.is_staff %}
+                    <a class="admin-link" href="{% url 'admin:index' %}">Administrace</a>
+                {% endif %}
+                <form class="logout-form" method="post" action="{% url 'logout' %}">
+                    {% csrf_token %}
+                    <button class="logout-link" type="submit">Odhlásit se</button>
+                </form>
+            </div>
         {% endif %}
     </header>
     <main>

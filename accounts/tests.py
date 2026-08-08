@@ -26,6 +26,21 @@ class LogoutTests(TestCase):
         self.assertNotIn('_auth_user_id', self.client.session)
 
 
+class AdminLinkTests(TestCase):
+    def test_admin_link_shown_to_staff_user(self):
+        user = User.objects.create_user(username='manager', password='pw', role=User.Role.MANAGER, is_staff=True)
+        self.client.force_login(user)
+        html = self.client.get(reverse('dashboard')).content.decode()
+        self.assertIn(reverse('admin:index'), html)
+        self.assertIn('Administrace', html)
+
+    def test_admin_link_hidden_from_non_staff_user(self):
+        user = User.objects.create_user(username='worker', password='pw', role=User.Role.WORKER, is_staff=False)
+        self.client.force_login(user)
+        html = self.client.get(reverse('dashboard')).content.decode()
+        self.assertNotIn('Administrace', html)
+
+
 class UserRoleTests(TestCase):
     def test_default_role_is_worker(self):
         user = User.objects.create_user(username='alice', password='pw')

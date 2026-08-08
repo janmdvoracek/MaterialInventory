@@ -255,3 +255,92 @@ class TransformCreateTests(TestCase):
         self.assertFalse(MachineUsage.objects.exists())
         self.machine_a.refresh_from_db()
         self.assertEqual(self.machine_a.total_hours, Decimal('0'))
+
+
+class MachineUsageModelTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='worker', password='pw')
+        self.work_order = WorkOrder.objects.create(created_by=self.user, description='job')
+        self.machine_a = Machine.objects.create(name='A')
+        self.machine_b = Machine.objects.create(name='B')
+
+    def test_create_increments_total_hours(self):
+        MachineUsage.objects.create(work_order=self.work_order, machine=self.machine_a, hours=Decimal('2'))
+        self.machine_a.refresh_from_db()
+        self.assertEqual(self.machine_a.total_hours, Decimal('2'))
+
+    def test_increasing_hours_adjusts_by_delta(self):
+        usage = MachineUsage.objects.create(work_order=self.work_order, machine=self.machine_a, hours=Decimal('2'))
+        usage.hours = Decimal('5')
+        usage.save()
+        self.machine_a.refresh_from_db()
+        self.assertEqual(self.machine_a.total_hours, Decimal('5'))
+
+    def test_decreasing_hours_adjusts_by_delta(self):
+        usage = MachineUsage.objects.create(work_order=self.work_order, machine=self.machine_a, hours=Decimal('5'))
+        usage.hours = Decimal('2')
+        usage.save()
+        self.machine_a.refresh_from_db()
+        self.assertEqual(self.machine_a.total_hours, Decimal('2'))
+
+    def test_reassigning_machine_moves_hours_between_machines(self):
+        usage = MachineUsage.objects.create(work_order=self.work_order, machine=self.machine_a, hours=Decimal('4'))
+        usage.machine = self.machine_b
+        usage.save()
+        self.machine_a.refresh_from_db()
+        self.machine_b.refresh_from_db()
+        self.assertEqual(self.machine_a.total_hours, Decimal('0'))
+        self.assertEqual(self.machine_b.total_hours, Decimal('4'))
+
+    def test_delete_decrements_total_hours(self):
+        usage = MachineUsage.objects.create(work_order=self.work_order, machine=self.machine_a, hours=Decimal('4'))
+        usage.delete()
+        self.machine_a.refresh_from_db()
+        self.assertEqual(self.machine_a.total_hours, Decimal('0'))
+
+
+class WorkOrderAdminTests(TestCase):
+    def setUp(self):
+        self.material = Material.objects.create(sku='ADM1', name='Steel', unit_of_measure='kg')
+        self.location = Location.objects.create(name='Depot')
+        self.machine = Machine.objects.create(name='Warrior')
+        self.admin_user = User.objects.create_superuser(username='admin', password='pw')
+
+    def test_can_create_workorder_with_movement_and_machine_usage_via_admin(self):
+        self.client.force_login(self.admin_user)
+        data = {
+            'description': 'Admin-created job',
+            'movements-TOTAL_FORMS': '1',
+            'movements-INITIAL_FORMS': '0',
+            'movements-MIN_NUM_FORMS': '0',
+            'movements-MAX_NUM_FORMS': '1000',
+            'movements-0-material': self.material.pk,
+            'movements-0-location': self.location.pk,
+            'movements-0-movement_type': StockMovement.MovementType.RECEIPT,
+            'movements-0-quantity': '25',
+            'movements-0-notes': '',
+            'machine_usages-TOTAL_FORMS': '1',
+            'machine_usages-INITIAL_FORMS': '0',
+            'machine_usages-MIN_NUM_FORMS': '0',
+            'machine_usages-MAX_NUM_FORMS': '1000',
+            'machine_usages-0-machine': self.machine.pk,
+            'machine_usages-0-hours': '3',
+        }
+        response = self.client.post(reverse('admin:workorders_workorder_add'), data)
+        self.assertEqual(response.status_code, 302)
+
+        work_order = WorkOrder.objects.get()
+        self.assertEqual(work_order.description, 'Admin-created job')
+        self.assertEqual(work_order.created_by, self.admin_user)
+
+        movement = StockMovement.objects.get(work_order=work_order)
+        self.assertEqual(movement.material, self.material)
+        self.assertEqual(movement.location, self.location)
+        self.assertEqual(movement.quantity, Decimal('25'))
+        self.assertEqual(movement.created_by, self.admin_user)
+
+        usage = MachineUsage.objects.get(work_order=work_order)
+        self.assertEqual(usage.machine, self.machine)
+        self.assertEqual(usage.hours, Decimal('3'))
+        self.machine.refresh_from_db()
+        self.assertEqual(self.machine.total_hours, Decimal('3'))
