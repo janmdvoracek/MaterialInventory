@@ -1,5 +1,5 @@
 from django import forms
-from django.contrib.auth.forms import AuthenticationForm
+from django.contrib.auth.forms import AuthenticationForm, PasswordChangeForm
 
 
 class CzechAuthenticationForm(AuthenticationForm):
@@ -12,3 +12,18 @@ class CzechAuthenticationForm(AuthenticationForm):
         ),
         'inactive': 'Tento účet je neaktivní.',
     }
+
+
+class CzechPasswordChangeForm(PasswordChangeForm):
+    error_messages = {
+        **PasswordChangeForm.error_messages,
+        'password_incorrect': 'Zadané současné heslo není správné.',
+        'password_mismatch': 'Zadaná hesla se neshodují.',
+    }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['old_password'].label = 'Současné heslo'
+        self.fields['old_password'].widget.attrs['autofocus'] = True
+        self.fields['new_password1'].label = 'Nové heslo'
+        self.fields['new_password2'].label = 'Potvrzení nového hesla'

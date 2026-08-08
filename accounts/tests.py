@@ -26,6 +26,81 @@ class LogoutTests(TestCase):
         self.assertNotIn('_auth_user_id', self.client.session)
 
 
+class PasswordChangeTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='worker', password='old-password-123')
+
+    def test_password_change_link_shown_to_any_authenticated_user(self):
+        # Not just staff -- every worker needs a way to change their own password
+        # without admin access.
+        self.client.force_login(self.user)
+        html = self.client.get(reverse('dashboard')).content.decode()
+        self.assertIn(reverse('password_change'), html)
+        self.assertIn('Změnit heslo', html)
+
+    def test_anonymous_user_redirected_to_login(self):
+        response = self.client.get(reverse('password_change'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/login/', response.url)
+
+    def test_successful_password_change(self):
+        self.client.force_login(self.user)
+        response = self.client.post(
+            reverse('password_change'),
+            {
+                'old_password': 'old-password-123',
+                'new_password1': 'brand-new-password-456',
+                'new_password2': 'brand-new-password-456',
+            },
+        )
+        self.assertRedirects(response, reverse('password_change_done'))
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password('brand-new-password-456'))
+
+    def test_wrong_old_password_rejected(self):
+        self.client.force_login(self.user)
+        response = self.client.post(
+            reverse('password_change'),
+            {
+                'old_password': 'not-the-real-password',
+                'new_password1': 'brand-new-password-456',
+                'new_password2': 'brand-new-password-456',
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password('old-password-123'))
+
+    def test_mismatched_new_passwords_rejected(self):
+        self.client.force_login(self.user)
+        response = self.client.post(
+            reverse('password_change'),
+            {
+                'old_password': 'old-password-123',
+                'new_password1': 'brand-new-password-456',
+                'new_password2': 'does-not-match',
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password('old-password-123'))
+
+    def test_password_change_does_not_log_user_out(self):
+        # Django's update_session_auth_hash must be in play, or changing your
+        # own password would kick you out mid-session.
+        self.client.force_login(self.user)
+        self.client.post(
+            reverse('password_change'),
+            {
+                'old_password': 'old-password-123',
+                'new_password1': 'brand-new-password-456',
+                'new_password2': 'brand-new-password-456',
+            },
+        )
+        response = self.client.get(reverse('dashboard'))
+        self.assertEqual(response.status_code, 200)
+
+
 class AdminLinkTests(TestCase):
     def test_admin_link_shown_to_staff_user(self):
         user = User.objects.create_user(username='manager', password='pw', role=User.Role.MANAGER, is_staff=True)

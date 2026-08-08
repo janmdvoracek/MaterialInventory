@@ -111,6 +111,7 @@ class Command(BaseCommand):
                     f'Invalid role "{role}" for user "{username}". Must be one of {sorted(valid_roles)}.'
                 )
             password = secrets.token_urlsafe(12)
+            is_admin = role == User.Role.ADMIN
             User.objects.create_user(
                 username=username,
                 first_name=row.get('first_name', '').strip(),
@@ -118,7 +119,11 @@ class Command(BaseCommand):
                 email=row.get('email', '').strip(),
                 role=role,
                 password=password,
-                is_staff=(role in (User.Role.MANAGER, User.Role.ADMIN)),
+                is_staff=is_admin,
+                # is_staff alone only grants login to /admin/; without is_superuser
+                # (or per-model permissions) the index page shows "you don't have
+                # permission to view or edit anything".
+                is_superuser=is_admin,
             )
             created_users.append((username, password))
 

@@ -22,6 +22,8 @@ Modular monolith, one Django project (`config`) with these apps:
 
 Mobile forms (receive / ship / transform / adjust) live under `inventory/` and `workorders/` views+templates, styled mobile-first, with a bottom nav (Adjust hidden from plain Workers) plus a stock dashboard and movement history/export.
 
+User-facing copy (auth forms in `accounts/forms.py`, movement history export headers in `inventory/views.py`, etc.) is written in Czech for depot workers; `LANGUAGE_CODE` itself is left at `en-us` — this is done by hardcoding Czech strings/labels directly rather than through Django's i18n framework, so keep new user-facing text in the same style rather than introducing `{% trans %}`/`gettext` half-way.
+
 ## Commands
 
 Local dev (without Docker), from a virtualenv with `requirements.txt` installed:
@@ -43,6 +45,13 @@ python manage.py createsuperuser
 python manage.py test
 ```
 
+Run a single app's tests, or a single test case/method, the same way:
+
+```bash
+python manage.py test materials
+python manage.py test materials.tests.MaterialModelTests.test_material_str
+```
+
 Seed the material catalog, depot locations, machinery, and employee accounts from CSV (idempotent — safe to re-run; matches the `.env`/`.env.example` pattern, real files are gitignored):
 
 ```bash
@@ -58,7 +67,7 @@ python manage.py seed_data
 
 Optional columns (`track_stock`, `hourly_rate`) are only written when the CSV actually carries a value for that row: omitting the column, or leaving the cell blank, **preserves** whatever is already in the database, so re-seeding never clobbers a value someone set by hand in the admin. New records still fall back to the model defaults (`track_stock=True`, `hourly_rate=NULL`). Clearing a value back to empty is an admin action, not a CSV one.
 
-New users get a random temporary password printed to the console (share it securely); `MANAGER`- and `ADMIN`-role users get Django admin (`is_staff`) access (full admin, not scoped to the catalog), Workers do not.
+New users get a random temporary password printed to the console (share it securely); only `ADMIN`-role users get Django admin access — both `is_staff` (to log in) and `is_superuser` (to actually see/edit anything there; `is_staff` alone gets an empty "you don't have permission" admin index). Managers do not get admin access at all — they keep everything driven by `role_required`/`is_manager_or_admin` in the app itself (e.g. stock Adjustments), just not the Django admin backend.
 
 Full stack via Docker Compose (Django + Postgres):
 
@@ -75,3 +84,7 @@ docker compose exec web python manage.py createsuperuser
 ```
 
 No linter/formatter is configured yet.
+
+## Deployment
+
+Only the dev-oriented `docker-compose.yml` exists today (`runserver`, `DEBUG=True`, DB port exposed). A LAN-only production deployment to a company server is planned but not yet implemented — see [DEPLOYMENT_PLAN.md](DEPLOYMENT_PLAN.md) for the approach and the known blockers it identified (`collectstatic` never run against whitenoise's manifest storage, and a `.gitignore` bug that silently excludes the `seed_data/*.example.csv` files).

@@ -168,10 +168,13 @@ class SeedDataCommandTests(TestCase):
         admin = User.objects.get(username='admin1')
         self.assertEqual(worker.role, User.Role.WORKER)
         self.assertFalse(worker.is_staff)
+        self.assertFalse(worker.is_superuser)
         self.assertEqual(manager.role, User.Role.MANAGER)
-        self.assertTrue(manager.is_staff)
+        self.assertFalse(manager.is_staff)
+        self.assertFalse(manager.is_superuser)
         self.assertEqual(admin.role, User.Role.ADMIN)
         self.assertTrue(admin.is_staff)
+        self.assertTrue(admin.is_superuser)
 
     def test_seed_users_skips_existing_username(self):
         self._run(users='username,first_name,last_name,email,role\nworker1,W,One,w1@example.com,WORKER\n')
