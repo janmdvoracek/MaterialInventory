@@ -87,6 +87,19 @@ class ShipmentCreateTests(InventoryTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(StockMovement.objects.filter(movement_type=StockMovement.MovementType.SHIPMENT).exists())
 
+    def test_shipment_of_untracked_material_bypasses_stock_check(self):
+        untracked = Material.objects.create(
+            sku='RAW1', name='Zemina', unit_of_measure='t', track_stock=False
+        )
+        self.client.force_login(self.worker)
+        response = self.client.post(
+            reverse('shipment_create'),
+            {'material': untracked.pk, 'location': self.location.pk, 'quantity': '500', 'notes': ''},
+        )
+        self.assertRedirects(response, reverse('dashboard'))
+        shipment = StockMovement.objects.get(movement_type=StockMovement.MovementType.SHIPMENT)
+        self.assertEqual(shipment.quantity, Decimal('-500'))
+
 
 class AvailableQuantityServiceTests(InventoryTestCase):
     def test_get_available_quantity_sums_and_locks(self):
@@ -172,6 +185,25 @@ class AdjustmentCreateTests(InventoryTestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertFalse(StockMovement.objects.filter(movement_type=StockMovement.MovementType.ADJUSTMENT).exists())
+
+    def test_adjustment_decrease_of_untracked_material_bypasses_stock_check(self):
+        untracked = Material.objects.create(
+            sku='RAW1', name='Zemina', unit_of_measure='t', track_stock=False
+        )
+        self.client.force_login(self.manager)
+        response = self.client.post(
+            reverse('adjustment_create'),
+            {
+                'material': untracked.pk,
+                'location': self.location.pk,
+                'direction': 'DECREASE',
+                'quantity': '500',
+                'notes': 'correction',
+            },
+        )
+        self.assertRedirects(response, reverse('dashboard'))
+        movement = StockMovement.objects.get(movement_type=StockMovement.MovementType.ADJUSTMENT)
+        self.assertEqual(movement.quantity, Decimal('-500'))
 
 
 class MovementHistoryTests(InventoryTestCase):

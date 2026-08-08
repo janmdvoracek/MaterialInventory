@@ -1,5 +1,6 @@
 import csv
 import secrets
+from decimal import Decimal
 from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandError
@@ -49,6 +50,7 @@ class Command(BaseCommand):
                     'name': row['name'].strip(),
                     'unit_of_measure': row['unit_of_measure'].strip(),
                     'category': row.get('category', '').strip(),
+                    'track_stock': self._parse_bool(row.get('track_stock', '')),
                 },
             )
             created += was_created
@@ -69,13 +71,26 @@ class Command(BaseCommand):
     def seed_machines(self, path):
         rows = self._read_csv(path)
         created = 0
+        updated = 0
         for row in rows:
             name = row['name'].strip()
             if not name:
                 continue
-            _, was_created = Machine.objects.get_or_create(name=name)
+            hourly_rate_raw = row.get('hourly_rate', '').strip()
+            hourly_rate = Decimal(hourly_rate_raw) if hourly_rate_raw else None
+            _, was_created = Machine.objects.update_or_create(
+                name=name,
+                defaults={'hourly_rate': hourly_rate},
+            )
             created += was_created
-        self.stdout.write(self.style.SUCCESS(f'Machines: {created} created, {len(rows) - created} already existed.'))
+            updated += not was_created
+        self.stdout.write(self.style.SUCCESS(f'Machines: {created} created, {updated} updated.'))
+
+    def _parse_bool(self, value, default=True):
+        value = (value or '').strip().lower()
+        if not value:
+            return default
+        return value not in ('0', 'false', 'no', 'ne', 'n')
 
     def seed_users(self, path):
         rows = self._read_csv(path)

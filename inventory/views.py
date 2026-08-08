@@ -133,8 +133,11 @@ def shipment_create(request):
             location = form.cleaned_data['location']
             quantity = form.cleaned_data['quantity']
             with transaction.atomic():
-                available = get_available_quantity(material, location, lock=True)
-                if quantity > available:
+                if material.track_stock:
+                    available = get_available_quantity(material, location, lock=True)
+                else:
+                    available = None
+                if available is not None and quantity > available:
                     messages.error(
                         request,
                         f'K dispozici je pouze {available} {material.unit_of_measure} materiálu {material} '
@@ -167,7 +170,7 @@ def adjustment_create(request):
             if form.cleaned_data['direction'] == 'DECREASE':
                 quantity = -quantity
             with transaction.atomic():
-                if quantity < 0:
+                if quantity < 0 and material.track_stock:
                     available = get_available_quantity(material, location, lock=True)
                     if -quantity > available:
                         messages.error(

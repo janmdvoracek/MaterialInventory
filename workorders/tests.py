@@ -83,6 +83,16 @@ class TransformCreateTests(TestCase):
             StockMovement.objects.filter(movement_type=StockMovement.MovementType.TRANSFORM_CONSUME).exists()
         )
 
+    def test_transform_consume_of_untracked_material_bypasses_stock_check(self):
+        untracked = Material.objects.create(sku='RAW2', name='Zemina', unit_of_measure='t', track_stock=False)
+        response = self._post(
+            [{'material': untracked, 'location': self.location, 'quantity': Decimal('500')}], []
+        )
+        self.assertRedirects(response, reverse('dashboard'))
+        self.assertTrue(WorkOrder.objects.exists())
+        consumed = StockMovement.objects.get(movement_type=StockMovement.MovementType.TRANSFORM_CONSUME)
+        self.assertEqual(consumed.quantity, Decimal('-500'))
+
     def test_transform_consume_aggregates_same_material_location_across_rows(self):
         self._seed_stock(self.material_raw, Decimal('10'))
         response = self._post(

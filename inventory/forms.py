@@ -23,7 +23,7 @@ class ShipmentForm(forms.Form):
         material = cleaned_data.get('material')
         location = cleaned_data.get('location')
         quantity = cleaned_data.get('quantity')
-        if material and location and quantity:
+        if material and location and quantity and material.track_stock:
             from .models import StockMovement
 
             available = StockMovement.objects.filter(material=material, location=location).aggregate(
@@ -82,7 +82,7 @@ class AdjustmentForm(forms.Form):
         location = cleaned_data.get('location')
         direction = cleaned_data.get('direction')
         quantity = cleaned_data.get('quantity')
-        if material and location and quantity and direction == 'DECREASE':
+        if material and location and quantity and direction == 'DECREASE' and material.track_stock:
             from .models import StockMovement
 
             available = StockMovement.objects.filter(material=material, location=location).aggregate(

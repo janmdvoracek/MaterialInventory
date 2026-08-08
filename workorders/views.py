@@ -41,6 +41,8 @@ def transform_create(request):
                 with transaction.atomic():
                     shortfalls = []
                     for (material, location), quantity in requested.items():
+                        if not material.track_stock:
+                            continue
                         available = get_available_quantity(material, location, lock=True)
                         if quantity > available:
                             shortfalls.append(
