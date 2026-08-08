@@ -1,12 +1,12 @@
 {% extends "base.html" %}
-{% block title %}Current stock{% endblock %}
+{% block title %}Aktuální stav skladu{% endblock %}
 {% block content %}
-<h1>Current stock</h1>
+<h1>Aktuální stav skladu</h1>
 {% if stock %}
 <div class="card">
     <table>
         <thead>
-            <tr><th>Material</th><th>Location</th><th>Qty</th></tr>
+            <tr><th>Materiál</th><th>Lokalita</th><th>Množství</th></tr>
         </thead>
         <tbody>
         {% for row in stock %}
@@ -24,7 +24,7 @@
     </table>
 </div>
 {% else %}
-<p>No stock recorded yet.</p>
+<p>Zatím nejsou evidovány žádné zásoby.</p>
 {% endif %}
-<p><a href="{% url 'movement_history' %}">View full history →</a></p>
+<p><a href="{% url 'movement_history' %}">Zobrazit celou historii →</a></p>
 {% endblock %}

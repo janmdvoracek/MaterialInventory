@@ -32,7 +32,7 @@ def transform_create(request):
             produced_rows = [f.cleaned_data for f in produced_formset if f.cleaned_data.get('material')]
             machine_rows = [f.cleaned_data for f in machine_formset if f.cleaned_data.get('machine')]
             if not consumed_rows and not produced_rows:
-                messages.error(request, 'Add at least one consumed or produced item.')
+                messages.error(request, 'Přidejte alespoň jednu položku spotřeby nebo výroby.')
             else:
                 requested = defaultdict(Decimal)
                 for row in consumed_rows:
@@ -44,8 +44,8 @@ def transform_create(request):
                         available = get_available_quantity(material, location, lock=True)
                         if quantity > available:
                             shortfalls.append(
-                                f'Only {available} {material.unit_of_measure} of {material} available at '
-                                f'{location} (requested {quantity}).'
+                                f'K dispozici je pouze {available} {material.unit_of_measure} materiálu {material} '
+                                f'na lokalitě {location} (požadováno {quantity}).'
                             )
                     if shortfalls:
                         for shortfall in shortfalls:
@@ -82,7 +82,7 @@ def transform_create(request):
                             Machine.objects.filter(pk=row['machine'].pk).update(
                                 total_hours=F('total_hours') + row['hours']
                             )
-                        messages.success(request, 'Transformation recorded.')
+                        messages.success(request, 'Zpracování bylo zaznamenáno.')
                         return redirect('dashboard')
     else:
         order_form = WorkOrderForm()

@@ -349,7 +349,7 @@ class MovementHistoryExportTests(InventoryTestCase):
         rows = list(csv.reader(io.StringIO(content)))
         self.assertEqual(
             rows[0],
-            ['Date', 'SKU', 'Material', 'Location', 'Type', 'Quantity', 'Unit', 'Work order', 'Created by', 'Notes'],
+            ['Datum', 'SKU', 'Materiál', 'Lokalita', 'Typ', 'Množství', 'Jednotka', 'Zakázka', 'Vytvořil', 'Poznámka'],
         )
 
     def test_export_row_count_matches_filtered_queryset(self):
@@ -369,7 +369,7 @@ class MovementHistoryExportTests(InventoryTestCase):
         content = b''.join(response.streaming_content).decode()
         rows = list(csv.reader(io.StringIO(content)))
         self.assertEqual(len(rows) - 1, 1)
-        self.assertEqual(rows[1][4], 'Shipment (outgoing)')
+        self.assertEqual(rows[1][4], 'Výdej')
 
     def test_worker_can_export_csv(self):
         self._movement(Decimal('10'))

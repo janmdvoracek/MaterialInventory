@@ -6,7 +6,7 @@ seed_data/
 .vscode*
 venv/
 db.sqlite3
-staticfiles/
+static/
 .env
 *.egg-info/
 .DS_Store

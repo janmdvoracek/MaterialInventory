@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Adjust stock{% endblock %}
+{% block title %}Úprava skladu{% endblock %}
 {% block content %}
 <div class="card">
-    <h1>Adjust stock</h1>
+    <h1>Úprava skladu</h1>
     <form method="post">
         {% csrf_token %}
         {% for field in form %}
@@ -12,7 +12,7 @@
             {% for error in field.errors %}<p class="messages error">{{ error }}</p>{% endfor %}
         {% endfor %}
         {% for error in form.non_field_errors %}<p class="messages error">{{ error }}</p>{% endfor %}
-        <button type="submit">Record adjustment</button>
+        <button type="submit">Zaznamenat úpravu</button>
     </form>
 </div>
 {% endblock %}

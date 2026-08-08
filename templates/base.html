@@ -1,10 +1,10 @@
 {% load static %}
 <!DOCTYPE html>
-<html lang="en">
+<html lang="cs">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% block title %}Material Inventory{% endblock %}</title>
+    <title>{% block title %}Evidence materiálu{% endblock %}</title>
     <script src="https://unpkg.com/htmx.org@2.0.3" defer></script>
     <style>
         :root {
@@ -105,7 +105,7 @@
     <header>
         <a href="{% url 'dashboard' %}"><img class="logo" src="{% static 'img/logo.png' %}" alt="Petrokámen"></a>
         {% if user.is_authenticated %}
-            <a class="logout-link" href="{% url 'logout' %}">Log out</a>
+            <a class="logout-link" href="{% url 'logout' %}">Odhlásit se</a>
         {% endif %}
     </header>
     <main>
@@ -120,11 +120,11 @@
     </main>
     {% if user.is_authenticated %}
     <nav class="bottom">
-        <a href="{% url 'dashboard' %}">Stock</a>
-        <a href="{% url 'receipt_create' %}">Receive</a>
-        <a href="{% url 'shipment_create' %}">Ship</a>
-        <a href="{% url 'transform_create' %}">Transform</a>
-        {% if user.is_manager_or_admin %}<a href="{% url 'adjustment_create' %}">Adjust</a>{% endif %}
+        <a href="{% url 'dashboard' %}">Sklad</a>
+        <a href="{% url 'receipt_create' %}">Příjem</a>
+        <a href="{% url 'shipment_create' %}">Výdej</a>
+        <a href="{% url 'transform_create' %}">Zpracování</a>
+        {% if user.is_manager_or_admin %}<a href="{% url 'adjustment_create' %}">Úprava</a>{% endif %}
     </nav>
     {% endif %}
 </body>

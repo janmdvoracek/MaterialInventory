@@ -6,11 +6,11 @@ class StockMovement(models.Model):
     """Append-only ledger entry. Current stock is derived by summing quantity."""
 
     class MovementType(models.TextChoices):
-        RECEIPT = "RECEIPT", "Receipt (incoming)"
-        SHIPMENT = "SHIPMENT", "Shipment (outgoing)"
-        TRANSFORM_CONSUME = "TRANSFORM_CONSUME", "Transformation - consumed"
-        TRANSFORM_PRODUCE = "TRANSFORM_PRODUCE", "Transformation - produced"
-        ADJUSTMENT = "ADJUSTMENT", "Manual adjustment"
+        RECEIPT = "RECEIPT", "Příjem"
+        SHIPMENT = "SHIPMENT", "Výdej"
+        TRANSFORM_CONSUME = "TRANSFORM_CONSUME", "Zpracování – spotřeba"
+        TRANSFORM_PRODUCE = "TRANSFORM_PRODUCE", "Zpracování – výroba"
+        ADJUSTMENT = "ADJUSTMENT", "Ruční úprava"
 
     material = models.ForeignKey("materials.Material", on_delete=models.PROTECT, related_name="movements")
     location = models.ForeignKey("materials.Location", on_delete=models.PROTECT, related_name="movements")

@@ -81,7 +81,7 @@ def movement_history_export(request):
 
     def rows():
         yield writer.writerow(
-            ['Date', 'SKU', 'Material', 'Location', 'Type', 'Quantity', 'Unit', 'Work order', 'Created by', 'Notes']
+            ['Datum', 'SKU', 'Materiál', 'Lokalita', 'Typ', 'Množství', 'Jednotka', 'Zakázka', 'Vytvořil', 'Poznámka']
         )
         for movement in movements.iterator(chunk_size=2000):
             yield writer.writerow(
@@ -117,7 +117,7 @@ def receipt_create(request):
                 notes=form.cleaned_data['notes'],
                 created_by=request.user,
             )
-            messages.success(request, 'Receipt recorded.')
+            messages.success(request, 'Příjem byl zaznamenán.')
             return redirect('dashboard')
     else:
         form = ReceiptForm()
@@ -137,8 +137,8 @@ def shipment_create(request):
                 if quantity > available:
                     messages.error(
                         request,
-                        f'Only {available} {material.unit_of_measure} of {material} available at {location}; '
-                        'shipment aborted.',
+                        f'K dispozici je pouze {available} {material.unit_of_measure} materiálu {material} '
+                        f'na lokalitě {location}; výdej byl zrušen.',
                     )
                 else:
                     StockMovement.objects.create(
@@ -149,7 +149,7 @@ def shipment_create(request):
                         notes=form.cleaned_data['notes'],
                         created_by=request.user,
                     )
-                    messages.success(request, 'Shipment recorded.')
+                    messages.success(request, 'Výdej byl zaznamenán.')
                     return redirect('dashboard')
     else:
         form = ShipmentForm()
@@ -172,8 +172,8 @@ def adjustment_create(request):
                     if -quantity > available:
                         messages.error(
                             request,
-                            f'Only {available} {material.unit_of_measure} of {material} available at {location}; '
-                            'adjustment aborted.',
+                            f'K dispozici je pouze {available} {material.unit_of_measure} materiálu {material} '
+                            f'na lokalitě {location}; úprava byla zrušena.',
                         )
                         return render(request, 'inventory/adjustment_form.html', {'form': form})
                 StockMovement.objects.create(
@@ -184,7 +184,7 @@ def adjustment_create(request):
                     notes=form.cleaned_data['notes'],
                     created_by=request.user,
                 )
-            messages.success(request, 'Adjustment recorded.')
+            messages.success(request, 'Úprava byla zaznamenána.')
             return redirect('dashboard')
     else:
         form = AdjustmentForm()
