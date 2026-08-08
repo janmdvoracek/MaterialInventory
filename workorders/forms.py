@@ -25,6 +25,10 @@ class WorkOrderForm(forms.Form):
         if user is not None:
             # Can't collaborate with yourself — you're already the creator.
             queryset = queryset.exclude(pk=user.pk)
+            if not user.is_manager_or_admin:
+                # Plain workers only collaborate with other workers, not
+                # managers/admins.
+                queryset = queryset.filter(role=User.Role.WORKER)
         self.fields['collaborators'].queryset = queryset
 
 

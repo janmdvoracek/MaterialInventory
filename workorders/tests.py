@@ -272,6 +272,25 @@ class TransformCreateTests(TestCase):
         self.assertNotIn(self.worker, choices)
         self.assertIn(self.other_worker, choices)
 
+    def test_worker_collaborators_field_excludes_managers_and_admins(self):
+        manager = User.objects.create_user(username='manager', password='pw', role=User.Role.MANAGER)
+        admin = User.objects.create_user(username='admin', password='pw', role=User.Role.ADMIN)
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('transform_create'))
+        choices = list(response.context['order_form'].fields['collaborators'].queryset)
+        self.assertNotIn(manager, choices)
+        self.assertNotIn(admin, choices)
+        self.assertIn(self.other_worker, choices)
+
+    def test_manager_collaborators_field_includes_managers_and_admins(self):
+        manager = User.objects.create_user(username='manager', password='pw', role=User.Role.MANAGER)
+        other_manager = User.objects.create_user(username='other_manager', password='pw', role=User.Role.MANAGER)
+        self.client.force_login(manager)
+        response = self.client.get(reverse('transform_create'))
+        choices = list(response.context['order_form'].fields['collaborators'].queryset)
+        self.assertIn(other_manager, choices)
+        self.assertIn(self.worker, choices)
+
     def test_stock_shortfall_rolls_back_machine_usage_too(self):
         response = self._post(
             [{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('5')}],
