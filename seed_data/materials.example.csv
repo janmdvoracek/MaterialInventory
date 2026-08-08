@@ -1,0 +1,14 @@
+sku,name,unit_of_measure,category,track_stock
+ZDR-STERK,Štěrk,t,Zdroj,false
+ZDR-ZEMINA,Zemina,t,Zdroj,false
+ZDR-STRUSKA,Struska,t,Zdroj,false
+ZDR-OLSE,Olše,t,Zdroj,false
+FR-08-16,8/16,t,Frakce,true
+FR-16-32,16/32,t,Frakce,true
+FR-00-20,0/20,t,Frakce,true
+FR-00-22,0/22,t,Frakce,true
+FR-00-63,0/63,t,Frakce,true
+FR-00-90,0/90,t,Frakce,true
+FR-20-PLUS,20+,t,Frakce,true
+FR-63-PLUS,63+,t,Frakce,true
+FR-90-PLUS,90+,t,Frakce,true

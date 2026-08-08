@@ -1,0 +1,4 @@
+username,first_name,last_name,email,role
+worker.one,Worker,One,worker.one@example.com,WORKER
+manager.one,Manager,One,manager.one@example.com,MANAGER
+admin.one,Admin,One,admin.one@example.com,ADMIN
