@@ -4,13 +4,15 @@ from decimal import Decimal
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
+from django.db.models import F
 from django.shortcuts import redirect, render
 
 from inventory.models import StockMovement
 from inventory.services import get_available_quantity
+from materials.models import Machine
 
-from .forms import ConsumedFormSet, ProducedFormSet, WorkOrderForm
-from .models import WorkOrder
+from .forms import ConsumedFormSet, MachineUsageFormSet, ProducedFormSet, WorkOrderForm
+from .models import MachineUsage, WorkOrder
 
 
 @login_required
@@ -19,9 +21,16 @@ def transform_create(request):
         order_form = WorkOrderForm(request.POST)
         consumed_formset = ConsumedFormSet(request.POST, prefix='consumed')
         produced_formset = ProducedFormSet(request.POST, prefix='produced')
-        if order_form.is_valid() and consumed_formset.is_valid() and produced_formset.is_valid():
+        machine_formset = MachineUsageFormSet(request.POST, prefix='machines')
+        if (
+            order_form.is_valid()
+            and consumed_formset.is_valid()
+            and produced_formset.is_valid()
+            and machine_formset.is_valid()
+        ):
             consumed_rows = [f.cleaned_data for f in consumed_formset if f.cleaned_data.get('material')]
             produced_rows = [f.cleaned_data for f in produced_formset if f.cleaned_data.get('material')]
+            machine_rows = [f.cleaned_data for f in machine_formset if f.cleaned_data.get('machine')]
             if not consumed_rows and not produced_rows:
                 messages.error(request, 'Add at least one consumed or produced item.')
             else:
@@ -64,12 +73,22 @@ def transform_create(request):
                                 work_order=work_order,
                                 created_by=request.user,
                             )
+                        for row in machine_rows:
+                            MachineUsage.objects.create(
+                                work_order=work_order,
+                                machine=row['machine'],
+                                hours=row['hours'],
+                            )
+                            Machine.objects.filter(pk=row['machine'].pk).update(
+                                total_hours=F('total_hours') + row['hours']
+                            )
                         messages.success(request, 'Transformation recorded.')
                         return redirect('dashboard')
     else:
         order_form = WorkOrderForm()
         consumed_formset = ConsumedFormSet(prefix='consumed')
         produced_formset = ProducedFormSet(prefix='produced')
+        machine_formset = MachineUsageFormSet(prefix='machines')
     return render(
         request,
         'workorders/transform_form.html',
@@ -77,5 +96,6 @@ def transform_create(request):
             'order_form': order_form,
             'consumed_formset': consumed_formset,
             'produced_formset': produced_formset,
+            'machine_formset': machine_formset,
         },
     )

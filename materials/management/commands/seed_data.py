@@ -6,24 +6,26 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from accounts.models import User
-from materials.models import Location, Material
+from materials.models import Location, Machine, Material
 
 
 class Command(BaseCommand):
     help = (
-        'Seed the material catalog, depot locations, and employee accounts from CSV files. '
-        'Safe to re-run: materials/locations are matched and updated, existing users are left untouched.'
+        'Seed the material catalog, depot locations, machinery, and employee accounts from CSV files. '
+        'Safe to re-run: materials/locations/machines are matched and updated, existing users are left untouched.'
     )
 
     def add_arguments(self, parser):
         parser.add_argument('--materials-file', default='seed_data/materials.csv')
         parser.add_argument('--locations-file', default='seed_data/locations.csv')
+        parser.add_argument('--machines-file', default='seed_data/machines.csv')
         parser.add_argument('--users-file', default='seed_data/users.csv')
 
     def handle(self, *args, **options):
         with transaction.atomic():
             self.seed_materials(Path(options['materials_file']))
             self.seed_locations(Path(options['locations_file']))
+            self.seed_machines(Path(options['machines_file']))
             self.seed_users(Path(options['users_file']))
 
     def _read_csv(self, path):
@@ -63,6 +65,17 @@ class Command(BaseCommand):
             _, was_created = Location.objects.get_or_create(name=name)
             created += was_created
         self.stdout.write(self.style.SUCCESS(f'Locations: {created} created, {len(rows) - created} already existed.'))
+
+    def seed_machines(self, path):
+        rows = self._read_csv(path)
+        created = 0
+        for row in rows:
+            name = row['name'].strip()
+            if not name:
+                continue
+            _, was_created = Machine.objects.get_or_create(name=name)
+            created += was_created
+        self.stdout.write(self.style.SUCCESS(f'Machines: {created} created, {len(rows) - created} already existed.'))
 
     def seed_users(self, path):
         rows = self._read_csv(path)

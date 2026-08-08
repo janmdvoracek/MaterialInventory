@@ -31,6 +31,16 @@
             {% for error in form.non_field_errors %}<p class="messages error">{{ error }}</p>{% endfor %}
         {% endfor %}
 
+        <h2>Machines used</h2>
+        {{ machine_formset.management_form }}
+        {% for form in machine_formset %}
+            <div class="item-row">
+                <div>{{ form.machine }}</div>
+                <div>{{ form.hours }}</div>
+            </div>
+            {% for error in form.non_field_errors %}<p class="messages error">{{ error }}</p>{% endfor %}
+        {% endfor %}
+
         <button type="submit">Record transformation</button>
     </form>
 </div>

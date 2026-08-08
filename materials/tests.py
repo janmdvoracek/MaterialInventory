@@ -6,9 +6,11 @@ from django.core.management.base import CommandError
 from django.db import IntegrityError, transaction
 from django.test import TestCase
 
+from decimal import Decimal
+
 from accounts.models import User
 
-from .models import Location, Material
+from .models import Location, Machine, Material
 
 
 class MaterialModelTests(TestCase):
@@ -35,6 +37,22 @@ class LocationModelTests(TestCase):
                 Location.objects.create(name='Main Depot')
 
 
+class MachineModelTests(TestCase):
+    def test_machine_str(self):
+        machine = Machine.objects.create(name='Crusher A')
+        self.assertEqual(str(machine), 'Crusher A')
+
+    def test_machine_total_hours_defaults_to_zero(self):
+        machine = Machine.objects.create(name='Crusher A')
+        self.assertEqual(machine.total_hours, Decimal('0'))
+
+    def test_machine_name_unique(self):
+        Machine.objects.create(name='Crusher A')
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                Machine.objects.create(name='Crusher A')
+
+
 class SeedDataCommandTests(TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -46,11 +64,12 @@ class SeedDataCommandTests(TestCase):
         path.write_text(text)
         return str(path)
 
-    def _run(self, materials='', locations='', users=''):
+    def _run(self, materials='', locations='', machines='', users=''):
         call_command(
             'seed_data',
             materials_file=self._write_csv('materials.csv', materials),
             locations_file=self._write_csv('locations.csv', locations),
+            machines_file=self._write_csv('machines.csv', machines),
             users_file=self._write_csv('users.csv', users),
         )
 
@@ -68,6 +87,17 @@ class SeedDataCommandTests(TestCase):
         self._run(locations='name\nMain Depot\n')
         self._run(locations='name\nMain Depot\n')
         self.assertEqual(Location.objects.filter(name='Main Depot').count(), 1)
+
+    def test_seed_machines_dedupes_on_rerun(self):
+        self._run(machines='name\nCrusher A\n')
+        self._run(machines='name\nCrusher A\n')
+        self.assertEqual(Machine.objects.filter(name='Crusher A').count(), 1)
+
+    def test_seed_machines_does_not_touch_total_hours(self):
+        machine = Machine.objects.create(name='Crusher A', total_hours=Decimal('12.5'))
+        self._run(machines='name\nCrusher A\n')
+        machine.refresh_from_db()
+        self.assertEqual(machine.total_hours, Decimal('12.5'))
 
     def test_seed_users_creates_with_correct_role_and_staff_flag(self):
         self._run(
@@ -106,8 +136,10 @@ class SeedDataCommandTests(TestCase):
             'seed_data',
             materials_file=str(self.tmp_path / 'does-not-exist-materials.csv'),
             locations_file=str(self.tmp_path / 'does-not-exist-locations.csv'),
+            machines_file=str(self.tmp_path / 'does-not-exist-machines.csv'),
             users_file=str(self.tmp_path / 'does-not-exist-users.csv'),
         )
         self.assertEqual(Material.objects.count(), 0)
         self.assertEqual(Location.objects.count(), 0)
+        self.assertEqual(Machine.objects.count(), 0)
         self.assertEqual(User.objects.count(), 0)

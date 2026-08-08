@@ -1,6 +1,6 @@
 from django import forms
 
-from materials.models import Location, Material
+from materials.models import Location, Machine, Material
 
 
 class WorkOrderForm(forms.Form):
@@ -22,3 +22,18 @@ class MovementItemForm(forms.Form):
 
 ConsumedFormSet = forms.formset_factory(MovementItemForm, extra=3)
 ProducedFormSet = forms.formset_factory(MovementItemForm, extra=3)
+
+
+class MachineUsageForm(forms.Form):
+    machine = forms.ModelChoiceField(queryset=Machine.objects.filter(is_active=True), required=False)
+    hours = forms.DecimalField(min_value=0.01, max_digits=12, decimal_places=2, required=False)
+
+    def clean(self):
+        cleaned_data = super().clean()
+        filled = [cleaned_data.get('machine'), cleaned_data.get('hours')]
+        if any(filled) and not all(filled):
+            raise forms.ValidationError('Fill in machine and hours, or leave the row empty.')
+        return cleaned_data
+
+
+MachineUsageFormSet = forms.formset_factory(MachineUsageForm, extra=3)
