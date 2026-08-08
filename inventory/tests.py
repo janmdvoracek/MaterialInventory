@@ -10,6 +10,7 @@ from django.utils import timezone
 
 from accounts.models import User
 from materials.models import Location, Material
+from workorders.models import WorkOrder
 
 from .models import StockMovement
 from .services import get_available_quantity
@@ -295,6 +296,36 @@ class MovementHistoryTests(InventoryTestCase):
         response = self.client.get(reverse('movement_history'), {'created_by': self.manager.pk})
         movements = response.context['page_obj'].object_list
         self.assertNotIn(other, movements)
+
+    def test_worker_sees_movements_from_collaborated_work_order(self):
+        work_order = WorkOrder.objects.create(created_by=self.manager, description='Joint job')
+        work_order.collaborators.add(self.worker)
+        shared = StockMovement.objects.create(
+            material=self.material,
+            location=self.location,
+            quantity=Decimal('5'),
+            movement_type=StockMovement.MovementType.TRANSFORM_PRODUCE,
+            work_order=work_order,
+            created_by=self.manager,
+        )
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('movement_history'))
+        movements = response.context['page_obj'].object_list
+        self.assertIn(shared, movements)
+
+    def test_worker_does_not_see_uncollaborated_work_order_movements(self):
+        work_order = WorkOrder.objects.create(created_by=self.manager, description='Solo job')
+        StockMovement.objects.create(
+            material=self.material,
+            location=self.location,
+            quantity=Decimal('5'),
+            movement_type=StockMovement.MovementType.TRANSFORM_PRODUCE,
+            work_order=work_order,
+            created_by=self.manager,
+        )
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('movement_history'))
+        self.assertEqual(len(response.context['page_obj'].object_list), 0)
 
     def test_created_by_filter_hidden_from_worker(self):
         self.client.force_login(self.worker)

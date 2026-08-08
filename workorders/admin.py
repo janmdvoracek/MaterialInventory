@@ -23,6 +23,7 @@ class MachineUsageInline(admin.TabularInline):
 class WorkOrderAdmin(admin.ModelAdmin):
     list_display = ("id", "created_at", "created_by", "description")
     readonly_fields = ("created_by",)
+    filter_horizontal = ("collaborators",)
     inlines = [MovementInline, MachineUsageInline]
 
     def save_model(self, request, obj, form, change):

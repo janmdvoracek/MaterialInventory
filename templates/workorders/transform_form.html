@@ -9,6 +9,10 @@
         <label for="{{ order_form.description.id_for_label }}">Popis</label>
         {{ order_form.description }}
 
+        <label>Spolupracovníci</label>
+        {{ order_form.collaborators }}
+        <small>{{ order_form.collaborators.help_text }}</small>
+
         <h2>Spotřebováno</h2>
         {{ consumed_formset.management_form }}
         {% for form in consumed_formset %}

@@ -11,6 +11,21 @@ class WorkOrderForm(forms.Form):
         label='Popis',
         widget=forms.TextInput(attrs={'placeholder': 'např. Řezání ocelových tyčí na konzoly'}),
     )
+    collaborators = forms.ModelMultipleChoiceField(
+        queryset=User.objects.none(),
+        required=False,
+        label='Spolupracovníci',
+        help_text='Ostatní pracovníci, kteří se podíleli na této zakázce. Uvidí ji ve své historii.',
+        widget=forms.CheckboxSelectMultiple(attrs={'class': 'checkbox-list'}),
+    )
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        queryset = User.objects.all().order_by('username')
+        if user is not None:
+            # Can't collaborate with yourself — you're already the creator.
+            queryset = queryset.exclude(pk=user.pk)
+        self.fields['collaborators'].queryset = queryset
 
 
 class MovementItemForm(forms.Form):

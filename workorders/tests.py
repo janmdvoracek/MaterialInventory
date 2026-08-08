@@ -16,6 +16,7 @@ class TransformCreateTests(TestCase):
         self.material_finished = Material.objects.create(sku='FIN', name='Bracket', unit_of_measure='pcs')
         self.location = Location.objects.create(name='Main Depot')
         self.worker = User.objects.create_user(username='worker', password='pw')
+        self.other_worker = User.objects.create_user(username='other_worker', password='pw')
         self.machine_a = Machine.objects.create(name='Crusher A')
         self.machine_b = Machine.objects.create(name='Excavator B')
 
@@ -28,7 +29,7 @@ class TransformCreateTests(TestCase):
             created_by=self.worker,
         )
 
-    def _post(self, consumed_rows, produced_rows, machine_rows=None, description='Test job'):
+    def _post(self, consumed_rows, produced_rows, machine_rows=None, description='Test job', collaborators=None):
         machine_rows = machine_rows or []
         data = {
             'description': description,
@@ -45,6 +46,8 @@ class TransformCreateTests(TestCase):
             'machines-MIN_NUM_FORMS': '0',
             'machines-MAX_NUM_FORMS': '1000',
         }
+        if collaborators:
+            data['collaborators'] = [user.pk for user in collaborators]
         for i, row in enumerate(consumed_rows):
             data[f'consumed-{i}-material'] = row['material'].pk
             data[f'consumed-{i}-location'] = row['location'].pk
@@ -244,6 +247,31 @@ class TransformCreateTests(TestCase):
         self.assertFalse(WorkOrder.objects.exists())
         self.assertFalse(MachineUsage.objects.exists())
 
+    def test_transform_saves_collaborators(self):
+        response = self._post(
+            [],
+            [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('3')}],
+            collaborators=[self.other_worker],
+        )
+        self.assertRedirects(response, reverse('dashboard'))
+        work_order = WorkOrder.objects.get()
+        self.assertEqual(list(work_order.collaborators.all()), [self.other_worker])
+
+    def test_transform_without_collaborators_leaves_it_empty(self):
+        response = self._post(
+            [], [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('3')}]
+        )
+        self.assertRedirects(response, reverse('dashboard'))
+        work_order = WorkOrder.objects.get()
+        self.assertFalse(work_order.collaborators.exists())
+
+    def test_collaborators_field_excludes_self(self):
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('transform_create'))
+        choices = list(response.context['order_form'].fields['collaborators'].queryset)
+        self.assertNotIn(self.worker, choices)
+        self.assertIn(self.other_worker, choices)
+
     def test_stock_shortfall_rolls_back_machine_usage_too(self):
         response = self._post(
             [{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('5')}],
@@ -401,6 +429,15 @@ class MachineUsageHistoryTests(TestCase):
         response = self.client.get(reverse('machine_usage_history'), {'created_by': self.manager.pk})
         usages = response.context['page_obj'].object_list
         self.assertNotIn(other, usages)
+
+    def test_worker_sees_usage_from_collaborated_work_order(self):
+        work_order = WorkOrder.objects.create(created_by=self.manager, description='Joint job')
+        work_order.collaborators.add(self.worker)
+        shared = MachineUsage.objects.create(work_order=work_order, machine=self.machine, hours=Decimal('2'))
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('machine_usage_history'))
+        usages = response.context['page_obj'].object_list
+        self.assertIn(shared, usages)
 
     def test_created_by_filter_hidden_from_worker(self):
         self.client.force_login(self.worker)

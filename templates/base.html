@@ -63,7 +63,7 @@
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
         label { display: block; font-weight: 600; margin-top: 0.75rem; margin-bottom: 0.25rem; }
-        input, select {
+        input:not([type="checkbox"]):not([type="radio"]), select {
             width: 100%;
             padding: 0.75rem;
             font-size: 1rem;
@@ -75,6 +75,10 @@
             border-color: var(--brand-green);
             box-shadow: 0 0 0 3px rgba(139, 197, 63, 0.35);
         }
+        .checkbox-list > div { padding: 0.5rem 0; border-bottom: 1px solid #e5e7eb; }
+        .checkbox-list > div:last-child { border-bottom: none; }
+        .checkbox-list label { display: flex; align-items: center; gap: 0.5rem; font-weight: normal; margin: 0; }
+        .checkbox-list input[type="checkbox"] { width: 1.2rem; height: 1.2rem; flex-shrink: 0; }
         button, .btn {
             display: inline-block;
             width: 100%;

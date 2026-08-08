@@ -5,6 +5,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db import transaction
+from django.db.models import Q
 from django.shortcuts import redirect, render
 
 from inventory.models import StockMovement
@@ -20,7 +21,7 @@ HISTORY_PAGE_SIZE = 50
 @login_required
 def transform_create(request):
     if request.method == 'POST':
-        order_form = WorkOrderForm(request.POST)
+        order_form = WorkOrderForm(request.POST, user=request.user)
         consumed_formset = ConsumedFormSet(request.POST, prefix='consumed')
         produced_formset = ProducedFormSet(request.POST, prefix='produced')
         machine_formset = MachineUsageFormSet(request.POST, prefix='machines')
@@ -59,6 +60,7 @@ def transform_create(request):
                             created_by=request.user,
                             description=order_form.cleaned_data['description'],
                         )
+                        work_order.collaborators.set(order_form.cleaned_data['collaborators'])
                         for row in consumed_rows:
                             StockMovement.objects.create(
                                 material=row['material'],
@@ -87,7 +89,7 @@ def transform_create(request):
                         messages.success(request, 'Zpracování bylo zaznamenáno.')
                         return redirect('dashboard')
     else:
-        order_form = WorkOrderForm()
+        order_form = WorkOrderForm(user=request.user)
         consumed_formset = ConsumedFormSet(prefix='consumed')
         produced_formset = ProducedFormSet(prefix='produced')
         machine_formset = MachineUsageFormSet(prefix='machines')
@@ -113,10 +115,13 @@ def _filtered_machine_usages(request):
     form = MachineHistoryFilterForm(request.GET or None, user=request.user)
     usages = MachineUsage.objects.select_related('machine', 'work_order', 'work_order__created_by')
     if not request.user.is_manager_or_admin:
-        # Workers only ever see their own machine usage; enforced here (not
-        # just by hiding the `created_by` filter field) so it can't be
-        # bypassed via the querystring directly.
-        usages = usages.filter(work_order__created_by=request.user)
+        # Workers only ever see their own machine usage, plus usage from
+        # transformations they collaborated on; enforced here (not just by
+        # hiding the `created_by` filter field) so it can't be bypassed via
+        # the querystring directly.
+        usages = usages.filter(
+            Q(work_order__created_by=request.user) | Q(work_order__collaborators=request.user)
+        ).distinct()
     if not form.is_bound:
         # No filters submitted at all (initial page load) — show everything.
         return form, usages

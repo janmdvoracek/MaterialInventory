@@ -4,7 +4,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db import transaction
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from django.http import StreamingHttpResponse
 from django.shortcuts import redirect, render
 
@@ -40,10 +40,13 @@ def _filtered_movements(request):
     form = HistoryFilterForm(request.GET or None, user=request.user)
     movements = StockMovement.objects.select_related('material', 'location', 'created_by', 'work_order')
     if not request.user.is_manager_or_admin:
-        # Workers only ever see their own movements; enforced here (not just by
-        # hiding the `created_by` filter field) so it can't be bypassed via the
-        # querystring directly.
-        movements = movements.filter(created_by=request.user)
+        # Workers only ever see their own movements, plus transformations they
+        # collaborated on (added as a WorkOrder collaborator by whoever
+        # submitted it); enforced here (not just by hiding the `created_by`
+        # filter field) so it can't be bypassed via the querystring directly.
+        movements = movements.filter(
+            Q(created_by=request.user) | Q(work_order__collaborators=request.user)
+        ).distinct()
     if not form.is_bound:
         # No filters submitted at all (initial page load) — show everything.
         return form, movements
