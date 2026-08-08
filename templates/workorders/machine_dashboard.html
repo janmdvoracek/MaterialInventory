@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Aktuální stav strojů{% endblock %}
+{% block content %}
+<h1>Aktuální stav strojů</h1>
+{% if machines %}
+<div class="card">
+    <table>
+        <thead>
+            <tr><th>Stroj</th><th>Celkem hodin</th></tr>
+        </thead>
+        <tbody>
+        {% for machine in machines %}
+            <tr>
+                <td>
+                    <a href="{% url 'machine_usage_history' %}?machine={{ machine.id }}">{{ machine.name }}</a>
+                </td>
+                <td>{{ machine.total_hours }} h</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<p>Zatím nejsou evidovány žádné aktivní stroje.</p>
+{% endif %}
+<p><a href="{% url 'machine_usage_history' %}">Zobrazit celou historii →</a></p>
+{% endblock %}

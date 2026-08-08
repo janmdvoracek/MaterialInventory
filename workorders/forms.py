@@ -1,5 +1,6 @@
 from django import forms
 
+from accounts.models import User
 from materials.models import Location, Machine, Material
 
 
@@ -48,3 +49,29 @@ class MachineUsageForm(forms.Form):
 
 
 MachineUsageFormSet = forms.formset_factory(MachineUsageForm, extra=3)
+
+
+class MachineHistoryFilterForm(forms.Form):
+    machine = forms.ModelChoiceField(
+        queryset=Machine.objects.all().order_by('name'), required=False, label='Stroj'
+    )
+    created_by = forms.ModelChoiceField(
+        queryset=User.objects.all().order_by('username'), required=False, label='Vytvořil'
+    )
+    date_from = forms.DateField(required=False, widget=forms.DateInput(attrs={'type': 'date'}), label='Datum od')
+    date_to = forms.DateField(required=False, widget=forms.DateInput(attrs={'type': 'date'}), label='Datum do')
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if user is not None and not user.is_manager_or_admin:
+            # Same restriction as the stock movement history: workers only ever
+            # see their own machine usage, so this filter would be a dead end.
+            del self.fields['created_by']
+
+    def clean(self):
+        cleaned_data = super().clean()
+        date_from = cleaned_data.get('date_from')
+        date_to = cleaned_data.get('date_to')
+        if date_from and date_to and date_from > date_to:
+            raise forms.ValidationError('„Datum od“ musí být dřívější nebo stejné jako „datum do“.')
+        return cleaned_data

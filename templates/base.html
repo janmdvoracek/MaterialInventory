@@ -96,8 +96,9 @@
         .messages .success { background: #d1fae5; color: #065f46; }
         .messages .error { background: #fee2e2; color: #991b1b; }
         table { width: 100%; border-collapse: collapse; }
-        th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid #e5e7eb; }
+        th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid #e5e7eb; white-space: nowrap; }
         th { color: var(--brand-dark); border-bottom: 2px solid var(--brand-green); }
+        .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
         td.qty-negative { color: #991b1b; font-weight: 700; }
         nav.bottom {
             position: fixed;
@@ -154,6 +155,7 @@
         <a href="{% url 'receipt_create' %}">Příjem</a>
         <a href="{% url 'shipment_create' %}">Výdej</a>
         <a href="{% url 'transform_create' %}">Zpracování</a>
+        <a href="{% url 'machine_dashboard' %}">Stroje</a>
         {% if user.is_manager_or_admin %}<a href="{% url 'adjustment_create' %}">Úprava</a>{% endif %}
     </nav>
     {% endif %}

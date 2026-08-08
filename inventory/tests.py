@@ -274,11 +274,44 @@ class MovementHistoryTests(InventoryTestCase):
     def test_history_filters_by_created_by(self):
         self._movement(Decimal('10'), user=self.worker)
         self._movement(Decimal('5'), user=self.manager)
-        self.client.force_login(self.worker)
+        self.client.force_login(self.manager)
         response = self.client.get(reverse('movement_history'), {'created_by': self.manager.pk})
         movements = response.context['page_obj'].object_list
         self.assertEqual(len(movements), 1)
         self.assertEqual(movements[0].created_by, self.manager)
+
+    def test_worker_only_sees_own_movements(self):
+        own = self._movement(Decimal('10'), user=self.worker)
+        self._movement(Decimal('5'), user=self.manager)
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('movement_history'))
+        movements = response.context['page_obj'].object_list
+        self.assertEqual(list(movements), [own])
+
+    def test_worker_cannot_bypass_restriction_via_created_by_param(self):
+        self._movement(Decimal('10'), user=self.worker)
+        other = self._movement(Decimal('5'), user=self.manager)
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('movement_history'), {'created_by': self.manager.pk})
+        movements = response.context['page_obj'].object_list
+        self.assertNotIn(other, movements)
+
+    def test_created_by_filter_hidden_from_worker(self):
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('movement_history'))
+        self.assertNotIn('created_by', response.context['form'].fields)
+
+    def test_created_by_filter_available_to_manager(self):
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('movement_history'))
+        self.assertIn('created_by', response.context['form'].fields)
+
+    def test_manager_sees_movements_from_all_users(self):
+        self._movement(Decimal('10'), user=self.worker)
+        self._movement(Decimal('5'), user=self.manager)
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('movement_history'))
+        self.assertEqual(len(response.context['page_obj'].object_list), 2)
 
     def test_history_filters_by_date_range(self):
         old = self._movement(Decimal('10'))
@@ -459,6 +492,16 @@ class MovementHistoryExportTests(InventoryTestCase):
         content = b''.join(response.streaming_content).decode()
         rows = list(csv.reader(io.StringIO(content)))
         self.assertEqual(rows[1][9], "'=1+1")
+
+    def test_export_worker_only_includes_own_movements(self):
+        self._movement(Decimal('10'), user=self.worker)
+        self._movement(Decimal('5'), user=self.manager)
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('movement_history_export'))
+        content = b''.join(response.streaming_content).decode()
+        rows = list(csv.reader(io.StringIO(content)))
+        self.assertEqual(len(rows) - 1, 1)
+        self.assertEqual(rows[1][8], self.worker.username)
 
     def test_export_leaves_negative_quantities_numeric(self):
         # Quantities must NOT be apostrophe-escaped or they stop being numbers.

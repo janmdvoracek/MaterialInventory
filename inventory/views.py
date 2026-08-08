@@ -37,8 +37,13 @@ def dashboard(request):
 
 
 def _filtered_movements(request):
-    form = HistoryFilterForm(request.GET or None)
+    form = HistoryFilterForm(request.GET or None, user=request.user)
     movements = StockMovement.objects.select_related('material', 'location', 'created_by', 'work_order')
+    if not request.user.is_manager_or_admin:
+        # Workers only ever see their own movements; enforced here (not just by
+        # hiding the `created_by` filter field) so it can't be bypassed via the
+        # querystring directly.
+        movements = movements.filter(created_by=request.user)
     if not form.is_bound:
         # No filters submitted at all (initial page load) — show everything.
         return form, movements

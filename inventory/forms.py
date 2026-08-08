@@ -50,11 +50,16 @@ class HistoryFilterForm(forms.Form):
     date_from = forms.DateField(required=False, widget=forms.DateInput(attrs={'type': 'date'}), label='Datum od')
     date_to = forms.DateField(required=False, widget=forms.DateInput(attrs={'type': 'date'}), label='Datum do')
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
         from .models import StockMovement
 
         self.fields['movement_type'].choices = [('', 'Všechny typy')] + StockMovement.MovementType.choices
+        if user is not None and not user.is_manager_or_admin:
+            # Plain workers only ever see their own movements (enforced in the
+            # view too), so letting them pick someone else here would be a
+            # no-op at best and a confusing dead end at worst.
+            del self.fields['created_by']
 
     def clean(self):
         cleaned_data = super().clean()

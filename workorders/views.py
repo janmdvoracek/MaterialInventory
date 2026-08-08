@@ -3,14 +3,18 @@ from decimal import Decimal
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.paginator import Paginator
 from django.db import transaction
 from django.shortcuts import redirect, render
 
 from inventory.models import StockMovement
 from inventory.services import get_available_quantity
+from materials.models import Machine
 
-from .forms import ConsumedFormSet, MachineUsageFormSet, ProducedFormSet, WorkOrderForm
+from .forms import ConsumedFormSet, MachineHistoryFilterForm, MachineUsageFormSet, ProducedFormSet, WorkOrderForm
 from .models import MachineUsage, WorkOrder
+
+HISTORY_PAGE_SIZE = 50
 
 
 @login_required
@@ -96,4 +100,51 @@ def transform_create(request):
             'produced_formset': produced_formset,
             'machine_formset': machine_formset,
         },
+    )
+
+
+@login_required
+def machine_dashboard(request):
+    machines = Machine.objects.filter(is_active=True).order_by('name')
+    return render(request, 'workorders/machine_dashboard.html', {'machines': machines})
+
+
+def _filtered_machine_usages(request):
+    form = MachineHistoryFilterForm(request.GET or None, user=request.user)
+    usages = MachineUsage.objects.select_related('machine', 'work_order', 'work_order__created_by')
+    if not request.user.is_manager_or_admin:
+        # Workers only ever see their own machine usage; enforced here (not
+        # just by hiding the `created_by` filter field) so it can't be
+        # bypassed via the querystring directly.
+        usages = usages.filter(work_order__created_by=request.user)
+    if not form.is_bound:
+        # No filters submitted at all (initial page load) — show everything.
+        return form, usages
+    if not form.is_valid():
+        # A filter was submitted but is unusable. Return nothing rather than
+        # silently ignoring it, which would hand back the whole ledger and read
+        # as "these are your filtered results".
+        return form, usages.none()
+    data = form.cleaned_data
+    if data.get('machine'):
+        usages = usages.filter(machine=data['machine'])
+    if data.get('created_by'):
+        usages = usages.filter(work_order__created_by=data['created_by'])
+    if data.get('date_from'):
+        usages = usages.filter(created_at__date__gte=data['date_from'])
+    if data.get('date_to'):
+        usages = usages.filter(created_at__date__lte=data['date_to'])
+    return form, usages
+
+
+@login_required
+def machine_usage_history(request):
+    form, usages = _filtered_machine_usages(request)
+    page_obj = Paginator(usages, HISTORY_PAGE_SIZE).get_page(request.GET.get('page'))
+    querystring = request.GET.copy()
+    querystring.pop('page', None)
+    return render(
+        request,
+        'workorders/machine_usage_history.html',
+        {'form': form, 'page_obj': page_obj, 'querystring': querystring.urlencode()},
     )

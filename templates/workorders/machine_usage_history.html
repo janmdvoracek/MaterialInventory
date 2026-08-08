@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% block title %}Historie pohybů{% endblock %}
+{% block title %}Historie strojů{% endblock %}
 {% block content %}
-<h1>Historie pohybů</h1>
+<h1>Historie strojů</h1>
 {% if form.is_bound and not form.is_valid %}
     <p class="messages error">Filtr je neplatný, proto se nezobrazují žádné výsledky. Opravte prosím zvýrazněná pole.</p>
 {% endif %}
@@ -11,26 +11,23 @@
         <button type="submit">Filtrovat</button>
     </form>
 </div>
-<p><a href="{% url 'movement_history_export' %}?{{ querystring }}">Exportovat CSV</a></p>
 <div class="card">
     <div class="table-scroll">
     <table>
         <thead>
-            <tr><th>Datum</th><th>Materiál</th><th>Lokalita</th><th>Typ</th><th>Množství</th><th>Kým</th><th>Poznámka</th></tr>
+            <tr><th>Datum</th><th>Stroj</th><th>Hodiny</th><th>Zakázka</th><th>Kým</th></tr>
         </thead>
         <tbody>
-        {% for movement in page_obj %}
+        {% for usage in page_obj %}
             <tr>
-                <td>{{ movement.created_at|date:"Y-m-d H:i" }}</td>
-                <td>{{ movement.material.name }} <small>({{ movement.material.sku }})</small></td>
-                <td>{{ movement.location.name }}</td>
-                <td>{{ movement.get_movement_type_display }}</td>
-                <td>{{ movement.quantity }} {{ movement.material.unit_of_measure }}</td>
-                <td>{{ movement.created_by.username }}</td>
-                <td>{{ movement.notes|default:"—" }}</td>
+                <td>{{ usage.created_at|date:"Y-m-d H:i" }}</td>
+                <td>{{ usage.machine.name }}</td>
+                <td>{{ usage.hours }} h</td>
+                <td>{{ usage.work_order.description|default:"—" }}</td>
+                <td>{{ usage.work_order.created_by.username }}</td>
             </tr>
         {% empty %}
-            <tr><td colspan="7">Žádné pohyby neodpovídají zadaným filtrům.</td></tr>
+            <tr><td colspan="5">Žádné záznamy neodpovídají zadaným filtrům.</td></tr>
         {% endfor %}
         </tbody>
     </table>

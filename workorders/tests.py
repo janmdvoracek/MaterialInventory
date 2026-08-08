@@ -344,3 +344,93 @@ class WorkOrderAdminTests(TestCase):
         self.assertEqual(usage.hours, Decimal('3'))
         self.machine.refresh_from_db()
         self.assertEqual(self.machine.total_hours, Decimal('3'))
+
+
+class MachineDashboardTests(TestCase):
+    def setUp(self):
+        self.worker = User.objects.create_user(username='worker', password='pw', role=User.Role.WORKER)
+        self.machine_active = Machine.objects.create(name='Crusher A', total_hours=Decimal('12.5'))
+        self.machine_retired = Machine.objects.create(
+            name='Old Excavator', total_hours=Decimal('99'), is_active=False
+        )
+
+    def test_dashboard_requires_login(self):
+        response = self.client.get(reverse('machine_dashboard'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/login/', response.url)
+
+    def test_dashboard_lists_only_active_machines(self):
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('machine_dashboard'))
+        self.assertEqual(list(response.context['machines']), [self.machine_active])
+
+    def test_dashboard_shows_current_total_hours(self):
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('machine_dashboard'))
+        self.assertContains(response, '12.50 h')
+
+
+class MachineUsageHistoryTests(TestCase):
+    def setUp(self):
+        self.worker = User.objects.create_user(username='worker', password='pw', role=User.Role.WORKER)
+        self.manager = User.objects.create_user(username='manager', password='pw', role=User.Role.MANAGER)
+        self.machine = Machine.objects.create(name='Crusher A')
+        self.other_machine = Machine.objects.create(name='Excavator B')
+
+    def _usage(self, user, machine=None, hours=Decimal('1')):
+        work_order = WorkOrder.objects.create(created_by=user, description='job')
+        return MachineUsage.objects.create(work_order=work_order, machine=machine or self.machine, hours=hours)
+
+    def test_history_requires_login(self):
+        response = self.client.get(reverse('machine_usage_history'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/login/', response.url)
+
+    def test_worker_only_sees_own_usage(self):
+        own = self._usage(self.worker)
+        self._usage(self.manager)
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('machine_usage_history'))
+        usages = response.context['page_obj'].object_list
+        self.assertEqual(list(usages), [own])
+
+    def test_worker_cannot_bypass_restriction_via_created_by_param(self):
+        self._usage(self.worker)
+        other = self._usage(self.manager)
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('machine_usage_history'), {'created_by': self.manager.pk})
+        usages = response.context['page_obj'].object_list
+        self.assertNotIn(other, usages)
+
+    def test_created_by_filter_hidden_from_worker(self):
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('machine_usage_history'))
+        self.assertNotIn('created_by', response.context['form'].fields)
+
+    def test_created_by_filter_available_to_manager(self):
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('machine_usage_history'))
+        self.assertIn('created_by', response.context['form'].fields)
+
+    def test_manager_sees_usage_from_all_users(self):
+        self._usage(self.worker)
+        self._usage(self.manager)
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('machine_usage_history'))
+        self.assertEqual(len(response.context['page_obj'].object_list), 2)
+
+    def test_history_filters_by_machine(self):
+        matching = self._usage(self.worker, machine=self.machine)
+        self._usage(self.worker, machine=self.other_machine)
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('machine_usage_history'), {'machine': self.machine.pk})
+        usages = response.context['page_obj'].object_list
+        self.assertEqual(list(usages), [matching])
+
+    def test_history_shows_no_rows_when_filter_is_invalid(self):
+        self._usage(self.worker)
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('machine_usage_history'), {'date_from': 'not-a-date'})
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.context['form'].is_valid())
+        self.assertEqual(len(response.context['page_obj'].object_list), 0)
