@@ -12,7 +12,9 @@ class User(AbstractUser):
 
     @property
     def is_manager_or_admin(self):
-        return self.role in (self.Role.MANAGER, self.Role.ADMIN)
+        # Superusers count regardless of role: `createsuperuser` never sets one,
+        # so they'd otherwise fall back to WORKER and lose privileged UI.
+        return self.is_superuser or self.role in (self.Role.MANAGER, self.Role.ADMIN)
 
     def __str__(self):
         return self.get_full_name() or self.username

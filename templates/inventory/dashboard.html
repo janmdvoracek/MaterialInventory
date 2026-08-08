@@ -17,7 +17,9 @@
                     </a>
                 </td>
                 <td>{{ row.location__name }}</td>
-                <td>{{ row.quantity }} {{ row.material__unit_of_measure }}</td>
+                <td{% if row.quantity < 0 %} class="qty-negative" title="Záporný stav – zkontrolujte pohyby"{% endif %}>
+                    {{ row.quantity }} {{ row.material__unit_of_measure }}
+                </td>
             </tr>
         {% endfor %}
         </tbody>

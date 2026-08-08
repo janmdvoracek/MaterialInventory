@@ -15,7 +15,9 @@ def role_required(*roles):
         @wraps(view_func)
         @login_required
         def _wrapped(request, *args, **kwargs):
-            if request.user.role not in roles:
+            # Superusers bypass the role check: `createsuperuser` never sets a role,
+            # so they'd otherwise default to WORKER and be locked out of their own app.
+            if not request.user.is_superuser and request.user.role not in roles:
                 raise PermissionDenied
             return view_func(request, *args, **kwargs)
 

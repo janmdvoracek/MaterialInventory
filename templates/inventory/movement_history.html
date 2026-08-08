@@ -2,6 +2,9 @@
 {% block title %}Historie pohybů{% endblock %}
 {% block content %}
 <h1>Historie pohybů</h1>
+{% if form.is_bound and not form.is_valid %}
+    <p class="messages error">Filtr je neplatný, proto se nezobrazují žádné výsledky. Opravte prosím zvýrazněná pole.</p>
+{% endif %}
 <div class="card">
     <form method="get">
         {{ form.as_p }}

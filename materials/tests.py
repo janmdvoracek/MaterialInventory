@@ -132,6 +132,28 @@ class SeedDataCommandTests(TestCase):
         self._run(machines='name,hourly_rate\nWarrior,90\n')
         self.assertEqual(Machine.objects.get(name='Warrior').hourly_rate, Decimal('90'))
 
+    def test_seed_machines_preserves_hourly_rate_when_column_absent(self):
+        # A rate set by hand in the admin must survive a re-seed from a CSV
+        # that doesn't carry the optional hourly_rate column.
+        Machine.objects.create(name='Warrior', hourly_rate=Decimal('99'))
+        self._run(machines='name\nWarrior\n')
+        self.assertEqual(Machine.objects.get(name='Warrior').hourly_rate, Decimal('99'))
+
+    def test_seed_machines_preserves_hourly_rate_when_cell_blank(self):
+        Machine.objects.create(name='Warrior', hourly_rate=Decimal('99'))
+        self._run(machines='name,hourly_rate\nWarrior,\n')
+        self.assertEqual(Machine.objects.get(name='Warrior').hourly_rate, Decimal('99'))
+
+    def test_seed_materials_preserves_track_stock_when_column_absent(self):
+        Material.objects.create(sku='RAW1', name='Zemina', unit_of_measure='t', track_stock=False)
+        self._run(materials='sku,name,unit_of_measure,category\nRAW1,Zemina,t,Zdroj\n')
+        self.assertFalse(Material.objects.get(sku='RAW1').track_stock)
+
+    def test_seed_materials_preserves_track_stock_when_cell_blank(self):
+        Material.objects.create(sku='RAW1', name='Zemina', unit_of_measure='t', track_stock=False)
+        self._run(materials='sku,name,unit_of_measure,category,track_stock\nRAW1,Zemina,t,Zdroj,\n')
+        self.assertFalse(Material.objects.get(sku='RAW1').track_stock)
+
     def test_seed_users_creates_with_correct_role_and_staff_flag(self):
         self._run(
             users=(

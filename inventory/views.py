@@ -30,7 +30,7 @@ def dashboard(request):
             'location__name',
         )
         .annotate(quantity=Sum('quantity'))
-        .filter(quantity__gt=0)
+        .exclude(quantity=0)
         .order_by('material__name', 'location__name')
     )
     return render(request, 'inventory/dashboard.html', {'stock': stock})
@@ -39,20 +39,27 @@ def dashboard(request):
 def _filtered_movements(request):
     form = HistoryFilterForm(request.GET or None)
     movements = StockMovement.objects.select_related('material', 'location', 'created_by', 'work_order')
-    if form.is_valid():
-        data = form.cleaned_data
-        if data.get('material'):
-            movements = movements.filter(material=data['material'])
-        if data.get('location'):
-            movements = movements.filter(location=data['location'])
-        if data.get('movement_type'):
-            movements = movements.filter(movement_type=data['movement_type'])
-        if data.get('created_by'):
-            movements = movements.filter(created_by=data['created_by'])
-        if data.get('date_from'):
-            movements = movements.filter(created_at__date__gte=data['date_from'])
-        if data.get('date_to'):
-            movements = movements.filter(created_at__date__lte=data['date_to'])
+    if not form.is_bound:
+        # No filters submitted at all (initial page load) — show everything.
+        return form, movements
+    if not form.is_valid():
+        # A filter was submitted but is unusable. Return nothing rather than
+        # silently ignoring it, which would hand back the whole ledger and read
+        # as "these are your filtered results".
+        return form, movements.none()
+    data = form.cleaned_data
+    if data.get('material'):
+        movements = movements.filter(material=data['material'])
+    if data.get('location'):
+        movements = movements.filter(location=data['location'])
+    if data.get('movement_type'):
+        movements = movements.filter(movement_type=data['movement_type'])
+    if data.get('created_by'):
+        movements = movements.filter(created_by=data['created_by'])
+    if data.get('date_from'):
+        movements = movements.filter(created_at__date__gte=data['date_from'])
+    if data.get('date_to'):
+        movements = movements.filter(created_at__date__lte=data['date_to'])
     return form, movements
 
 
@@ -74,6 +81,19 @@ class _Echo:
         return value
 
 
+def _csv_safe(value):
+    """Neutralise spreadsheet formula injection.
+
+    A cell starting with =, +, - or @ is executed as a formula by Excel and
+    LibreOffice, so free-text fields (notes, names) could otherwise run code on
+    whoever opens the export. Prefixing an apostrophe forces it to stay text.
+    """
+    text = str(value)
+    if text.startswith(('=', '+', '-', '@', '\t', '\r')):
+        return "'" + text
+    return text
+
+
 @login_required
 def movement_history_export(request):
     _, movements = _filtered_movements(request)
@@ -87,15 +107,15 @@ def movement_history_export(request):
             yield writer.writerow(
                 [
                     movement.created_at.isoformat(timespec='seconds'),
-                    movement.material.sku,
-                    movement.material.name,
-                    movement.location.name,
-                    movement.get_movement_type_display(),
+                    _csv_safe(movement.material.sku),
+                    _csv_safe(movement.material.name),
+                    _csv_safe(movement.location.name),
+                    _csv_safe(movement.get_movement_type_display()),
                     movement.quantity,
-                    movement.material.unit_of_measure,
+                    _csv_safe(movement.material.unit_of_measure),
                     movement.work_order_id or '',
-                    movement.created_by.username,
-                    movement.notes,
+                    _csv_safe(movement.created_by.username),
+                    _csv_safe(movement.notes),
                 ]
             )
 

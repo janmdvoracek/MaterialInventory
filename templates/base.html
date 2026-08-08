@@ -33,7 +33,20 @@
         }
         header a { color: white; text-decoration: none; font-weight: 700; letter-spacing: 0.02em; }
         header .logo { height: 32px; width: auto; display: block; }
-        header a.logout-link { font-weight: 600; letter-spacing: normal; color: #d1d5db; }
+        header form.logout-form { margin: 0; }
+        header button.logout-link {
+            width: auto;
+            margin: 0;
+            padding: 0;
+            background: none;
+            border: none;
+            color: #d1d5db;
+            font-family: inherit;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        header button.logout-link:hover { background: none; color: var(--brand-green); text-decoration: underline; }
         main { padding: 1rem; max-width: 480px; margin: 0 auto; }
         .card {
             background: white;
@@ -78,6 +91,7 @@
         table { width: 100%; border-collapse: collapse; }
         th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid #e5e7eb; }
         th { color: var(--brand-dark); border-bottom: 2px solid var(--brand-green); }
+        td.qty-negative { color: #991b1b; font-weight: 700; }
         nav.bottom {
             position: fixed;
             bottom: 0;
@@ -105,7 +119,10 @@
     <header>
         <a href="{% url 'dashboard' %}"><img class="logo" src="{% static 'img/logo.png' %}" alt="Petrokámen"></a>
         {% if user.is_authenticated %}
-            <a class="logout-link" href="{% url 'logout' %}">Odhlásit se</a>
+            <form class="logout-form" method="post" action="{% url 'logout' %}">
+                {% csrf_token %}
+                <button class="logout-link" type="submit">Odhlásit se</button>
+            </form>
         {% endif %}
     </header>
     <main>

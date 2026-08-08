@@ -44,15 +44,16 @@ class Command(BaseCommand):
             sku = row['sku'].strip()
             if not sku:
                 continue
-            _, was_created = Material.objects.update_or_create(
-                sku=sku,
-                defaults={
-                    'name': row['name'].strip(),
-                    'unit_of_measure': row['unit_of_measure'].strip(),
-                    'category': row.get('category', '').strip(),
-                    'track_stock': self._parse_bool(row.get('track_stock', '')),
-                },
-            )
+            defaults = {
+                'name': row['name'].strip(),
+                'unit_of_measure': row['unit_of_measure'].strip(),
+                'category': row.get('category', '').strip(),
+            }
+            # Only touch track_stock when the column is actually present, so re-seeding
+            # never silently resets a value set by hand in the admin.
+            if row.get('track_stock', '').strip():
+                defaults['track_stock'] = self._parse_bool(row['track_stock'])
+            _, was_created = Material.objects.update_or_create(sku=sku, defaults=defaults)
             created += was_created
             updated += not was_created
         self.stdout.write(self.style.SUCCESS(f'Materials: {created} created, {updated} updated.'))
@@ -76,12 +77,13 @@ class Command(BaseCommand):
             name = row['name'].strip()
             if not name:
                 continue
+            # Only touch hourly_rate when the column carries a value, so re-seeding
+            # never silently wipes a rate set by hand in the admin.
+            defaults = {}
             hourly_rate_raw = row.get('hourly_rate', '').strip()
-            hourly_rate = Decimal(hourly_rate_raw) if hourly_rate_raw else None
-            _, was_created = Machine.objects.update_or_create(
-                name=name,
-                defaults={'hourly_rate': hourly_rate},
-            )
+            if hourly_rate_raw:
+                defaults['hourly_rate'] = Decimal(hourly_rate_raw)
+            _, was_created = Machine.objects.update_or_create(name=name, defaults=defaults)
             created += was_created
             updated += not was_created
         self.stdout.write(self.style.SUCCESS(f'Machines: {created} created, {updated} updated.'))

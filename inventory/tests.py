@@ -43,12 +43,22 @@ class DashboardTests(InventoryTestCase):
         self.assertEqual(len(stock), 1)
         self.assertEqual(stock[0]['quantity'], Decimal('6'))
 
-    def test_dashboard_excludes_zero_or_negative_net_stock(self):
+    def test_dashboard_excludes_zero_net_stock(self):
         self._movement(Decimal('5'), StockMovement.MovementType.RECEIPT)
         self._movement(Decimal('-5'), StockMovement.MovementType.SHIPMENT)
         self.client.force_login(self.worker)
         response = self.client.get(reverse('dashboard'))
         self.assertEqual(list(response.context['stock']), [])
+
+    def test_dashboard_shows_negative_net_stock(self):
+        # A negative balance means either an untracked material consumed without
+        # a receipt, or a real data error. Either way it must stay visible.
+        self._movement(Decimal('-7'), StockMovement.MovementType.ADJUSTMENT)
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('dashboard'))
+        stock = list(response.context['stock'])
+        self.assertEqual(len(stock), 1)
+        self.assertEqual(stock[0]['quantity'], Decimal('-7'))
 
 
 class ReceiptCreateTests(InventoryTestCase):
@@ -310,6 +320,22 @@ class MovementHistoryTests(InventoryTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.context['form'].is_valid())
 
+    def test_history_shows_no_rows_when_filter_is_invalid(self):
+        self._movement(Decimal('10'))
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('movement_history'), {'movement_type': 'NOT_A_TYPE'})
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.context['form'].is_valid())
+        self.assertEqual(len(response.context['page_obj'].object_list), 0)
+
+    def test_history_unfiltered_still_shows_everything(self):
+        # Guard the fix above: an unbound form must not be treated as invalid.
+        self._movement(Decimal('10'))
+        self._movement(Decimal('-3'), StockMovement.MovementType.SHIPMENT)
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('movement_history'))
+        self.assertEqual(len(response.context['page_obj'].object_list), 2)
+
     def test_history_pagination_default_page_size(self):
         for _ in range(60):
             self._movement(Decimal('1'))
@@ -408,3 +434,37 @@ class MovementHistoryExportTests(InventoryTestCase):
         self.client.force_login(self.worker)
         response = self.client.get(reverse('movement_history_export'))
         self.assertEqual(response.status_code, 200)
+
+    def test_export_returns_nothing_when_filter_is_invalid(self):
+        # An unusable filter must not fall through to exporting the whole ledger.
+        self._movement(Decimal('10'))
+        self._movement(Decimal('-3'), StockMovement.MovementType.SHIPMENT)
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('movement_history_export'), {'movement_type': 'NOT_A_TYPE'})
+        content = b''.join(response.streaming_content).decode()
+        rows = list(csv.reader(io.StringIO(content)))
+        self.assertEqual(len(rows) - 1, 0)
+
+    def test_export_escapes_formula_injection_in_notes(self):
+        StockMovement.objects.create(
+            material=self.material,
+            location=self.location,
+            quantity=Decimal('1'),
+            movement_type=StockMovement.MovementType.RECEIPT,
+            created_by=self.worker,
+            notes='=1+1',
+        )
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('movement_history_export'))
+        content = b''.join(response.streaming_content).decode()
+        rows = list(csv.reader(io.StringIO(content)))
+        self.assertEqual(rows[1][9], "'=1+1")
+
+    def test_export_leaves_negative_quantities_numeric(self):
+        # Quantities must NOT be apostrophe-escaped or they stop being numbers.
+        self._movement(Decimal('-4'), StockMovement.MovementType.SHIPMENT)
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('movement_history_export'))
+        content = b''.join(response.streaming_content).decode()
+        rows = list(csv.reader(io.StringIO(content)))
+        self.assertEqual(rows[1][5], '-4.000')

@@ -54,7 +54,9 @@ cp seed_data/users.example.csv seed_data/users.csv
 python manage.py seed_data
 ```
 
-`machines.csv` takes `name,hourly_rate` — a machine's `total_hours` is never set by seeding, only accumulated by transformations that log usage against it. `materials.csv` takes an optional `track_stock` column (`true`/`false`, defaults to `true` if omitted).
+`machines.csv` takes `name,hourly_rate` — a machine's `total_hours` is never set by seeding, only accumulated by transformations that log usage against it. `materials.csv` takes an optional `track_stock` column (`true`/`false`).
+
+Optional columns (`track_stock`, `hourly_rate`) are only written when the CSV actually carries a value for that row: omitting the column, or leaving the cell blank, **preserves** whatever is already in the database, so re-seeding never clobbers a value someone set by hand in the admin. New records still fall back to the model defaults (`track_stock=True`, `hourly_rate=NULL`). Clearing a value back to empty is an admin action, not a CSV one.
 
 New users get a random temporary password printed to the console (share it securely); `MANAGER`- and `ADMIN`-role users get Django admin (`is_staff`) access (full admin, not scoped to the catalog), Workers do not.
 
