@@ -116,7 +116,7 @@ class Command(BaseCommand):
                 email=row.get('email', '').strip(),
                 role=role,
                 password=password,
-                is_staff=(role == User.Role.ADMIN),
+                is_staff=(role in (User.Role.MANAGER, User.Role.ADMIN)),
             )
             created_users.append((username, password))
 

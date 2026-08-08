@@ -147,7 +147,7 @@ class SeedDataCommandTests(TestCase):
         self.assertEqual(worker.role, User.Role.WORKER)
         self.assertFalse(worker.is_staff)
         self.assertEqual(manager.role, User.Role.MANAGER)
-        self.assertFalse(manager.is_staff)
+        self.assertTrue(manager.is_staff)
         self.assertEqual(admin.role, User.Role.ADMIN)
         self.assertTrue(admin.is_staff)
 

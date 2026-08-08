@@ -56,7 +56,7 @@ python manage.py seed_data
 
 `machines.csv` takes `name,hourly_rate` — a machine's `total_hours` is never set by seeding, only accumulated by transformations that log usage against it. `materials.csv` takes an optional `track_stock` column (`true`/`false`, defaults to `true` if omitted).
 
-New users get a random temporary password printed to the console (share it securely); only `ADMIN`-role users get Django admin (`is_staff`) access.
+New users get a random temporary password printed to the console (share it securely); `MANAGER`- and `ADMIN`-role users get Django admin (`is_staff`) access (full admin, not scoped to the catalog), Workers do not.
 
 Full stack via Docker Compose (Django + Postgres):
 
