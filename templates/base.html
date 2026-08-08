@@ -7,7 +7,13 @@
     <title>{% block title %}Material Inventory{% endblock %}</title>
     <script src="https://unpkg.com/htmx.org@2.0.3" defer></script>
     <style>
-        :root { color-scheme: light; }
+        :root {
+            color-scheme: light;
+            --brand-dark: #1a1a1a;
+            --brand-green: #8bc53f;
+            --brand-green-dark: #6fa22f;
+            --brand-green-text: #4d7c23;
+        }
         * { box-sizing: border-box; }
         body {
             font-family: system-ui, -apple-system, sans-serif;
@@ -16,15 +22,18 @@
             background: #f5f5f5;
             color: #1a1a1a;
         }
+        a { color: var(--brand-green-text); }
         header {
-            background: #1f2937;
+            background: var(--brand-dark);
             color: white;
             padding: 1rem;
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
-        header a { color: white; text-decoration: none; font-weight: 600; }
+        header a { color: white; text-decoration: none; font-weight: 700; letter-spacing: 0.02em; }
+        header .logo { height: 32px; width: auto; display: block; }
+        header a.logout-link { font-weight: 600; letter-spacing: normal; color: #d1d5db; }
         main { padding: 1rem; max-width: 480px; margin: 0 auto; }
         .card {
             background: white;
@@ -41,54 +50,62 @@
             border: 1px solid #ccc;
             border-radius: 6px;
         }
+        input:focus, select:focus {
+            outline: none;
+            border-color: var(--brand-green);
+            box-shadow: 0 0 0 3px rgba(139, 197, 63, 0.35);
+        }
         button, .btn {
             display: inline-block;
             width: 100%;
             padding: 0.9rem;
             font-size: 1.05rem;
-            font-weight: 600;
+            font-weight: 700;
             border: none;
             border-radius: 6px;
-            background: #2563eb;
-            color: white;
+            background: var(--brand-green);
+            color: var(--brand-dark);
             margin-top: 1rem;
             cursor: pointer;
             text-align: center;
             text-decoration: none;
         }
+        button:hover, .btn:hover { background: var(--brand-green-dark); }
         .messages { list-style: none; padding: 0; }
         .messages li { padding: 0.75rem; border-radius: 6px; margin-bottom: 0.5rem; }
         .messages .success { background: #d1fae5; color: #065f46; }
         .messages .error { background: #fee2e2; color: #991b1b; }
         table { width: 100%; border-collapse: collapse; }
         th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid #e5e7eb; }
+        th { color: var(--brand-dark); border-bottom: 2px solid var(--brand-green); }
         nav.bottom {
             position: fixed;
             bottom: 0;
             left: 0;
             right: 0;
             display: flex;
-            background: white;
-            border-top: 1px solid #e5e7eb;
+            background: var(--brand-dark);
+            border-top: 1px solid #000;
         }
         nav.bottom a {
             flex: 1;
             text-align: center;
             padding: 0.9rem 0.5rem;
             text-decoration: none;
-            color: #374151;
+            color: #d1d5db;
             font-size: 0.85rem;
-            font-weight: 600;
+            font-weight: 700;
         }
+        nav.bottom a:hover, nav.bottom a:active { color: var(--brand-green); }
         .item-row { display: flex; gap: 0.5rem; align-items: flex-end; margin-bottom: 0.5rem; }
         .item-row > div { flex: 1; }
     </style>
 </head>
 <body>
     <header>
-        <a href="{% url 'dashboard' %}">Material Inventory</a>
+        <a href="{% url 'dashboard' %}"><img class="logo" src="{% static 'img/logo.png' %}" alt="Petrokámen"></a>
         {% if user.is_authenticated %}
-            <a href="{% url 'logout' %}">Log out</a>
+            <a class="logout-link" href="{% url 'logout' %}">Log out</a>
         {% endif %}
     </header>
     <main>
