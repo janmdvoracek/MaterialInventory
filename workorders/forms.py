@@ -54,9 +54,7 @@ ProducedFormSet = forms.formset_factory(MovementItemForm, extra=3)
 
 
 class MachineUsageForm(forms.Form):
-    machine = forms.ModelChoiceField(
-        queryset=Machine.objects.filter(is_active=True), required=False, label='Stroj'
-    )
+    machine = forms.ModelChoiceField(queryset=Machine.objects.filter(is_active=True), required=False, label='Stroj')
     hours = forms.DecimalField(min_value=0.01, max_digits=12, decimal_places=2, required=False, label='Hodiny')
 
     def clean(self):
@@ -71,9 +69,7 @@ MachineUsageFormSet = forms.formset_factory(MachineUsageForm, extra=3)
 
 
 class TimeWorkedFilterForm(forms.Form):
-    worker = forms.ModelChoiceField(
-        queryset=User.objects.all().order_by('username'), required=False, label='Pracovník'
-    )
+    worker = forms.ModelChoiceField(queryset=User.objects.all().order_by('username'), required=False, label='Pracovník')
     date_from = forms.DateField(required=False, widget=forms.DateInput(attrs={'type': 'date'}), label='Datum od')
     date_to = forms.DateField(required=False, widget=forms.DateInput(attrs={'type': 'date'}), label='Datum do')
 
@@ -94,9 +90,7 @@ class TimeWorkedFilterForm(forms.Form):
 
 
 class MachineHistoryFilterForm(forms.Form):
-    machine = forms.ModelChoiceField(
-        queryset=Machine.objects.all().order_by('name'), required=False, label='Stroj'
-    )
+    machine = forms.ModelChoiceField(queryset=Machine.objects.all().order_by('name'), required=False, label='Stroj')
     created_by = forms.ModelChoiceField(
         queryset=User.objects.all().order_by('username'), required=False, label='Vytvořil'
     )

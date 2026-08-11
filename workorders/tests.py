@@ -90,9 +90,7 @@ class TransformCreateTests(TestCase):
 
     def test_transform_consume_of_untracked_material_bypasses_stock_check(self):
         untracked = Material.objects.create(sku='RAW2', name='Zemina', unit_of_measure='t', track_stock=False)
-        response = self._post(
-            [{'material': untracked, 'location': self.location, 'quantity': Decimal('500')}], []
-        )
+        response = self._post([{'material': untracked, 'location': self.location, 'quantity': Decimal('500')}], [])
         self.assertRedirects(response, reverse('dashboard'))
         self.assertTrue(WorkOrder.objects.exists())
         consumed = StockMovement.objects.get(movement_type=StockMovement.MovementType.TRANSFORM_CONSUME)
@@ -399,9 +397,7 @@ class MachineDashboardTests(TestCase):
     def setUp(self):
         self.worker = User.objects.create_user(username='worker', password='pw', role=User.Role.WORKER)
         self.machine_active = Machine.objects.create(name='Crusher A', total_hours=Decimal('12.5'))
-        self.machine_retired = Machine.objects.create(
-            name='Old Excavator', total_hours=Decimal('99'), is_active=False
-        )
+        self.machine_retired = Machine.objects.create(name='Old Excavator', total_hours=Decimal('99'), is_active=False)
 
     def test_dashboard_requires_login(self):
         response = self.client.get(reverse('machine_dashboard'))
@@ -507,9 +503,7 @@ class TimeWorkedTests(TestCase):
         if collaborators:
             work_order.collaborators.set(collaborators)
         if hours is not None:
-            MachineUsage.objects.create(
-                work_order=work_order, machine=machine or self.machine, hours=hours
-            )
+            MachineUsage.objects.create(work_order=work_order, machine=machine or self.machine, hours=hours)
         return work_order
 
     def _summary_for(self, response, user):

@@ -26,9 +26,12 @@ class ShipmentForm(forms.Form):
         if material and location and quantity and material.track_stock:
             from .models import StockMovement
 
-            available = StockMovement.objects.filter(material=material, location=location).aggregate(
-                total=Sum('quantity')
-            )['total'] or 0
+            available = (
+                StockMovement.objects.filter(material=material, location=location).aggregate(total=Sum('quantity'))[
+                    'total'
+                ]
+                or 0
+            )
             if quantity > available:
                 raise forms.ValidationError(
                     f'K dispozici je pouze {available} {material.unit_of_measure} materiálu {material} na lokalitě {location}.'
@@ -77,9 +80,7 @@ class AdjustmentForm(forms.Form):
     location = forms.ModelChoiceField(queryset=Location.objects.filter(is_active=True), label='Lokalita')
     direction = forms.ChoiceField(choices=DIRECTION_CHOICES, label='Směr')
     quantity = forms.DecimalField(min_value=0.001, max_digits=12, decimal_places=3, label='Množství')
-    notes = forms.CharField(
-        max_length=255, label='Poznámka', help_text='Důvod této úpravy (povinné pro audit).'
-    )
+    notes = forms.CharField(max_length=255, label='Poznámka', help_text='Důvod této úpravy (povinné pro audit).')
 
     def clean(self):
         cleaned_data = super().clean()
@@ -90,9 +91,12 @@ class AdjustmentForm(forms.Form):
         if material and location and quantity and direction == 'DECREASE' and material.track_stock:
             from .models import StockMovement
 
-            available = StockMovement.objects.filter(material=material, location=location).aggregate(
-                total=Sum('quantity')
-            )['total'] or 0
+            available = (
+                StockMovement.objects.filter(material=material, location=location).aggregate(total=Sum('quantity'))[
+                    'total'
+                ]
+                or 0
+            )
             if quantity > available:
                 raise forms.ValidationError(
                     f'K dispozici je pouze {available} {material.unit_of_measure} materiálu {material} na lokalitě {location}.'

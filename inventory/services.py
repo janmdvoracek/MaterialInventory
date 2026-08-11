@@ -16,7 +16,5 @@ def get_available_quantity(material, location, *, lock=False):
     """
     if lock:
         Material.objects.select_for_update().get(pk=material.pk)
-    total = StockMovement.objects.filter(material=material, location=location).aggregate(total=Sum("quantity"))[
-        "total"
-    ]
-    return total or Decimal("0")
+    total = StockMovement.objects.filter(material=material, location=location).aggregate(total=Sum('quantity'))['total']
+    return total or Decimal('0')

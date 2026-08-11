@@ -1,0 +1,15 @@
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = ["*/migrations/*"]
+
+[tool.ruff.format]
+quote-style = "single"
+
+[tool.ruff.lint]
+extend-select = ["I"]
+ignore = [
+    "RUF012", # Django's `class Meta: ordering = [...]`, form `error_messages = {...}`, etc. are idiomatic, not bugs.
+    "FURB157", # This codebase deliberately quotes all Decimal() literals for consistency, e.g. `Decimal('0')`.
+    "DTZ011", # Only used in tests to build relative-date query params, never to persist or compare timezone-aware data.
+]

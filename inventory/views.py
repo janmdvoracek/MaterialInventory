@@ -44,9 +44,7 @@ def _filtered_movements(request):
         # collaborated on (added as a WorkOrder collaborator by whoever
         # submitted it); enforced here (not just by hiding the `created_by`
         # filter field) so it can't be bypassed via the querystring directly.
-        movements = movements.filter(
-            Q(created_by=request.user) | Q(work_order__collaborators=request.user)
-        ).distinct()
+        movements = movements.filter(Q(created_by=request.user) | Q(work_order__collaborators=request.user)).distinct()
     if not form.is_bound:
         # No filters submitted at all (initial page load) — show everything.
         return form, movements

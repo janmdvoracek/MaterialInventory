@@ -18,19 +18,19 @@ class CustomUserAdmin(UserAdmin):
         (
             None,
             {
-                "classes": ("wide",),
-                "fields": ("username", "usable_password", "password1", "password2", "role"),
+                'classes': ('wide',),
+                'fields': ('username', 'usable_password', 'password1', 'password2', 'role'),
             },
         ),
     )
     fieldsets = (
-        (None, {"fields": ("username", "password")}),
-        ("Personal info", {"fields": ("first_name", "last_name", "email")}),
-        ("Role", {"fields": ("role", "is_active")}),
-        ("Important dates", {"fields": ("last_login", "date_joined")}),
+        (None, {'fields': ('username', 'password')}),
+        ('Personal info', {'fields': ('first_name', 'last_name', 'email')}),
+        ('Role', {'fields': ('role', 'is_active')}),
+        ('Important dates', {'fields': ('last_login', 'date_joined')}),
     )
-    list_display = ("username", "first_name", "last_name", "role", "is_active")
-    list_filter = ("role", "is_active")
+    list_display = ('username', 'first_name', 'last_name', 'role', 'is_active')
+    list_filter = ('role', 'is_active')
     filter_horizontal = ()
 
     def save_model(self, request, obj, form, change):

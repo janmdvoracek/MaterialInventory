@@ -8,11 +8,10 @@ from django.db import transaction
 from django.db.models import Count, Q, Sum
 from django.shortcuts import redirect, render
 
+from accounts.models import User
 from inventory.models import StockMovement
 from inventory.services import get_available_quantity
 from materials.models import Machine
-
-from accounts.models import User
 
 from .forms import (
     ConsumedFormSet,

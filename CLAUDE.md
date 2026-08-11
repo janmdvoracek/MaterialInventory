@@ -83,7 +83,15 @@ docker compose exec web python manage.py migrate
 docker compose exec web python manage.py createsuperuser
 ```
 
-No linter/formatter is configured yet.
+Lint/format with Ruff (config in `pyproject.toml`; `requirements-dev.txt` pins the version used in CI):
+
+```bash
+pip install -r requirements-dev.txt
+ruff check .
+ruff format .
+```
+
+CI (`.github/workflows/ci.yml`) runs `ruff check` and `ruff format --check` (must pass, not just run), a `docker build` sanity check, and the Django test suite as separate jobs on every push/PR. Dependabot (`.github/dependabot.yml`) opens weekly update PRs for pip, Docker base images, and the Actions themselves.
 
 ## Deployment
 

@@ -99,9 +99,7 @@ class ShipmentCreateTests(InventoryTestCase):
         self.assertFalse(StockMovement.objects.filter(movement_type=StockMovement.MovementType.SHIPMENT).exists())
 
     def test_shipment_of_untracked_material_bypasses_stock_check(self):
-        untracked = Material.objects.create(
-            sku='RAW1', name='Zemina', unit_of_measure='t', track_stock=False
-        )
+        untracked = Material.objects.create(sku='RAW1', name='Zemina', unit_of_measure='t', track_stock=False)
         self.client.force_login(self.worker)
         response = self.client.post(
             reverse('shipment_create'),
@@ -198,9 +196,7 @@ class AdjustmentCreateTests(InventoryTestCase):
         self.assertFalse(StockMovement.objects.filter(movement_type=StockMovement.MovementType.ADJUSTMENT).exists())
 
     def test_adjustment_decrease_of_untracked_material_bypasses_stock_check(self):
-        untracked = Material.objects.create(
-            sku='RAW1', name='Zemina', unit_of_measure='t', track_stock=False
-        )
+        untracked = Material.objects.create(sku='RAW1', name='Zemina', unit_of_measure='t', track_stock=False)
         self.client.force_login(self.manager)
         response = self.client.post(
             reverse('adjustment_create'),

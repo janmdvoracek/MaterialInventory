@@ -1,12 +1,11 @@
 import tempfile
+from decimal import Decimal
 from pathlib import Path
 
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.db import IntegrityError, transaction
 from django.test import TestCase
-
-from decimal import Decimal
 
 from accounts.models import User
 
@@ -24,9 +23,8 @@ class MaterialModelTests(TestCase):
 
     def test_material_sku_unique(self):
         Material.objects.create(sku='SKU1', name='Steel Bar', unit_of_measure='pcs')
-        with self.assertRaises(IntegrityError):
-            with transaction.atomic():
-                Material.objects.create(sku='SKU1', name='Other', unit_of_measure='pcs')
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Material.objects.create(sku='SKU1', name='Other', unit_of_measure='pcs')
 
 
 class LocationModelTests(TestCase):
@@ -36,9 +34,8 @@ class LocationModelTests(TestCase):
 
     def test_location_name_unique(self):
         Location.objects.create(name='Main Depot')
-        with self.assertRaises(IntegrityError):
-            with transaction.atomic():
-                Location.objects.create(name='Main Depot')
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Location.objects.create(name='Main Depot')
 
 
 class MachineModelTests(TestCase):
@@ -56,9 +53,8 @@ class MachineModelTests(TestCase):
 
     def test_machine_name_unique(self):
         Machine.objects.create(name='Crusher A')
-        with self.assertRaises(IntegrityError):
-            with transaction.atomic():
-                Machine.objects.create(name='Crusher A')
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Machine.objects.create(name='Crusher A')
 
 
 class SeedDataCommandTests(TestCase):
@@ -110,9 +106,7 @@ class SeedDataCommandTests(TestCase):
     def test_seed_materials_track_stock_column(self):
         self._run(
             materials=(
-                'sku,name,unit_of_measure,category,track_stock\n'
-                'RAW1,Zemina,t,Zdroj,false\n'
-                'FIN1,0/20,t,Frakce,true\n'
+                'sku,name,unit_of_measure,category,track_stock\nRAW1,Zemina,t,Zdroj,false\nFIN1,0/20,t,Frakce,true\n'
             )
         )
         self.assertFalse(Material.objects.get(sku='RAW1').track_stock)
