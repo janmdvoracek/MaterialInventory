@@ -1,7 +1,9 @@
+from datetime import date, timedelta
 from decimal import Decimal
 
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from accounts.models import User
 from inventory.models import StockMovement
@@ -490,3 +492,140 @@ class MachineUsageHistoryTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.context['form'].is_valid())
         self.assertEqual(len(response.context['page_obj'].object_list), 0)
+
+
+class TimeWorkedTests(TestCase):
+    def setUp(self):
+        self.worker = User.objects.create_user(username='worker', password='pw', role=User.Role.WORKER)
+        self.other_worker = User.objects.create_user(username='other', password='pw', role=User.Role.WORKER)
+        self.manager = User.objects.create_user(username='manager', password='pw', role=User.Role.MANAGER)
+        self.machine = Machine.objects.create(name='Crusher A')
+        self.other_machine = Machine.objects.create(name='Screener B')
+
+    def _job(self, creator, hours, collaborators=(), machine=None):
+        work_order = WorkOrder.objects.create(created_by=creator, description='job')
+        if collaborators:
+            work_order.collaborators.set(collaborators)
+        if hours is not None:
+            MachineUsage.objects.create(
+                work_order=work_order, machine=machine or self.machine, hours=hours
+            )
+        return work_order
+
+    def _summary_for(self, response, user):
+        for row in response.context['summary']:
+            if row['user'] == user:
+                return row
+        return None
+
+    def test_time_worked_requires_login(self):
+        response = self.client.get(reverse('time_worked'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/login/', response.url)
+
+    def test_worker_sees_own_total_hours(self):
+        self._job(self.worker, Decimal('2.5'))
+        self._job(self.worker, Decimal('1.5'))
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('time_worked'))
+        row = self._summary_for(response, self.worker)
+        self.assertEqual(row['hours'], Decimal('4.00'))
+        self.assertEqual(row['orders'], 2)
+
+    def test_worker_summary_excludes_other_people(self):
+        self._job(self.worker, Decimal('2'))
+        self._job(self.other_worker, Decimal('8'))
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('time_worked'))
+        self.assertEqual([row['user'] for row in response.context['summary']], [self.worker])
+
+    def test_collaborator_is_credited_full_job_hours(self):
+        self._job(self.worker, Decimal('3'), collaborators=[self.other_worker])
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('time_worked'))
+        self.assertEqual(self._summary_for(response, self.worker)['hours'], Decimal('3.00'))
+        self.assertEqual(self._summary_for(response, self.other_worker)['hours'], Decimal('3.00'))
+
+    def test_collaborator_summary_does_not_leak_creator_total(self):
+        # The job was created by someone else, so the creator must not show up
+        # on the collaborating worker's screen.
+        self._job(self.other_worker, Decimal('3'), collaborators=[self.worker])
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('time_worked'))
+        self.assertEqual([row['user'] for row in response.context['summary']], [self.worker])
+        self.assertEqual(self._summary_for(response, self.worker)['hours'], Decimal('3.00'))
+
+    def test_manager_sees_every_worker(self):
+        self._job(self.worker, Decimal('2'))
+        self._job(self.other_worker, Decimal('5'))
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('time_worked'))
+        users = {row['user'] for row in response.context['summary']}
+        self.assertEqual(users, {self.worker, self.other_worker})
+
+    def test_hours_sum_across_multiple_machines_on_one_job(self):
+        work_order = self._job(self.worker, Decimal('2'))
+        MachineUsage.objects.create(work_order=work_order, machine=self.other_machine, hours=Decimal('1.5'))
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('time_worked'))
+        row = self._summary_for(response, self.worker)
+        self.assertEqual(row['hours'], Decimal('3.50'))
+        self.assertEqual(row['orders'], 1)
+
+    def test_job_without_machine_usage_counts_zero_hours(self):
+        self._job(self.worker, None)
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('time_worked'))
+        row = self._summary_for(response, self.worker)
+        self.assertEqual(row['hours'], Decimal('0'))
+        self.assertEqual(row['orders'], 1)
+
+    def test_worker_filter_hidden_from_worker(self):
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('time_worked'))
+        self.assertNotIn('worker', response.context['form'].fields)
+
+    def test_worker_filter_available_to_manager(self):
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('time_worked'))
+        self.assertIn('worker', response.context['form'].fields)
+
+    def test_worker_cannot_bypass_restriction_via_worker_param(self):
+        self._job(self.worker, Decimal('2'))
+        self._job(self.other_worker, Decimal('8'))
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('time_worked'), {'worker': self.other_worker.pk})
+        self.assertNotIn(self.other_worker, [row['user'] for row in response.context['summary']])
+
+    def test_manager_can_filter_to_one_worker(self):
+        self._job(self.worker, Decimal('2'))
+        self._job(self.other_worker, Decimal('8'))
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('time_worked'), {'worker': self.other_worker.pk})
+        self.assertEqual([row['user'] for row in response.context['summary']], [self.other_worker])
+
+    def test_filters_by_date_range(self):
+        old = self._job(self.worker, Decimal('4'))
+        WorkOrder.objects.filter(pk=old.pk).update(created_at=timezone.now() - timedelta(days=10))
+        self._job(self.worker, Decimal('1'))
+        self.client.force_login(self.worker)
+        response = self.client.get(
+            reverse('time_worked'), {'date_from': (date.today() - timedelta(days=1)).isoformat()}
+        )
+        self.assertEqual(self._summary_for(response, self.worker)['hours'], Decimal('1.00'))
+
+    def test_shows_nothing_when_filter_is_invalid(self):
+        self._job(self.worker, Decimal('4'))
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('time_worked'), {'date_from': 'not-a-date'})
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.context['form'].is_valid())
+        self.assertEqual(response.context['summary'], [])
+        self.assertEqual(len(response.context['page_obj'].object_list), 0)
+
+    def test_detail_list_scoped_to_worker(self):
+        own = self._job(self.worker, Decimal('2'))
+        self._job(self.other_worker, Decimal('8'))
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('time_worked'))
+        self.assertEqual([o.pk for o in response.context['page_obj'].object_list], [own.pk])
