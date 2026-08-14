@@ -83,9 +83,28 @@ def movement_history(request):
     )
 
 
+# The export is opened in Excel by depot managers on Czech Windows, which means
+# three things: it splits rows on the Windows list separator (`;`, not `,`), it
+# expects a comma decimal separator, and it only recognises UTF-8 when the file
+# opens with a BOM — without one it assumes windows-1250 and mangles every
+# diacritic in the material names.
+CSV_DELIMITER = ';'
+CSV_BOM = '﻿'
+
+
 class _Echo:
     def write(self, value):
         return value
+
+
+def _csv_number(value):
+    """Decimal -> Czech numeric literal, e.g. Decimal('-4.000') -> '-4,000'.
+
+    Deliberately not routed through _csv_safe: a leading apostrophe would stop
+    Excel treating the cell as a number, which matters for the negative
+    quantities that make up every shipment row.
+    """
+    return str(value).replace('.', ',')
 
 
 def _csv_safe(value):
@@ -104,9 +123,10 @@ def _csv_safe(value):
 @login_required
 def movement_history_export(request):
     _, movements = _filtered_movements(request)
-    writer = csv.writer(_Echo())
+    writer = csv.writer(_Echo(), delimiter=CSV_DELIMITER)
 
     def rows():
+        yield CSV_BOM
         yield writer.writerow(
             ['Datum', 'SKU', 'Materiál', 'Lokalita', 'Typ', 'Množství', 'Jednotka', 'Zakázka', 'Vytvořil', 'Poznámka']
         )
@@ -115,12 +135,14 @@ def movement_history_export(request):
                 [
                     # localtime() so the export matches the timestamps shown in
                     # the history table; the raw value is UTC, TIME_ZONE is not.
-                    timezone.localtime(movement.created_at).isoformat(timespec='seconds'),
+                    # Czech date order, so Excel parses it as a date rather than
+                    # leaving it as text.
+                    timezone.localtime(movement.created_at).strftime('%d.%m.%Y %H:%M:%S'),
                     _csv_safe(movement.material.sku),
                     _csv_safe(movement.material.name),
                     _csv_safe(movement.location.name),
                     _csv_safe(movement.get_movement_type_display()),
-                    movement.quantity,
+                    _csv_number(movement.quantity),
                     _csv_safe(movement.material.unit_of_measure),
                     movement.work_order_id or '',
                     _csv_safe(movement.created_by.username),
@@ -128,7 +150,7 @@ def movement_history_export(request):
                 ]
             )
 
-    response = StreamingHttpResponse(rows(), content_type='text/csv')
+    response = StreamingHttpResponse(rows(), content_type='text/csv; charset=utf-8')
     response['Content-Disposition'] = 'attachment; filename="movement_history.csv"'
     return response
 

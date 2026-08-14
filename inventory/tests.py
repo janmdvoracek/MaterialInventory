@@ -565,6 +565,11 @@ class MovementHistoryTests(InventoryTestCase):
 
 
 class MovementHistoryExportTests(InventoryTestCase):
+    def _export_rows(self, response):
+        """Parse an export the way Excel would: strip the BOM, split on ';'."""
+        content = b''.join(response.streaming_content).decode('utf-8-sig')
+        return list(csv.reader(io.StringIO(content), delimiter=';'))
+
     def test_export_requires_login(self):
         response = self.client.get(reverse('movement_history_export'))
         self.assertEqual(response.status_code, 302)
@@ -574,7 +579,7 @@ class MovementHistoryExportTests(InventoryTestCase):
         self._movement(Decimal('10'))
         self.client.force_login(self.worker)
         response = self.client.get(reverse('movement_history_export'))
-        self.assertEqual(response['Content-Type'], 'text/csv')
+        self.assertEqual(response['Content-Type'], 'text/csv; charset=utf-8')
 
     def test_export_content_disposition_filename(self):
         self._movement(Decimal('10'))
@@ -586,8 +591,7 @@ class MovementHistoryExportTests(InventoryTestCase):
         self._movement(Decimal('10'))
         self.client.force_login(self.worker)
         response = self.client.get(reverse('movement_history_export'))
-        content = b''.join(response.streaming_content).decode()
-        rows = list(csv.reader(io.StringIO(content)))
+        rows = self._export_rows(response)
         self.assertEqual(
             rows[0],
             ['Datum', 'SKU', 'Materiál', 'Lokalita', 'Typ', 'Množství', 'Jednotka', 'Zakázka', 'Vytvořil', 'Poznámka'],
@@ -598,8 +602,7 @@ class MovementHistoryExportTests(InventoryTestCase):
             self._movement(Decimal('1'))
         self.client.force_login(self.worker)
         response = self.client.get(reverse('movement_history_export'))
-        content = b''.join(response.streaming_content).decode()
-        rows = list(csv.reader(io.StringIO(content)))
+        rows = self._export_rows(response)
         self.assertEqual(len(rows) - 1, 60)
 
     def test_export_respects_filters(self):
@@ -607,8 +610,7 @@ class MovementHistoryExportTests(InventoryTestCase):
         self._movement(Decimal('-3'), StockMovement.MovementType.SHIPMENT)
         self.client.force_login(self.worker)
         response = self.client.get(reverse('movement_history_export'), {'movement_type': 'SHIPMENT'})
-        content = b''.join(response.streaming_content).decode()
-        rows = list(csv.reader(io.StringIO(content)))
+        rows = self._export_rows(response)
         self.assertEqual(len(rows) - 1, 1)
         self.assertEqual(rows[1][4], 'Výdej')
 
@@ -624,8 +626,7 @@ class MovementHistoryExportTests(InventoryTestCase):
         self._movement(Decimal('-3'), StockMovement.MovementType.SHIPMENT)
         self.client.force_login(self.worker)
         response = self.client.get(reverse('movement_history_export'), {'movement_type': 'NOT_A_TYPE'})
-        content = b''.join(response.streaming_content).decode()
-        rows = list(csv.reader(io.StringIO(content)))
+        rows = self._export_rows(response)
         self.assertEqual(len(rows) - 1, 0)
 
     def test_export_escapes_formula_injection_in_notes(self):
@@ -639,8 +640,7 @@ class MovementHistoryExportTests(InventoryTestCase):
         )
         self.client.force_login(self.worker)
         response = self.client.get(reverse('movement_history_export'))
-        content = b''.join(response.streaming_content).decode()
-        rows = list(csv.reader(io.StringIO(content)))
+        rows = self._export_rows(response)
         self.assertEqual(rows[1][9], "'=1+1")
 
     def test_export_worker_only_includes_own_movements(self):
@@ -648,8 +648,7 @@ class MovementHistoryExportTests(InventoryTestCase):
         self._movement(Decimal('5'), user=self.manager)
         self.client.force_login(self.worker)
         response = self.client.get(reverse('movement_history_export'))
-        content = b''.join(response.streaming_content).decode()
-        rows = list(csv.reader(io.StringIO(content)))
+        rows = self._export_rows(response)
         self.assertEqual(len(rows) - 1, 1)
         self.assertEqual(rows[1][8], self.worker.username)
 
@@ -658,9 +657,90 @@ class MovementHistoryExportTests(InventoryTestCase):
         self._movement(Decimal('-4'), StockMovement.MovementType.SHIPMENT)
         self.client.force_login(self.worker)
         response = self.client.get(reverse('movement_history_export'))
-        content = b''.join(response.streaming_content).decode()
-        rows = list(csv.reader(io.StringIO(content)))
-        self.assertEqual(rows[1][5], '-4.000')
+        rows = self._export_rows(response)
+        self.assertEqual(rows[1][5], '-4,000')
+
+
+class ExportExcelCompatibilityTests(InventoryTestCase):
+    """Czech Excel needs a semicolon separator, comma decimals and a UTF-8 BOM.
+    Assert on the raw bytes here — the parsing helper elsewhere normalises all
+    three away, so only these tests can catch a regression in them.
+    """
+
+    def _raw(self, response):
+        return b''.join(response.streaming_content)
+
+    def test_export_starts_with_utf8_bom(self):
+        # Without the BOM Excel assumes windows-1250 and mangles the diacritics.
+        self._movement(Decimal('10'))
+        self.client.force_login(self.worker)
+        self.assertTrue(self._raw(self.client.get(reverse('movement_history_export'))).startswith(b'\xef\xbb\xbf'))
+
+    def test_export_is_semicolon_separated(self):
+        self._movement(Decimal('10'))
+        self.client.force_login(self.worker)
+        content = self._raw(self.client.get(reverse('movement_history_export'))).decode('utf-8-sig')
+        header = content.splitlines()[0]
+        self.assertEqual(header.split(';')[0], 'Datum')
+        self.assertNotIn(',', header)
+
+    def test_export_preserves_czech_diacritics(self):
+        material = Material.objects.create(sku='SKU2', name='Štěrk frakce 8/16', unit_of_measure='t')
+        StockMovement.objects.create(
+            material=material,
+            location=self.location,
+            quantity=Decimal('3'),
+            movement_type=StockMovement.MovementType.RECEIPT,
+            created_by=self.worker,
+        )
+        self.client.force_login(self.worker)
+        content = self._raw(self.client.get(reverse('movement_history_export'))).decode('utf-8-sig')
+        self.assertIn('Štěrk frakce 8/16', content)
+        self.assertIn('Množství', content)
+
+    def test_export_writes_decimal_comma(self):
+        self._movement(Decimal('12.5'))
+        self.client.force_login(self.worker)
+        content = self._raw(self.client.get(reverse('movement_history_export'))).decode('utf-8-sig')
+        self.assertIn('12,500', content)
+        self.assertNotIn('12.500', content)
+
+    def test_export_writes_czech_date_order(self):
+        movement = self._movement(Decimal('10'))
+        self.client.force_login(self.worker)
+        content = self._raw(self.client.get(reverse('movement_history_export'))).decode('utf-8-sig')
+        self.assertIn(timezone.localtime(movement.created_at).strftime('%d.%m.%Y %H:%M:%S'), content)
+
+    def test_export_still_escapes_formula_injection(self):
+        # The separator change must not weaken the injection guard.
+        StockMovement.objects.create(
+            material=self.material,
+            location=self.location,
+            quantity=Decimal('1'),
+            movement_type=StockMovement.MovementType.RECEIPT,
+            created_by=self.worker,
+            notes='=HYPERLINK("http://evil","x")',
+        )
+        self.client.force_login(self.worker)
+        content = self._raw(self.client.get(reverse('movement_history_export'))).decode('utf-8-sig')
+        self.assertIn("'=HYPERLINK", content)
+
+    def test_export_quotes_notes_containing_the_separator(self):
+        StockMovement.objects.create(
+            material=self.material,
+            location=self.location,
+            quantity=Decimal('1'),
+            movement_type=StockMovement.MovementType.RECEIPT,
+            created_by=self.worker,
+            notes='dodavatel; sklad B',
+        )
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('movement_history_export'))
+        content = b''.join(response.streaming_content).decode('utf-8-sig')
+        rows = list(csv.reader(io.StringIO(content), delimiter=';'))
+        # Round-trips as one cell rather than splitting the row.
+        self.assertEqual(len(rows[1]), 10)
+        self.assertEqual(rows[1][9], 'dodavatel; sklad B')
 
 
 class DashboardTemplateTests(InventoryTestCase):
