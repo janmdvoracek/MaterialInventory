@@ -750,3 +750,37 @@ class MovementHistoryTemplateTests(InventoryTestCase):
         self.client.force_login(self.worker)
         response = self.client.get(reverse('movement_history'), {'date_from': 'not-a-date'})
         self.assertContains(response, 'Filtr je neplatný')
+
+
+class EmptyLabelTests(InventoryTestCase):
+    """Django 6 defaults `ModelChoiceField.empty_label` to '- Select an option -',
+    which has no translation in any locale — it renders English even under
+    LANGUAGE_CODE='cs'. Every dropdown sets a Czech one explicitly; these catch
+    a newly added field that forgets to.
+    """
+
+    DJANGO_DEFAULT = '- Select an option -'
+
+    def test_worker_pages_have_no_english_placeholder(self):
+        self.client.force_login(self.worker)
+        for name in ('receipt_create', 'shipment_create', 'movement_history'):
+            with self.subTest(view=name):
+                self.assertNotContains(self.client.get(reverse(name)), self.DJANGO_DEFAULT)
+
+    def test_adjustment_page_has_no_english_placeholder(self):
+        self.client.force_login(self.manager)
+        self.assertNotContains(self.client.get(reverse('adjustment_create')), self.DJANGO_DEFAULT)
+
+    def test_entry_forms_prompt_in_czech(self):
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('receipt_create'))
+        self.assertContains(response, 'Vyberte materiál')
+        self.assertContains(response, 'Vyberte lokalitu')
+
+    def test_filter_form_offers_all_in_czech(self):
+        # On a filter the blank option means "no filter", so it reads as "all".
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('movement_history'))
+        self.assertContains(response, 'Všechny materiály')
+        self.assertContains(response, 'Všechny lokality')
+        self.assertContains(response, 'Všichni uživatelé')

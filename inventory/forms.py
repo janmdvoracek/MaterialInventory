@@ -6,15 +6,23 @@ from materials.models import Location, Material
 
 
 class ReceiptForm(forms.Form):
-    material = forms.ModelChoiceField(queryset=Material.objects.filter(is_active=True), label='Materiál')
-    location = forms.ModelChoiceField(queryset=Location.objects.filter(is_active=True), label='Lokalita')
+    material = forms.ModelChoiceField(
+        queryset=Material.objects.filter(is_active=True), label='Materiál', empty_label='Vyberte materiál'
+    )
+    location = forms.ModelChoiceField(
+        queryset=Location.objects.filter(is_active=True), label='Lokalita', empty_label='Vyberte lokalitu'
+    )
     quantity = forms.DecimalField(min_value=0.001, max_digits=12, decimal_places=3, label='Množství')
     notes = forms.CharField(required=False, max_length=255, label='Poznámka')
 
 
 class ShipmentForm(forms.Form):
-    material = forms.ModelChoiceField(queryset=Material.objects.filter(is_active=True), label='Materiál')
-    location = forms.ModelChoiceField(queryset=Location.objects.filter(is_active=True), label='Lokalita')
+    material = forms.ModelChoiceField(
+        queryset=Material.objects.filter(is_active=True), label='Materiál', empty_label='Vyberte materiál'
+    )
+    location = forms.ModelChoiceField(
+        queryset=Location.objects.filter(is_active=True), label='Lokalita', empty_label='Vyberte lokalitu'
+    )
     quantity = forms.DecimalField(min_value=0.001, max_digits=12, decimal_places=3, label='Množství')
     notes = forms.CharField(required=False, max_length=255, label='Poznámka')
 
@@ -40,15 +48,26 @@ class ShipmentForm(forms.Form):
 
 
 class HistoryFilterForm(forms.Form):
+    # On the filter forms the blank option means "don't filter by this", so it
+    # reads as "all ...", matching the movement_type choices set up in __init__.
     material = forms.ModelChoiceField(
-        queryset=Material.objects.all().order_by('name'), required=False, label='Materiál'
+        queryset=Material.objects.all().order_by('name'),
+        required=False,
+        label='Materiál',
+        empty_label='Všechny materiály',
     )
     location = forms.ModelChoiceField(
-        queryset=Location.objects.all().order_by('name'), required=False, label='Lokalita'
+        queryset=Location.objects.all().order_by('name'),
+        required=False,
+        label='Lokalita',
+        empty_label='Všechny lokality',
     )
     movement_type = forms.ChoiceField(required=False, label='Typ pohybu')
     created_by = forms.ModelChoiceField(
-        queryset=User.objects.all().order_by('username'), required=False, label='Vytvořil'
+        queryset=User.objects.all().order_by('username'),
+        required=False,
+        label='Vytvořil',
+        empty_label='Všichni uživatelé',
     )
     date_from = forms.DateField(required=False, widget=forms.DateInput(attrs={'type': 'date'}), label='Datum od')
     date_to = forms.DateField(required=False, widget=forms.DateInput(attrs={'type': 'date'}), label='Datum do')
@@ -76,8 +95,12 @@ class HistoryFilterForm(forms.Form):
 class AdjustmentForm(forms.Form):
     DIRECTION_CHOICES = [('INCREASE', 'Navýšit sklad'), ('DECREASE', 'Snížit sklad')]
 
-    material = forms.ModelChoiceField(queryset=Material.objects.filter(is_active=True), label='Materiál')
-    location = forms.ModelChoiceField(queryset=Location.objects.filter(is_active=True), label='Lokalita')
+    material = forms.ModelChoiceField(
+        queryset=Material.objects.filter(is_active=True), label='Materiál', empty_label='Vyberte materiál'
+    )
+    location = forms.ModelChoiceField(
+        queryset=Location.objects.filter(is_active=True), label='Lokalita', empty_label='Vyberte lokalitu'
+    )
     direction = forms.ChoiceField(choices=DIRECTION_CHOICES, label='Směr')
     quantity = forms.DecimalField(min_value=0.001, max_digits=12, decimal_places=3, label='Množství')
     notes = forms.CharField(max_length=255, label='Poznámka', help_text='Důvod této úpravy (povinné pro audit).')

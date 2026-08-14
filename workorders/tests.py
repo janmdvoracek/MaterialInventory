@@ -624,3 +624,33 @@ class TimeWorkedTests(TestCase):
         self.client.force_login(self.worker)
         response = self.client.get(reverse('time_worked'))
         self.assertEqual([o.pk for o in response.context['page_obj'].object_list], [own.pk])
+
+
+class EmptyLabelTests(TestCase):
+    """See inventory.tests.EmptyLabelTests — same guard for the workorder forms."""
+
+    DJANGO_DEFAULT = '- Select an option -'
+
+    def setUp(self):
+        self.manager = User.objects.create_user(username='manager', password='pw', role=User.Role.MANAGER)
+        Material.objects.create(sku='SKU1', name='Steel Bar', unit_of_measure='pcs')
+        Location.objects.create(name='Main Depot')
+        Machine.objects.create(name='Crusher A')
+
+    def test_pages_have_no_english_placeholder(self):
+        self.client.force_login(self.manager)
+        for name in ('transform_create', 'machine_usage_history', 'time_worked'):
+            with self.subTest(view=name):
+                self.assertNotContains(self.client.get(reverse(name)), self.DJANGO_DEFAULT)
+
+    def test_transform_rows_prompt_in_czech(self):
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('transform_create'))
+        self.assertContains(response, 'Vyberte materiál')
+        self.assertContains(response, 'Vyberte lokalitu')
+        self.assertContains(response, 'Vyberte stroj')
+
+    def test_filter_forms_offer_all_in_czech(self):
+        self.client.force_login(self.manager)
+        self.assertContains(self.client.get(reverse('machine_usage_history')), 'Všechny stroje')
+        self.assertContains(self.client.get(reverse('time_worked')), 'Všichni pracovníci')
