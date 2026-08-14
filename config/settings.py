@@ -120,9 +120,17 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/6.1/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+# Czech locale. App copy is hardcoded Czech (see CLAUDE.md) — this setting is
+# what makes Django's *own* strings Czech too: admin chrome, auth, and form
+# validation errors ("Toto pole je třeba vyplnit." instead of "This field is
+# required."). LocaleMiddleware is deliberately not installed, so the language
+# is fixed rather than negotiated from the browser's Accept-Language.
+LANGUAGE_CODE = 'cs'
 
-TIME_ZONE = 'UTC'
+# Depot-local time. USE_TZ keeps everything stored as UTC; this only affects
+# how datetimes render and how `__date` lookups (the history date filters) pick
+# their day boundaries.
+TIME_ZONE = 'Europe/Prague'
 
 USE_I18N = True
 

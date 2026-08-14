@@ -412,7 +412,8 @@ class MachineDashboardTests(TestCase):
     def test_dashboard_shows_current_total_hours(self):
         self.client.force_login(self.worker)
         response = self.client.get(reverse('machine_dashboard'))
-        self.assertContains(response, '12.50 h')
+        # Comma decimal separator: template output is localised under cs.
+        self.assertContains(response, '12,50 h')
 
 
 class MachineUsageHistoryTests(TestCase):

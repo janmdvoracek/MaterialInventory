@@ -7,6 +7,7 @@ from django.db import transaction
 from django.db.models import Q, Sum
 from django.http import StreamingHttpResponse
 from django.shortcuts import redirect, render
+from django.utils import timezone
 
 from accounts.decorators import role_required
 from accounts.models import User
@@ -112,7 +113,9 @@ def movement_history_export(request):
         for movement in movements.iterator(chunk_size=2000):
             yield writer.writerow(
                 [
-                    movement.created_at.isoformat(timespec='seconds'),
+                    # localtime() so the export matches the timestamps shown in
+                    # the history table; the raw value is UTC, TIME_ZONE is not.
+                    timezone.localtime(movement.created_at).isoformat(timespec='seconds'),
                     _csv_safe(movement.material.sku),
                     _csv_safe(movement.material.name),
                     _csv_safe(movement.location.name),

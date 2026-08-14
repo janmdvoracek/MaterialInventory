@@ -22,7 +22,18 @@ Modular monolith, one Django project (`config`) with these apps:
 
 Mobile forms (receive / ship / transform / adjust) live under `inventory/` and `workorders/` views+templates, styled mobile-first, with a bottom nav (Adjust hidden from plain Workers) plus a stock dashboard and movement history/export.
 
-User-facing copy (auth forms in `accounts/forms.py`, movement history export headers in `inventory/views.py`, etc.) is written in Czech for depot workers; `LANGUAGE_CODE` itself is left at `en-us` — this is done by hardcoding Czech strings/labels directly rather than through Django's i18n framework, so keep new user-facing text in the same style rather than introducing `{% trans %}`/`gettext` half-way.
+User-facing copy (auth forms in `accounts/forms.py`, movement history export headers in `inventory/views.py`, model `TextChoices` labels, etc.) is written in Czech for depot workers by **hardcoding Czech strings/labels directly** rather than going through Django's i18n framework — keep new user-facing text in the same style rather than introducing `{% trans %}`/`gettext` half-way.
+
+`LANGUAGE_CODE = 'cs'` and `TIME_ZONE = 'Europe/Prague'` cover the parts the app doesn't write itself. The language setting is what makes **Django's own** strings Czech — admin chrome, `contrib.auth`, and form validation errors (`Toto pole je třeba vyplnit.`) — using the `.mo` catalogs Django ships. `LocaleMiddleware` is deliberately *not* installed, so the language is fixed rather than negotiated per-request from `Accept-Language`. The two mechanisms are complementary: the setting handles framework strings, hardcoding handles app copy.
+
+Consequences of the locale worth knowing before you touch numbers or dates:
+
+- **Template output of numbers is localised** — `{{ movement.quantity }}` renders `12,50`, not `12.50`. Tests that assert on rendered quantities must use the comma. Form inputs are *not* localised (fields default to `localize=False`), so `NumberInput` still renders and accepts `value="12.50"` with a dot, and a comma typed into a `DecimalField` is rejected with `Zadejte číslo.` Leave it that way — setting `localize=True` would downgrade the widget from `<input type="number">` to a plain text input and cost mobile users their numeric keypad.
+- **Date input still round-trips.** Czech `DATE_INPUT_FORMATS` is `%d.%m.%Y`-first and does not list ISO, but Django appends `%Y-%m-%d` to every locale's list, so the `<input type="date">` widgets on the history/time-worked filters parse normally. Bound forms re-render the raw submitted string, so filters survive pagination. Beware only *unbound* date fields with a python-`date` `initial`: those render as `14.08.2026`, which an `<input type="date">` rejects as invalid and shows blank. No form does this today.
+- **Keep explicit date formats in templates.** Timestamps use `|date:"Y-m-d H:i"`, which is locale-independent; a bare `{{ ... }}` on a date would render as `14. srpna 2026` instead.
+- **`USE_TZ` stays on, so the DB still stores UTC** — `TIME_ZONE` only affects rendering and the day boundaries `__date` lookups use for the history date filters. Python code does *not* auto-localise, so anything formatting a datetime outside a template needs `timezone.localtime()` explicitly (the CSV export does this).
+
+Not yet localised: model field `verbose_name`s are still auto-derived English, so the admin shows Czech chrome over English field labels (`Movement type`, `Created at`). Acceptable because the admin is back-office for `ADMIN`-role users only.
 
 ## Commands
 
