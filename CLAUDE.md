@@ -24,7 +24,7 @@ Mobile forms (receive / ship / transform / adjust) live under `inventory/` and `
 
 User-facing copy (auth forms in `accounts/forms.py`, movement history export headers in `inventory/views.py`, model `TextChoices` labels, etc.) is written in Czech for depot workers by **hardcoding Czech strings/labels directly** rather than going through Django's i18n framework — keep new user-facing text in the same style rather than introducing `{% trans %}`/`gettext` half-way.
 
-`LANGUAGE_CODE = 'cs'` and `TIME_ZONE = 'Europe/Prague'` cover the parts the app doesn't write itself. The language setting is what makes **Django's own** strings Czech — admin chrome, `contrib.auth`, and form validation errors (`Toto pole je třeba vyplnit.`) — using the `.mo` catalogs Django ships. `LocaleMiddleware` is deliberately *not* installed, so the language is fixed rather than negotiated per-request from `Accept-Language`. The two mechanisms are complementary: the setting handles framework strings, hardcoding handles app copy.
+`LANGUAGE_CODE = 'cs'` and `TIME_ZONE = 'Europe/Prague'` cover the parts the app doesn't write itself. The language setting is what makes **Django's own** strings Czech — admin chrome, `contrib.auth`, and form validation errors (`Toto pole je vyžadováno.`, `Zadejte číslo.`) — using the `.mo` catalogs Django ships. `LocaleMiddleware` is deliberately *not* installed, so the language is fixed rather than negotiated per-request from `Accept-Language`. The two mechanisms are complementary: the setting handles framework strings, hardcoding handles app copy.
 
 Consequences of the locale worth knowing before you touch numbers or dates:
 

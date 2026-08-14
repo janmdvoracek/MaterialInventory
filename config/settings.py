@@ -122,7 +122,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 # Czech locale. App copy is hardcoded Czech (see CLAUDE.md) — this setting is
 # what makes Django's *own* strings Czech too: admin chrome, auth, and form
-# validation errors ("Toto pole je třeba vyplnit." instead of "This field is
+# validation errors ("Toto pole je vyžadováno." instead of "This field is
 # required."). LocaleMiddleware is deliberately not installed, so the language
 # is fixed rather than negotiated from the browser's Accept-Language.
 LANGUAGE_CODE = 'cs'
