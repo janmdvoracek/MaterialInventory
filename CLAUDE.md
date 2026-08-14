@@ -63,6 +63,13 @@ python manage.py test materials
 python manage.py test materials.tests.MaterialModelTests.test_material_str
 ```
 
+Tests are one `tests.py` per app, plain `django.test.TestCase`, no pytest and no mocking — almost everything drives a real view through `self.client` and asserts on both `response.context` and the resulting rows. Postgres is required; there is no SQLite fallback, and no separate test settings module, so a change to `config/settings.py` (locale included) is a change to how the suite behaves.
+
+Two exceptions to that shape, both in `inventory/tests.py`:
+
+- `StockLockConcurrencyTests` is a **`TransactionTestCase`**, not a `TestCase`, because it runs real concurrent transactions in threads to exercise the `select_for_update()` race that `get_available_quantity(lock=True)` exists to close — a `TestCase` wraps the whole test in one transaction and would hide the interleaving. Worker threads must `connection.close()` in a `finally`, and exceptions are collected into a list and re-asserted in the main thread rather than raised (a thread that dies silently would otherwise turn into a passing test — hence the `# noqa: BLE001`). If you change the locking, sanity-check these by temporarily neutering the `select_for_update()` and confirming both tests fail.
+- `DashboardTemplateTests` / `MovementHistoryTemplateTests` assert on rendered HTML rather than context, covering the things context assertions structurally cannot: the Czech comma decimal separator, local-time timestamps, and the `qty-negative` styling on negative stock. Match `class="qty-negative"`, not the bare class name — `base.html` ships a `td.qty-negative` CSS rule on every page, so the bare string is always present.
+
 Seed the material catalog, depot locations, machinery, and employee accounts from CSV (idempotent — safe to re-run; matches the `.env`/`.env.example` pattern, real files are gitignored):
 
 ```bash
