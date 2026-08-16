@@ -1,9 +1,32 @@
 name: CI
 
+# Skip CI for changes that can't affect the build, the image, or the tests:
+# documentation, and dotfiles/dot-directories.
+#
+# These are GLOB patterns, not regexes — `.*` means "a root-level path starting
+# with a literal dot", not "anything". `*` never crosses a `/`, which is why the
+# dot-directory cases need their own entries.
+#
+# A commit touching even one file outside these patterns runs the full pipeline.
+#
+# Note this exempts `.dockerignore` and `.github/workflows/ci.yml`, both of
+# which do affect CI. Editing either ships unverified until the next code push.
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**.md'      # docs, at any depth
+      - '.*'         # root dotfiles: .gitignore, .dockerignore, .env.example
+      - '.*/**'      # inside a root dot-directory: .github/workflows/ci.yml
+      - '**/.*'      # dotfiles nested anywhere
+      - '**/.*/**'   # inside a nested dot-directory
   pull_request:
+    paths-ignore:
+      - '**.md'
+      - '.*'
+      - '.*/**'
+      - '**/.*'
+      - '**/.*/**'
 
 jobs:
   lint:
