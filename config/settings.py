@@ -143,7 +143,27 @@ USE_TZ = True
 STATIC_URL = 'static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
 STATIC_ROOT = BASE_DIR / 'staticfiles'
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
+# Django 5.1 removed STATICFILES_STORAGE; the backend lives in STORAGES now, so
+# the old setting sat here being silently ignored (see DEPLOYMENT_PLAN.md).
+#
+# The default stays the plain backend on purpose. Whitenoise's manifest storage
+# rewrites every {% static %} URL to a hashed filename looked up in the
+# `staticfiles.json` that `collectstatic` writes, and with no manifest on disk
+# it raises instead of falling back. Django's test runner forces DEBUG=False,
+# and DEBUG is exactly what makes the hashing short-circuit — so defaulting to
+# manifest storage would make `manage.py test` fail on every template that
+# renders a {% static %} tag until someone remembered to run collectstatic.
+#
+# Production opts in via STATICFILES_BACKEND instead. The Dockerfile sets it as
+# an ENV, which covers both the collectstatic build step and the running
+# container, so an image can never serve a manifest it didn't write.
+STORAGES = {
+    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {
+        'BACKEND': config('STATICFILES_BACKEND', default='django.contrib.staticfiles.storage.StaticFilesStorage'),
+    },
+}
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 

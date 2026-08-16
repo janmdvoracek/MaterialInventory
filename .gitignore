@@ -5,7 +5,12 @@ __pycache__/
 .vscode*
 venv/
 db.sqlite3
-static/
+# STATIC_ROOT — collectstatic output, generated. Not `static/`, which is the
+# hand-maintained source dir in STATICFILES_DIRS and must stay tracked.
+staticfiles/
+# Working spreadsheet parked under static/; not a served asset. Excluded from
+# the image too (.dockerignore) so collectstatic can't publish it at /static/.
+static/xlsx/
 .env
 *.egg-info/
 .DS_Store

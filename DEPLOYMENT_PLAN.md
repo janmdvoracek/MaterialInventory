@@ -1,17 +1,22 @@
 # Deploy to the company server (LAN-only) — plan
 
-Not yet implemented. Saved for when we're ready to act on it.
+Not yet implemented, **except** for the two blockers in "Context" below and the
+`Dockerfile`/`.gitignore` steps that fix them (sections 1 and 2) — those have
+landed. Sections 3-6 are still to do. Saved for when we're ready to act on it.
 
 ## Context
 
 The app currently only runs via the dev-oriented `docker-compose.yml` (Django `runserver`, `DEBUG=True`, DB port exposed to the host). We have a company server available and want the app running there for real use, reachable over the depot's LAN by IP (no domain/TLS for now — that can come later). The server already runs another Postgres instance and another web app, so the deployment must not collide with either.
 
-While investigating, two concrete issues turned up that would block a naive deploy and need fixing as part of this work, not left to discover the hard way:
+While investigating, two concrete issues turned up that would block a naive deploy and need fixing as part of this work, not left to discover the hard way. **Both are now fixed** — kept here because the reasoning explains why the Dockerfile and `.gitignore` look the way they do.
 
-1. **`collectstatic` has never been run**, and whitenoise's `CompressedManifestStaticFilesStorage` needs it. Verified directly: with `DEBUG=False` (the real production condition), `GET /login/` renders `200` with `<img src="/static/img/logo.png">` in the HTML, but `GET /static/img/logo.png` itself returns **404** — the logo (and any other static asset) would be broken on every page in production. In dev this is invisible because `runserver` + `DEBUG=True` serves static files through Django's finders directly, bypassing the manifest.
-2. **`.gitignore` line 3 (`seed_data/`) blanket-excludes the whole directory**, which silently defeats the more specific `seed_data/*.csv` / `!seed_data/*.example.csv` rules added later — git cannot un-ignore a file inside an already-ignored directory. Confirmed: `git ls-files seed_data/` returns nothing. The example CSVs (the real Petrokámen catalog) were never actually committed, despite `CLAUDE.md` documenting them as the seeding starting point. This matters for deployment because it determines whether a `git clone`/`pull` on the server actually brings the catalog templates along.
+1. ~~**`collectstatic` has never been run**~~ — **fixed**, but the original diagnosis was wrong in an instructive way. The symptom was real and reproduced: with `DEBUG=False`, `GET /login/` rendered `200` while `GET /static/img/logo.png` returned **404**, so every asset was broken in production. The stated cause — whitenoise's `CompressedManifestStaticFilesStorage` needing a manifest — was not, because **that backend was never active**. `config/settings.py` selected it via `STATICFILES_STORAGE`, a setting Django *removed in 5.1*; on Django 6.1 the line was silently ignored and the effective backend was plain `StaticFilesStorage`. The 404 was simply `DEBUG=False` turning off Django's own static serving with nothing collected into `STATIC_ROOT` for `WhiteNoiseMiddleware` to serve.
 
-Both are one-line-ish fixes, folded into this plan rather than done separately.
+   Three things were needed, not one: move the backend into the `STORAGES` dict so the choice actually takes effect; add the `collectstatic` build step; and make sure the two agree about whether a manifest exists (see section 1). Manifest storage is now **opt-in per environment** rather than global — `manage.py test` forces `DEBUG=False`, and `DEBUG` is what makes hashed-URL lookup short-circuit, so a global default would have failed every template test until someone ran `collectstatic`.
+
+2. ~~**`.gitignore` line 3 (`seed_data/`) blanket-excludes the whole directory**~~ — **fixed**. The blanket line is gone; the specific `seed_data/*.csv` + `!seed_data/*.example.csv` pair now works as intended and all four `*.example.csv` files are committed, so a `git clone`/`pull` on the server brings the catalog templates along.
+
+   The same class of bug was found a second time and also fixed: `.gitignore` ignored **`static/`**, the hand-maintained source directory in `STATICFILES_DIRS`, when the generated directory is `STATIC_ROOT` = **`staticfiles/`**. `templates/base.html` referenced `img/background.jpg`, which existed only on one developer's machine and had never been committed — a fresh clone or `docker build` produced a site with no background. The rule now ignores `staticfiles/`, and `static/img/background.jpg` is tracked.
 
 ## Approach
 
@@ -25,11 +30,17 @@ Both are one-line-ish fixes, folded into this plan rather than done separately.
 - **The server's LAN IP must not change.** If it's on regular DHCP, the address can drift on lease renewal or reboot, silently breaking every saved URL with no obvious error. Get a DHCP reservation (or a static IP) for the server's MAC address from whoever manages the office network *before* handing out the URL — this is a prerequisite, not a nice-to-have.
 - **The app must survive a server reboot on its own.** `docker-compose.prod.yml` already sets `restart: unless-stopped` on both services (see below), which tells the Docker daemon to bring the containers back up whenever it (re)starts. That only self-heals if the Docker daemon itself is enabled to start on boot — true by default on a standard install, but worth confirming explicitly (`systemctl is-enabled docker`) rather than assuming. Data isn't a concern either way: Postgres's named volume persists across container and host restarts, so a reboot means a short outage while things come back up, not data loss.
 
-### 1. `Dockerfile` — bake `collectstatic` into the image
-Add `RUN python manage.py collectstatic --noinput` after `COPY . .`, before the `CMD`. This needs no DB and no real secrets (`config/settings.py` already has safe defaults for everything via `python-decouple`), so it's safe at build time. Confirmed this doesn't affect dev: `docker-compose.yml` bind-mounts `.:/app`, which shadows the image's baked `staticfiles/` anyway, but dev never depends on it since `runserver`+`DEBUG=True` bypasses the manifest.
+### 1. `Dockerfile` — bake `collectstatic` into the image — **done**
+`RUN python manage.py collectstatic --noinput` sits after `COPY . .`, before the `CMD`. It needs no DB and no real secrets (`config/settings.py` has `python-decouple` defaults for everything), so it is safe at build time.
 
-### 2. `.gitignore` — drop the blanket `seed_data/` line
-Remove line 3 (`seed_data/`). The existing `seed_data/*.csv` + `!seed_data/*.example.csv` pair (lines 13-14) already express the intended rule correctly on their own. After this, `git add` the four `seed_data/*.example.csv` files so they're actually committed.
+The step it is paired with matters as much as the step itself: `ENV STATICFILES_BACKEND=whitenoise.storage.CompressedManifestStaticFilesStorage` immediately above it. Because `ENV` persists into the running container, the backend that *writes* the manifest during the build and the backend that *reads* it at runtime are the same by construction — the failure mode where an image is built with plain storage and then started with manifest storage (500 on every page, no manifest to read) cannot happen. `config/settings.py` defaults `STATICFILES_BACKEND` to the plain backend so a bare checkout and `manage.py test` need no `collectstatic`.
+
+Confirmed this doesn't affect dev: `docker-compose.yml` bind-mounts `.:/app`, shadowing the image's baked `staticfiles/`, and `runserver` + `DEBUG=True` short-circuits hashed-URL lookup entirely.
+
+A `.dockerignore` was added alongside, because `collectstatic` publishes whatever the build context leaves under `static/`. It keeps `.env`, `.venv/`, `.git/`, the real `seed_data/*.csv`, and a working spreadsheet at `static/xlsx/` out of the image — the last of which would otherwise have been served, unauthenticated, at `/static/xlsx/inventory-system-as-is.xlsx`.
+
+### 2. `.gitignore` — drop the blanket `seed_data/` line — **done**
+The blanket `seed_data/` line is removed and the four `seed_data/*.example.csv` files are committed. The `static/` → `staticfiles/` correction described in Context #2 landed here too, together with `static/img/background.jpg` and an ignore for `static/xlsx/`.
 
 ### 3. `docker-compose.prod.yml` — new file
 Standalone (not an override) for clarity:
@@ -73,16 +84,29 @@ If a dependency on Tailscale's (free-tier) coordination service is unwanted, **H
 Verify by connecting from a device genuinely off the depot LAN (e.g. phone on cellular data) and confirming the login page loads only while Tailscale shows "Connected" — and that revoking that device in the admin console immediately cuts its access.
 
 ## Critical files
-- `Dockerfile` — add `collectstatic` build step
-- `.gitignore` — remove blanket `seed_data/` line
+- ~~`Dockerfile` — add `collectstatic` build step~~ — done
+- ~~`config/settings.py` — move the static backend from the removed `STATICFILES_STORAGE` into `STORAGES`~~ — done
+- ~~`.gitignore` — remove blanket `seed_data/` line; ignore `staticfiles/` not `static/`~~ — done
+- ~~`.dockerignore` — new~~ — done
 - `docker-compose.prod.yml` — new
-- `.env.production.example` — new
+- `.env.production.example` — new — must set `STATICFILES_BACKEND`? **No**: the `Dockerfile` `ENV` already covers it. Leave it out so there is one place to change it.
 - `scripts/backup_db.sh` — new
 - `DEPLOYMENT.md` — new
 
-## Verification (once we implement this)
-1. `docker build -t materialinventory-test .` locally and confirm it completes (proves `collectstatic` succeeds at build time with no `.env` present).
-2. `git status` after the `.gitignore` fix — confirm the four `seed_data/*.example.csv` files now show as addable/tracked.
-3. `python manage.py test` — confirm the existing suite still passes (no application code changes, only Dockerfile/compose/docs, so this is a sanity check not a real risk).
-4. Real deployment check happens on the server itself (runbook step 9) — loading the app from another device on the LAN.
-5. Reboot check happens on the server itself (runbook step 11) — confirms the DHCP reservation and `restart: unless-stopped` actually hold up, not just look right on paper.
+## Verification
+
+Steps 1-3 cover the work already done and have been run:
+
+1. ✅ `docker build -t materialinventory-test .` completes; the build log shows `200 static files copied to '/app/staticfiles', 574 post-processed` — the post-processing count is what proves manifest storage was actually active, rather than the build quietly succeeding with plain storage.
+2. ✅ `git status` — the four `seed_data/*.example.csv` files are tracked, and so is `static/img/background.jpg`.
+3. ✅ `python manage.py test` — 171 tests, `OK`.
+4. ✅ End-to-end static check against the built image, the thing the original 404 report was about. Run it with `DEBUG=False` on the compose network and confirm:
+   - `GET /static/img/logo.png` → **200** (was 404)
+   - `GET /static/img/background.jpg` → **200**
+   - `GET /login/` → **200**, with `img/logo.<hash>.png` and `img/background.<hash>.jpg` in the HTML — hashed names confirm the manifest is being read at runtime, not just written at build time
+   - `GET /static/xlsx/inventory-system-as-is.xlsx` → **404**, and `/app/.env` absent from the image
+
+Still outstanding, and only checkable on the server:
+
+5. Real deployment check (runbook step 9) — loading the app from another device on the LAN.
+6. Reboot check (runbook step 11) — confirms the DHCP reservation and `restart: unless-stopped` actually hold up, not just look right on paper.
