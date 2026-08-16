@@ -31,4 +31,8 @@ static/xlsx/
 .vscode*
 .DS_Store
 db.sqlite3
+
+# Documentation — not needed at runtime. `*.md` only matches the context root,
+# so docs/ needs listing separately.
 *.md
+docs/
