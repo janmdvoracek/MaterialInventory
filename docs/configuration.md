@@ -45,6 +45,7 @@ To find out which backend is *really* live, check it — do not read the setting
 
 ```python
 from django.contrib.staticfiles.storage import staticfiles_storage
+
 type(staticfiles_storage)
 ```
 

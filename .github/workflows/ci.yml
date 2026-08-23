@@ -16,17 +16,9 @@ on:
     branches: [main]
     paths-ignore:
       - '**.md'      # docs, at any depth
-      - '.*'         # root dotfiles: .gitignore, .dockerignore, .env.example
-      - '.*/**'      # inside a root dot-directory: .github/workflows/ci.yml
-      - '**/.*'      # dotfiles nested anywhere
-      - '**/.*/**'   # inside a nested dot-directory
   pull_request:
     paths-ignore:
       - '**.md'
-      - '.*'
-      - '.*/**'
-      - '**/.*'
-      - '**/.*/**'
 
 jobs:
   lint:
@@ -38,8 +30,12 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
+          cache: "pip"
 
-      - run: pip install ruff==0.16.2
+      # Single source of truth for the Ruff version: an inline pin here drifts
+      # the moment Dependabot bumps requirements-dev.txt, and CI then lints with
+      # a different version than anyone runs locally.
+      - run: pip install -r requirements-dev.txt
 
       - name: Ruff check
         run: ruff check .

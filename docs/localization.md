@@ -34,8 +34,8 @@ section before touching any of them.
 So tests asserting on rendered quantities must use the comma:
 
 ```python
-self.assertContains(response, '12,50')   # correct
-self.assertContains(response, '12.50')   # will fail
+self.assertContains(response, '12,50')  # correct
+self.assertContains(response, '12.50')  # will fail
 ```
 
 **Form inputs are not localized.** Django form fields default to
