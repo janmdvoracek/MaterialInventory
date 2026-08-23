@@ -26,6 +26,14 @@ services:
       - .env
     environment:
       DB_HOST: db
+      # Undo the Dockerfile's manifest-storage ENV for local dev. The image
+      # builds a manifest into /app/staticfiles, but the `.:/app` mount above
+      # shadows it, and the test runner forces DEBUG=False -- which is exactly
+      # what stops Django short-circuiting the hashed-name lookup. Without this
+      # every test that renders a template dies on a missing manifest entry.
+      # Costs nothing at runtime: DEBUG=True here skips the lookup anyway.
+      # Production still opts in via the Dockerfile, where collectstatic runs.
+      STATICFILES_BACKEND: django.contrib.staticfiles.storage.StaticFilesStorage
     depends_on:
       db:
         condition: service_healthy

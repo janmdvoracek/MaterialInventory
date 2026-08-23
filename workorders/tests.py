@@ -550,6 +550,30 @@ class TimeWorkedTests(TestCase):
         self.assertEqual([row['user'] for row in response.context['summary']], [self.worker])
         self.assertEqual(self._summary_for(response, self.worker)['hours'], Decimal('3.00'))
 
+    def test_creator_hours_not_multiplied_by_collaborator_count(self):
+        # Two collaborators make the participation filter's M2M join return the
+        # job twice, so aggregating that queryset directly would credit the
+        # creator with 6 hours for one 3-hour job (and list it twice below).
+        # `time_worked` re-queries by pk to avoid it; drop that and this fails.
+        third_worker = User.objects.create_user(username='third', password='pw', role=User.Role.WORKER)
+        work_order = self._job(self.worker, Decimal('3'), collaborators=[self.other_worker, third_worker])
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('time_worked'))
+        row = self._summary_for(response, self.worker)
+        self.assertEqual(row['hours'], Decimal('3.00'))
+        self.assertEqual(row['orders'], 1)
+        self.assertEqual([o.pk for o in response.context['page_obj'].object_list], [work_order.pk])
+
+    def test_manager_filtering_to_one_worker_does_not_multiply_hours(self):
+        # Same join, reached the other way: the `worker` filter is the manager's
+        # route through _participation_filter.
+        third_worker = User.objects.create_user(username='third', password='pw', role=User.Role.WORKER)
+        work_order = self._job(self.worker, Decimal('3'), collaborators=[self.other_worker, third_worker])
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('time_worked'), {'worker': self.worker.pk})
+        self.assertEqual(self._summary_for(response, self.worker)['hours'], Decimal('3.00'))
+        self.assertEqual([o.pk for o in response.context['page_obj'].object_list], [work_order.pk])
+
     def test_manager_sees_every_worker(self):
         self._job(self.worker, Decimal('2'))
         self._job(self.other_worker, Decimal('5'))
