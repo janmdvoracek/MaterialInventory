@@ -109,6 +109,8 @@
         th { color: var(--brand-dark); border-bottom: 2px solid var(--brand-green); }
         .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
         td.qty-negative { color: #991b1b; font-weight: 700; }
+        /* Stock dashboard: let the material name wrap instead of widening the table */
+        .page-dashboard td:first-child { white-space: normal; overflow-wrap: break-word; }
         nav.bottom {
             position: fixed;
             bottom: 0;
@@ -135,7 +137,7 @@
         .item-row > div { flex: 1; }
     </style>
 </head>
-<body>
+<body class="page-{{ request.resolver_match.url_name }}">
     <header>
         <a href="{% url 'dashboard' %}"><img class="logo" src="{% static 'img/logo.png' %}" alt="Petrokámen"></a>
         {% if user.is_authenticated %}
