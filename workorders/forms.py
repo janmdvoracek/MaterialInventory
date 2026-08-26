@@ -68,13 +68,7 @@ class MachineUsageForm(forms.Form):
         label='Stroj',
         empty_label='Stroj',
     )
-    hours = forms.DecimalField(
-        min_value=0.01,
-        max_digits=12,
-        decimal_places=2,
-        required=False,
-        label='Hodiny'
-    )
+    hours = forms.DecimalField(min_value=0.01, max_digits=12, decimal_places=2, required=False, label='Hodiny')
 
     def clean(self):
         cleaned_data = super().clean()
