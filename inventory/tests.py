@@ -813,7 +813,7 @@ class MovementHistoryTemplateTests(InventoryTestCase):
         self._movement(Decimal('-4'), StockMovement.MovementType.SHIPMENT)
         self.client.force_login(self.worker)
         response = self.client.get(reverse('movement_history'))
-        self.assertContains(response, '-4,000 pcs')
+        self.assertContains(response, '-4,0 pcs')
 
     def test_history_renders_dash_for_blank_notes(self):
         self._movement(Decimal('10'))

@@ -6,6 +6,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 MaterialInventory is a simple app to keep track of incoming and outgoing material, as well as its processing and transformation.
 
+## Documentation
+
+There is a full prose documentation set under `docs/`, and this file overlaps it heavily — the same facts written as instructions rather than explanation. **A change that invalidates something here almost certainly invalidates a paragraph there too; update both in the same commit.**
+
+| File | Covers | Overlaps this file's |
+|---|---|---|
+| [docs/architecture.md](docs/architecture.md) | Ledger, locked stock checks, work orders, roles, filter forms, time-worked | Architecture |
+| [docs/localization.md](docs/localization.md) | Czech locale consequences — numbers, dates, `empty_label`, CSV | Locale bullets |
+| [docs/development.md](docs/development.md) | Setup, testing, linting, seeding, CI, code conventions | Commands |
+| [docs/configuration.md](docs/configuration.md) | Every env var, static-files backend, `.dockerignore`, Python version | Deployment |
+| [docs/user-guide.cs.md](docs/user-guide.cs.md) | End-user manual, **in Czech**, for depot staff | — |
+| [README.md](README.md) | Entry point: feature table, roles, layout, quick start | — |
+
+`docs/` and `README.md` are English; only `user-guide.cs.md` and the app's own copy are Czech. Both `README.md` and `docs/development.md` quote a hardcoded test count, which drifts every time a test is added.
+
 ## Tech stack
 
 Django 6, PostgreSQL, server-rendered templates, no separate JS frontend. Depot workers fill out mobile-first web forms; Django's admin serves as the back-office UI for managers.
@@ -27,6 +42,8 @@ Modular monolith, one Django project (`config`) with these apps:
 
 Mobile forms (receive / ship / transform / adjust) live under `inventory/` and `workorders/` views+templates, styled mobile-first, plus a stock dashboard, movement history/export, machine dashboard, and time-worked report. The bottom nav is hardcoded in `templates/base.html` (Úprava/Adjust wrapped in `{% if user.is_manager_or_admin %}`) — a new page needs its entry added there by hand.
 
+Page-scoped CSS is keyed off the URL name: `base.html` renders `<body class="page-{{ request.resolver_match.url_name }}">`, and the inline stylesheet targets e.g. `.page-dashboard td:first-child`. So **renaming a URL name silently drops that page's styling** — grep the `<style>` block for `.page-` before touching `urlpatterns`. There is no test covering the pairing.
+
 Three cross-cutting patterns that every entry/list view follows; match them in new views rather than inventing a variant:
 
 - **Stock sufficiency is checked twice, and only the second one counts.** `ShipmentForm.clean()` / `AdjustmentForm.clean()` do an *unlocked* sum so the user gets a friendly field error, then the view redoes it via `get_available_quantity(..., lock=True)` inside `transaction.atomic()`. Only the locked check is race-safe; the form check is UX. Both skip materials with `track_stock=False`. New code that writes stock must do the locked check itself — never rely on a form having already validated.
@@ -41,9 +58,9 @@ User-facing copy (auth forms in `accounts/forms.py`, movement history export hea
 
 Consequences of the locale worth knowing before you touch numbers or dates:
 
-- **Template output of numbers is localised** — `{{ movement.quantity }}` renders `12,50`, not `12.50`. Tests that assert on rendered quantities must use the comma. Form inputs are *not* localised (fields default to `localize=False`), so `NumberInput` still renders and accepts `value="12.50"` with a dot, and a comma typed into a `DecimalField` is rejected with `Zadejte číslo.` Leave it that way — setting `localize=True` would downgrade the widget from `<input type="number">` to a plain text input and cost mobile users their numeric keypad.
+- **Template output of numbers is localised** — `{{ movement.quantity }}` renders `12,50`, not `12.50`. Tests that assert on rendered quantities must use the comma. `|floatformat:N` localises too, so the stock dashboard (`|floatformat:1`) renders `6,0 pcs` — that string, comma included, is what `DashboardTemplateTests` asserts on. Numbers formatted in **Python** are not localised: the shortfall messages in `inventory/forms.py` interpolate `f'{available:.1f}'` and therefore show a dot in otherwise-Czech copy. Form inputs are *not* localised (fields default to `localize=False`), so `NumberInput` still renders and accepts `value="12.50"` with a dot, and a comma typed into a `DecimalField` is rejected with `Zadejte číslo.` Leave it that way — setting `localize=True` would downgrade the widget from `<input type="number">` to a plain text input and cost mobile users their numeric keypad.
 - **Date input still round-trips.** Czech `DATE_INPUT_FORMATS` is `%d.%m.%Y`-first and does not list ISO, but Django appends `%Y-%m-%d` to every locale's list, so the `<input type="date">` widgets on the history/time-worked filters parse normally. Bound forms re-render the raw submitted string, so filters survive pagination. Beware only *unbound* date fields with a python-`date` `initial`: those render as `14.08.2026`, which an `<input type="date">` rejects as invalid and shows blank. No form does this today.
-- **Every `ModelChoiceField` needs an explicit `empty_label`.** Django 6 defaults it to `- Select an option -`, which is *not* a translatable string — it renders English even under `cs`, so it cannot be fixed by the locale. Entry forms (receive/ship/adjust/transform) use a prompt: `Vyberte materiál` / `Vyberte lokalitu` / `Vyberte stroj`. Filter forms use an "all" phrasing, since a blank there means "don't filter": `Všechny materiály`, `Všichni uživatelé`, and so on — matching the `Všechny typy` choice `HistoryFilterForm.__init__` sets for `movement_type`. `EmptyLabelTests` in `inventory/tests.py` and `workorders/tests.py` fail if a new field forgets. `ModelMultipleChoiceField` (e.g. `collaborators`) has no blank option and needs nothing.
+- **Every `ModelChoiceField` needs an explicit `empty_label`.** Django 6 defaults it to `- Select an option -`, which is *not* a translatable string — it renders English even under `cs`, so it cannot be fixed by the locale. The single-row entry forms in `inventory/forms.py` (receive/ship/adjust) use a prompt — `Vyberte materiál` / `Vyberte lokalitu`. The transform formset rows in `workorders/forms.py` use the bare noun instead — `Materiál` / `Lokalita` / `Stroj` — because each row renders the selects side by side with no room for a visible label, so the empty option *is* the label. Filter forms use an "all" phrasing, since a blank there means "don't filter": `Všechny materiály`, `Všichni uživatelé`, and so on — matching the `Všechny typy` choice `HistoryFilterForm.__init__` sets for `movement_type`. `EmptyLabelTests` in `inventory/tests.py` and `workorders/tests.py` fail if a new field forgets. `ModelMultipleChoiceField` (e.g. `collaborators`) has no blank option and needs nothing.
 - **Keep explicit date formats in templates.** Timestamps use `|date:"Y-m-d H:i"`, which is locale-independent; a bare `{{ ... }}` on a date would render as `14. srpna 2026` instead.
 - **The movement-history CSV export targets Czech Excel, not RFC 4180.** It is semicolon-separated (the Windows list separator), writes comma decimals (`-12,500`), formats dates `dd.mm.yyyy hh:mm:ss` so Excel parses them as dates instead of text, and opens with a UTF-8 BOM — without the BOM Excel assumes windows-1250 and mangles every diacritic in the material names. `ExportExcelCompatibilityTests` asserts all four against the raw bytes. Quantities go through `_csv_number`, deliberately *not* `_csv_safe`: the formula-injection guard prefixes an apostrophe to anything starting with `-`, which would stop Excel treating negative shipment quantities as numbers. Anything machine-reading this file needs `delimiter=';'` and `decode('utf-8-sig')`.
 - **`USE_TZ` stays on, so the DB still stores UTC** — `TIME_ZONE` only affects rendering and the day boundaries `__date` lookups use for the history date filters. Python code does *not* auto-localise, so anything formatting a datetime outside a template needs `timezone.localtime()` explicitly (the CSV export does this).

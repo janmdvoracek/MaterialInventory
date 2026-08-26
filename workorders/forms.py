@@ -4,6 +4,19 @@ from accounts.models import User
 from materials.models import Location, Machine, Material
 
 
+def collaborator_queryset(user):
+    """People `user` may name as having worked a job alongside them."""
+    queryset = User.objects.all().order_by('username')
+    if user is not None:
+        # Can't collaborate with yourself — you're already the creator.
+        queryset = queryset.exclude(pk=user.pk)
+        if not user.is_manager_or_admin:
+            # Plain workers only collaborate with other workers, not
+            # managers/admins.
+            queryset = queryset.filter(role=User.Role.WORKER)
+    return queryset
+
+
 class WorkOrderForm(forms.Form):
     description = forms.CharField(
         required=False,
@@ -11,25 +24,13 @@ class WorkOrderForm(forms.Form):
         label='Popis',
         widget=forms.TextInput(attrs={'placeholder': 'Popis provedené práce (volitelné)'}),
     )
-    collaborators = forms.ModelMultipleChoiceField(
-        queryset=User.objects.none(),
-        required=False,
-        label='Spolupracovníci',
-        help_text='Ostatní pracovníci, kteří se podíleli na této zakázce. Uvidí ji ve své historii.',
-        widget=forms.CheckboxSelectMultiple(attrs={'class': 'checkbox-list'}),
+    hours = forms.DecimalField(
+        min_value=0.01,
+        max_digits=12,
+        decimal_places=2,
+        label='Moje hodiny',
+        help_text='Kolik hodin jste na této zakázce odpracovali vy.',
     )
-
-    def __init__(self, *args, user=None, **kwargs):
-        super().__init__(*args, **kwargs)
-        queryset = User.objects.all().order_by('username')
-        if user is not None:
-            # Can't collaborate with yourself — you're already the creator.
-            queryset = queryset.exclude(pk=user.pk)
-            if not user.is_manager_or_admin:
-                # Plain workers only collaborate with other workers, not
-                # managers/admins.
-                queryset = queryset.filter(role=User.Role.WORKER)
-        self.fields['collaborators'].queryset = queryset
 
 
 class MovementItemForm(forms.Form):
@@ -79,6 +80,42 @@ class MachineUsageForm(forms.Form):
 
 
 MachineUsageFormSet = forms.formset_factory(MachineUsageForm, extra=3)
+
+
+class WorkerHoursForm(forms.Form):
+    """One collaborator and the hours they worked. Naming someone here is what
+    makes them a collaborator on the job — there is no separate picker."""
+
+    user = forms.ModelChoiceField(
+        queryset=User.objects.none(),
+        required=False,
+        label='Pracovník',
+        empty_label='Pracovník',
+    )
+    # The row layout has no room for a visible label, so the placeholder is it —
+    # same reason the selects use the bare noun as their `empty_label`.
+    hours = forms.DecimalField(
+        min_value=0.01,
+        max_digits=12,
+        decimal_places=2,
+        required=False,
+        label='Hodiny',
+        widget=forms.NumberInput(attrs={'placeholder': 'Hodiny'}),
+    )
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['user'].queryset = collaborator_queryset(user)
+
+    def clean(self):
+        cleaned_data = super().clean()
+        filled = [cleaned_data.get('user'), cleaned_data.get('hours')]
+        if any(filled) and not all(filled):
+            raise forms.ValidationError('Vyplňte pracovníka a počet hodin, nebo řádek nechte prázdný.')
+        return cleaned_data
+
+
+WorkerHoursFormSet = forms.formset_factory(WorkerHoursForm, extra=3)
 
 
 class TimeWorkedFilterForm(forms.Form):

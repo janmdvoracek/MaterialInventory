@@ -9,9 +9,21 @@
         <label for="{{ order_form.description.id_for_label }}">Popis</label>
         {{ order_form.description }}
 
-        <label>Spolupracovníci</label>
-        {{ order_form.collaborators }}
-        <small>{{ order_form.collaborators.help_text }}</small>
+        <label for="{{ order_form.hours.id_for_label }}">Moje hodiny</label>
+        {{ order_form.hours }}
+        <small>{{ order_form.hours.help_text }}</small>
+        {% for error in order_form.hours.errors %}<p class="messages error">{{ error }}</p>{% endfor %}
+
+        <h2>Spolupracovníci a hodiny</h2>
+        <p><small>Pracovníci, kteří se na zakázce podíleli s vámi, a hodiny, které odpracovali. Zakázku uvidí ve své historii.</small></p>
+        {{ worker_formset.management_form }}
+        {% for form in worker_formset %}
+            <div class="item-row">
+                <div>{{ form.user }}</div>
+                <div>{{ form.hours }}</div>
+            </div>
+            {% for error in form.non_field_errors %}<p class="messages error">{{ error }}</p>{% endfor %}
+        {% endfor %}
 
         <h2>Spotřebováno tun</h2>
         {{ consumed_formset.management_form }}

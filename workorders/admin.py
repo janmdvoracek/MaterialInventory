@@ -2,7 +2,7 @@ from django.contrib import admin
 
 from inventory.models import StockMovement
 
-from .models import MachineUsage, WorkOrder
+from .models import MachineUsage, WorkerHours, WorkOrder
 
 
 class MovementInline(admin.TabularInline):
@@ -19,12 +19,19 @@ class MachineUsageInline(admin.TabularInline):
     readonly_fields = ('created_at',)
 
 
+class WorkerHoursInline(admin.TabularInline):
+    model = WorkerHours
+    extra = 1
+    fields = ('user', 'hours', 'created_at')
+    readonly_fields = ('created_at',)
+
+
 @admin.register(WorkOrder)
 class WorkOrderAdmin(admin.ModelAdmin):
     list_display = ('id', 'created_at', 'created_by', 'description')
     readonly_fields = ('created_by',)
     filter_horizontal = ('collaborators',)
-    inlines = [MovementInline, MachineUsageInline]
+    inlines = [MovementInline, MachineUsageInline, WorkerHoursInline]
 
     def save_model(self, request, obj, form, change):
         if not obj.pk and not obj.created_by_id:

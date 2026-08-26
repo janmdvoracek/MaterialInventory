@@ -14,7 +14,7 @@
                 <td>
                     <a href="{% url 'machine_usage_history' %}?machine={{ machine.id }}">{{ machine.name }}</a>
                 </td>
-                <td>{{ machine.total_hours }} h</td>
+                <td>{{ machine.total_hours|floatformat:1 }} h</td>
             </tr>
         {% endfor %}
         </tbody>

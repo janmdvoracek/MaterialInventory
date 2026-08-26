@@ -19,9 +19,10 @@ from .forms import (
     MachineUsageFormSet,
     ProducedFormSet,
     TimeWorkedFilterForm,
+    WorkerHoursFormSet,
     WorkOrderForm,
 )
-from .models import MachineUsage, WorkOrder
+from .models import MachineUsage, WorkerHours, WorkOrder
 
 HISTORY_PAGE_SIZE = 50
 
@@ -29,19 +30,27 @@ HISTORY_PAGE_SIZE = 50
 @login_required
 def transform_create(request):
     if request.method == 'POST':
-        order_form = WorkOrderForm(request.POST, user=request.user)
+        order_form = WorkOrderForm(request.POST)
         consumed_formset = ConsumedFormSet(request.POST, prefix='consumed')
         produced_formset = ProducedFormSet(request.POST, prefix='produced')
         machine_formset = MachineUsageFormSet(request.POST, prefix='machines')
+        worker_formset = WorkerHoursFormSet(request.POST, prefix='workers', form_kwargs={'user': request.user})
         if (
             order_form.is_valid()
             and consumed_formset.is_valid()
             and produced_formset.is_valid()
             and machine_formset.is_valid()
+            and worker_formset.is_valid()
         ):
             consumed_rows = [f.cleaned_data for f in consumed_formset if f.cleaned_data.get('material')]
             produced_rows = [f.cleaned_data for f in produced_formset if f.cleaned_data.get('material')]
             machine_rows = [f.cleaned_data for f in machine_formset if f.cleaned_data.get('machine')]
+            # Same combining rule as the consumed rows: naming a person twice
+            # adds their hours up rather than failing the unique constraint.
+            worker_hours = defaultdict(Decimal)
+            for form in worker_formset:
+                if form.cleaned_data.get('user'):
+                    worker_hours[form.cleaned_data['user']] += form.cleaned_data['hours']
             if not consumed_rows and not produced_rows:
                 messages.error(request, 'Přidejte alespoň jednu položku spotřeby nebo výroby.')
             else:
@@ -68,7 +77,14 @@ def transform_create(request):
                             created_by=request.user,
                             description=order_form.cleaned_data['description'],
                         )
-                        work_order.collaborators.set(order_form.cleaned_data['collaborators'])
+                        # Collaborators are derived from the hours rows, so the
+                        # two can't disagree about who worked the job.
+                        work_order.collaborators.set(worker_hours.keys())
+                        WorkerHours.objects.create(
+                            work_order=work_order, user=request.user, hours=order_form.cleaned_data['hours']
+                        )
+                        for user, hours in worker_hours.items():
+                            WorkerHours.objects.create(work_order=work_order, user=user, hours=hours)
                         for row in consumed_rows:
                             StockMovement.objects.create(
                                 material=row['material'],
@@ -97,10 +113,11 @@ def transform_create(request):
                         messages.success(request, 'Zpracování bylo zaznamenáno.')
                         return redirect('dashboard')
     else:
-        order_form = WorkOrderForm(user=request.user)
+        order_form = WorkOrderForm()
         consumed_formset = ConsumedFormSet(prefix='consumed')
         produced_formset = ProducedFormSet(prefix='produced')
         machine_formset = MachineUsageFormSet(prefix='machines')
+        worker_formset = WorkerHoursFormSet(prefix='workers', form_kwargs={'user': request.user})
     return render(
         request,
         'workorders/transform_form.html',
@@ -109,6 +126,7 @@ def transform_create(request):
             'consumed_formset': consumed_formset,
             'produced_formset': produced_formset,
             'machine_formset': machine_formset,
+            'worker_formset': worker_formset,
         },
     )
 
@@ -171,38 +189,21 @@ def _participation_filter(user):
 def _time_worked_summary(work_orders):
     """Hours per person across `work_orders`.
 
-    Each participant is credited with the job's *full* machine hours, not a
-    share of them: if two workers jointly ran a 3-hour crushing job, each of
-    them spent 3 hours on it. That means the column totals more than
-    `Machine.total_hours` whenever people collaborate — it measures labour
-    time, not machine runtime.
+    These are the labour hours each person typed on the Transform form, not a
+    share of the job's machine runtime — two people on a 3-hour crushing job
+    each report what they personally worked, so this column has no fixed
+    relationship to `Machine.total_hours`.
     """
-    totals = {}
-
-    def add(user_id, hours, orders):
-        entry = totals.setdefault(user_id, {'hours': Decimal('0'), 'orders': 0})
-        entry['hours'] += hours or Decimal('0')
-        entry['orders'] += orders
-
-    created = work_orders.values('created_by').annotate(
-        hours=Sum('machine_usages__hours'), orders=Count('id', distinct=True)
+    totals = (
+        WorkerHours.objects.filter(work_order__in=work_orders)
+        .values('user')
+        .annotate(hours=Sum('hours'), orders=Count('work_order', distinct=True))
     )
-    for row in created:
-        add(row['created_by'], row['hours'], row['orders'])
-
-    collaborated = (
-        work_orders.filter(collaborators__isnull=False)
-        .values('collaborators')
-        .annotate(hours=Sum('machine_usages__hours'), orders=Count('id', distinct=True))
-    )
-    for row in collaborated:
-        add(row['collaborators'], row['hours'], row['orders'])
-
-    users = User.objects.in_bulk(totals.keys())
+    users = User.objects.in_bulk([row['user'] for row in totals])
     rows = [
-        {'user': users[user_id], 'hours': data['hours'], 'orders': data['orders']}
-        for user_id, data in totals.items()
-        if user_id in users
+        {'user': users[row['user']], 'hours': row['hours'], 'orders': row['orders']}
+        for row in totals
+        if row['user'] in users
     ]
     rows.sort(key=lambda row: (-row['hours'], row['user'].username))
     return rows
@@ -241,9 +242,9 @@ def time_worked(request):
         summary = [row for row in summary if row['user'] == request.user]
 
     detail = (
-        scoped.annotate(total_hours=Sum('machine_usages__hours'))
+        scoped.annotate(total_hours=Sum('worker_hours__hours'))
         .select_related('created_by')
-        .prefetch_related('collaborators', 'machine_usages__machine')
+        .prefetch_related('collaborators', 'worker_hours__user')
         .order_by('-created_at')
     )
     page_obj = Paginator(detail, HISTORY_PAGE_SIZE).get_page(request.GET.get('page'))

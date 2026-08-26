@@ -25,7 +25,7 @@
                 <td>{{ movement.material.name }} <small>({{ movement.material.sku }})</small></td>
                 <td>{{ movement.location.name }}</td>
                 <td>{{ movement.get_movement_type_display }}</td>
-                <td>{{ movement.quantity }} {{ movement.material.unit_of_measure }}</td>
+                <td>{{ movement.quantity|floatformat:1 }} {{ movement.material.unit_of_measure }}</td>
                 <td>{{ movement.created_by.username }}</td>
                 <td>{{ movement.notes|default:"—" }}</td>
             </tr>

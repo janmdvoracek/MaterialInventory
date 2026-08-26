@@ -22,6 +22,29 @@ class WorkOrder(models.Model):
         return f'WorkOrder #{self.pk} - {self.description or "untitled"}'
 
 
+class WorkerHours(models.Model):
+    """Labour hours one person spent on a transformation job.
+
+    Typed on the Transform form — one row for the person recording the job and
+    one for each collaborator they named. This is what the Hodiny tab reports;
+    `MachineUsage.hours` is machine runtime and is a separate number entirely.
+    """
+
+    work_order = models.ForeignKey(WorkOrder, on_delete=models.CASCADE, related_name='worker_hours')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='worked_hours')
+    hours = models.DecimalField(max_digits=12, decimal_places=2)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['user__username']
+        constraints = [
+            models.UniqueConstraint(fields=['work_order', 'user'], name='unique_worker_hours_per_work_order')
+        ]
+
+    def __str__(self):
+        return f'{self.user} - {self.hours}h (WorkOrder #{self.work_order_id})'
+
+
 class MachineUsage(models.Model):
     """One machine's hours logged against a single transformation job."""
 

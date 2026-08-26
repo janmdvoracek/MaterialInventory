@@ -22,7 +22,7 @@
             <tr>
                 <td>{{ usage.created_at|date:"Y-m-d H:i" }}</td>
                 <td>{{ usage.machine.name }}</td>
-                <td>{{ usage.hours }} h</td>
+                <td>{{ usage.hours|floatformat:1 }} h</td>
                 <td>{{ usage.work_order.description|default:"—" }}</td>
                 <td>{{ usage.work_order.created_by.username }}</td>
             </tr>

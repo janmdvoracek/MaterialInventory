@@ -9,7 +9,7 @@ from accounts.models import User
 from inventory.models import StockMovement
 from materials.models import Location, Machine, Material
 
-from .models import MachineUsage, WorkOrder
+from .models import MachineUsage, WorkerHours, WorkOrder
 
 
 class TransformCreateTests(TestCase):
@@ -31,10 +31,20 @@ class TransformCreateTests(TestCase):
             created_by=self.worker,
         )
 
-    def _post(self, consumed_rows, produced_rows, machine_rows=None, description='Test job', collaborators=None):
+    def _post(
+        self,
+        consumed_rows,
+        produced_rows,
+        machine_rows=None,
+        description='Test job',
+        worker_rows=None,
+        hours='1',
+    ):
         machine_rows = machine_rows or []
+        worker_rows = worker_rows or []
         data = {
             'description': description,
+            'hours': hours,
             'consumed-TOTAL_FORMS': str(max(len(consumed_rows), 1)),
             'consumed-INITIAL_FORMS': '0',
             'consumed-MIN_NUM_FORMS': '0',
@@ -47,9 +57,14 @@ class TransformCreateTests(TestCase):
             'machines-INITIAL_FORMS': '0',
             'machines-MIN_NUM_FORMS': '0',
             'machines-MAX_NUM_FORMS': '1000',
+            'workers-TOTAL_FORMS': str(max(len(worker_rows), 1)),
+            'workers-INITIAL_FORMS': '0',
+            'workers-MIN_NUM_FORMS': '0',
+            'workers-MAX_NUM_FORMS': '1000',
         }
-        if collaborators:
-            data['collaborators'] = [user.pk for user in collaborators]
+        for i, row in enumerate(worker_rows):
+            data[f'workers-{i}-user'] = row['user'].pk
+            data[f'workers-{i}-hours'] = str(row['hours'])
         for i, row in enumerate(consumed_rows):
             data[f'consumed-{i}-material'] = row['material'].pk
             data[f'consumed-{i}-location'] = row['location'].pk
@@ -197,6 +212,9 @@ class TransformCreateTests(TestCase):
         self.client.force_login(self.worker)
         data = {
             'description': 'Test job',
+            # Own hours are required, so they must be valid here or the form
+            # would fail for that reason instead of the one under test.
+            'hours': '2',
             'consumed-TOTAL_FORMS': '1',
             'consumed-INITIAL_FORMS': '0',
             'consumed-MIN_NUM_FORMS': '0',
@@ -214,6 +232,10 @@ class TransformCreateTests(TestCase):
             'machines-MAX_NUM_FORMS': '1000',
             'machines-0-machine': self.machine_a.pk,
             'machines-0-hours': '',
+            'workers-TOTAL_FORMS': '1',
+            'workers-INITIAL_FORMS': '0',
+            'workers-MIN_NUM_FORMS': '0',
+            'workers-MAX_NUM_FORMS': '1000',
         }
         response = self.client.post(reverse('transform_create'), data)
         self.assertEqual(response.status_code, 200)
@@ -224,6 +246,9 @@ class TransformCreateTests(TestCase):
         self.client.force_login(self.worker)
         data = {
             'description': 'Test job',
+            # Own hours are required, so they must be valid here or the form
+            # would fail for that reason instead of the one under test.
+            'hours': '2',
             'consumed-TOTAL_FORMS': '1',
             'consumed-INITIAL_FORMS': '0',
             'consumed-MIN_NUM_FORMS': '0',
@@ -241,55 +266,165 @@ class TransformCreateTests(TestCase):
             'machines-MAX_NUM_FORMS': '1000',
             'machines-0-machine': '',
             'machines-0-hours': '2',
+            'workers-TOTAL_FORMS': '1',
+            'workers-INITIAL_FORMS': '0',
+            'workers-MIN_NUM_FORMS': '0',
+            'workers-MAX_NUM_FORMS': '1000',
         }
         response = self.client.post(reverse('transform_create'), data)
         self.assertEqual(response.status_code, 200)
         self.assertFalse(WorkOrder.objects.exists())
         self.assertFalse(MachineUsage.objects.exists())
 
-    def test_transform_saves_collaborators(self):
+    def test_transform_records_own_hours(self):
         response = self._post(
             [],
             [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('3')}],
-            collaborators=[self.other_worker],
+            hours='6.5',
+        )
+        self.assertRedirects(response, reverse('dashboard'))
+        entry = WorkerHours.objects.get()
+        self.assertEqual(entry.user, self.worker)
+        self.assertEqual(entry.hours, Decimal('6.50'))
+        self.assertEqual(entry.work_order, WorkOrder.objects.get())
+
+    def test_transform_requires_own_hours(self):
+        response = self._post(
+            [],
+            [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('3')}],
+            hours='',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(WorkOrder.objects.exists())
+        self.assertFalse(WorkerHours.objects.exists())
+
+    def test_worker_row_records_that_persons_own_hours(self):
+        # The collaborator's hours are their own, not a copy of the creator's.
+        response = self._post(
+            [],
+            [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('3')}],
+            hours='6.5',
+            worker_rows=[{'user': self.other_worker, 'hours': Decimal('4')}],
+        )
+        self.assertRedirects(response, reverse('dashboard'))
+        self.assertEqual(WorkerHours.objects.get(user=self.worker).hours, Decimal('6.50'))
+        self.assertEqual(WorkerHours.objects.get(user=self.other_worker).hours, Decimal('4.00'))
+
+    def test_worker_row_makes_that_person_a_collaborator(self):
+        # Naming someone in an hours row is the only way to collaborate now,
+        # so this is what puts the job in their history.
+        response = self._post(
+            [],
+            [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('3')}],
+            worker_rows=[{'user': self.other_worker, 'hours': Decimal('4')}],
         )
         self.assertRedirects(response, reverse('dashboard'))
         work_order = WorkOrder.objects.get()
         self.assertEqual(list(work_order.collaborators.all()), [self.other_worker])
 
-    def test_transform_without_collaborators_leaves_it_empty(self):
+    def test_transform_without_worker_rows_leaves_collaborators_empty(self):
         response = self._post(
             [], [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('3')}]
         )
         self.assertRedirects(response, reverse('dashboard'))
         work_order = WorkOrder.objects.get()
         self.assertFalse(work_order.collaborators.exists())
+        self.assertEqual(list(work_order.worker_hours.values_list('user', flat=True)), [self.worker.pk])
 
-    def test_collaborators_field_excludes_self(self):
+    def test_same_person_named_twice_has_their_hours_combined(self):
+        # Same rule as the consumed rows — combine rather than fail, which the
+        # unique constraint on (work_order, user) would otherwise do.
+        response = self._post(
+            [],
+            [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('3')}],
+            worker_rows=[
+                {'user': self.other_worker, 'hours': Decimal('3')},
+                {'user': self.other_worker, 'hours': Decimal('1.5')},
+            ],
+        )
+        self.assertRedirects(response, reverse('dashboard'))
+        self.assertEqual(WorkerHours.objects.get(user=self.other_worker).hours, Decimal('4.50'))
+
+    def test_worker_row_missing_hours_rejected(self):
+        response = self._post(
+            [],
+            [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('3')}],
+            worker_rows=[{'user': self.other_worker, 'hours': ''}],
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(WorkOrder.objects.exists())
+        self.assertFalse(WorkerHours.objects.exists())
+
+    def test_worker_row_missing_person_rejected(self):
+        self.client.force_login(self.worker)
+        data = {
+            'description': 'Test job',
+            'hours': '2',
+            'consumed-TOTAL_FORMS': '1',
+            'consumed-INITIAL_FORMS': '0',
+            'consumed-MIN_NUM_FORMS': '0',
+            'consumed-MAX_NUM_FORMS': '1000',
+            'produced-TOTAL_FORMS': '1',
+            'produced-INITIAL_FORMS': '0',
+            'produced-MIN_NUM_FORMS': '0',
+            'produced-MAX_NUM_FORMS': '1000',
+            'produced-0-material': self.material_finished.pk,
+            'produced-0-location': self.location.pk,
+            'produced-0-quantity': '3',
+            'machines-TOTAL_FORMS': '1',
+            'machines-INITIAL_FORMS': '0',
+            'machines-MIN_NUM_FORMS': '0',
+            'machines-MAX_NUM_FORMS': '1000',
+            'workers-TOTAL_FORMS': '1',
+            'workers-INITIAL_FORMS': '0',
+            'workers-MIN_NUM_FORMS': '0',
+            'workers-MAX_NUM_FORMS': '1000',
+            'workers-0-user': '',
+            'workers-0-hours': '4',
+        }
+        response = self.client.post(reverse('transform_create'), data)
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(WorkOrder.objects.exists())
+        self.assertFalse(WorkerHours.objects.exists())
+
+    def test_worker_field_excludes_self(self):
         self.client.force_login(self.worker)
         response = self.client.get(reverse('transform_create'))
-        choices = list(response.context['order_form'].fields['collaborators'].queryset)
+        choices = list(response.context['worker_formset'].forms[0].fields['user'].queryset)
         self.assertNotIn(self.worker, choices)
         self.assertIn(self.other_worker, choices)
 
-    def test_worker_collaborators_field_excludes_managers_and_admins(self):
+    def test_worker_field_excludes_managers_and_admins_from_workers(self):
         manager = User.objects.create_user(username='manager', password='pw', role=User.Role.MANAGER)
         admin = User.objects.create_user(username='admin', password='pw', role=User.Role.ADMIN)
         self.client.force_login(self.worker)
         response = self.client.get(reverse('transform_create'))
-        choices = list(response.context['order_form'].fields['collaborators'].queryset)
+        choices = list(response.context['worker_formset'].forms[0].fields['user'].queryset)
         self.assertNotIn(manager, choices)
         self.assertNotIn(admin, choices)
         self.assertIn(self.other_worker, choices)
 
-    def test_manager_collaborators_field_includes_managers_and_admins(self):
+    def test_worker_field_includes_managers_and_admins_for_a_manager(self):
         manager = User.objects.create_user(username='manager', password='pw', role=User.Role.MANAGER)
         other_manager = User.objects.create_user(username='other_manager', password='pw', role=User.Role.MANAGER)
         self.client.force_login(manager)
         response = self.client.get(reverse('transform_create'))
-        choices = list(response.context['order_form'].fields['collaborators'].queryset)
+        choices = list(response.context['worker_formset'].forms[0].fields['user'].queryset)
         self.assertIn(other_manager, choices)
         self.assertIn(self.worker, choices)
+
+    def test_worker_cannot_log_hours_for_a_manager_via_post(self):
+        # The queryset restriction has to hold against a hand-crafted POST, not
+        # just a rendered dropdown.
+        manager = User.objects.create_user(username='manager', password='pw', role=User.Role.MANAGER)
+        response = self._post(
+            [],
+            [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('3')}],
+            worker_rows=[{'user': manager, 'hours': Decimal('4')}],
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(WorkOrder.objects.exists())
+        self.assertFalse(WorkerHours.objects.exists())
 
     def test_stock_shortfall_rolls_back_machine_usage_too(self):
         response = self._post(
@@ -302,6 +437,17 @@ class TransformCreateTests(TestCase):
         self.assertFalse(MachineUsage.objects.exists())
         self.machine_a.refresh_from_db()
         self.assertEqual(self.machine_a.total_hours, Decimal('0'))
+
+    def test_stock_shortfall_rolls_back_worker_hours_too(self):
+        response = self._post(
+            [{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('5')}],
+            [],
+            hours='6',
+            worker_rows=[{'user': self.other_worker, 'hours': Decimal('4')}],
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(WorkOrder.objects.exists())
+        self.assertFalse(WorkerHours.objects.exists())
 
 
 class MachineUsageModelTests(TestCase):
@@ -372,6 +518,12 @@ class WorkOrderAdminTests(TestCase):
             'machine_usages-MAX_NUM_FORMS': '1000',
             'machine_usages-0-machine': self.machine.pk,
             'machine_usages-0-hours': '3',
+            'worker_hours-TOTAL_FORMS': '1',
+            'worker_hours-INITIAL_FORMS': '0',
+            'worker_hours-MIN_NUM_FORMS': '0',
+            'worker_hours-MAX_NUM_FORMS': '1000',
+            'worker_hours-0-user': self.admin_user.pk,
+            'worker_hours-0-hours': '7',
         }
         response = self.client.post(reverse('admin:workorders_workorder_add'), data)
         self.assertEqual(response.status_code, 302)
@@ -391,6 +543,11 @@ class WorkOrderAdminTests(TestCase):
         self.assertEqual(usage.hours, Decimal('3'))
         self.machine.refresh_from_db()
         self.assertEqual(self.machine.total_hours, Decimal('3'))
+
+        # Labour hours are correctable from the admin as well as the form.
+        entry = WorkerHours.objects.get(work_order=work_order)
+        self.assertEqual(entry.user, self.admin_user)
+        self.assertEqual(entry.hours, Decimal('7'))
 
 
 class MachineDashboardTests(TestCase):
@@ -413,7 +570,7 @@ class MachineDashboardTests(TestCase):
         self.client.force_login(self.worker)
         response = self.client.get(reverse('machine_dashboard'))
         # Comma decimal separator: template output is localised under cs.
-        self.assertContains(response, '12,50 h')
+        self.assertContains(response, '12,5 h')
 
 
 class MachineUsageHistoryTests(TestCase):
@@ -499,12 +656,20 @@ class TimeWorkedTests(TestCase):
         self.machine = Machine.objects.create(name='Crusher A')
         self.other_machine = Machine.objects.create(name='Screener B')
 
-    def _job(self, creator, hours, collaborators=(), machine=None):
+    def _job(self, creator, hours, collaborators=(), machine_hours=None, machine=None):
+        """A job with `hours` of labour by `creator`, plus `(user, hours)` pairs
+        for anyone who worked it alongside them. `machine_hours` is machine
+        runtime, which is a separate figure and must not reach this tab."""
         work_order = WorkOrder.objects.create(created_by=creator, description='job')
-        if collaborators:
-            work_order.collaborators.set(collaborators)
         if hours is not None:
-            MachineUsage.objects.create(work_order=work_order, machine=machine or self.machine, hours=hours)
+            WorkerHours.objects.create(work_order=work_order, user=creator, hours=hours)
+        for user, user_hours in collaborators:
+            work_order.collaborators.add(user)
+            WorkerHours.objects.create(work_order=work_order, user=user, hours=user_hours)
+        if machine_hours is not None:
+            MachineUsage.objects.create(
+                work_order=work_order, machine=machine or self.machine, hours=machine_hours
+            )
         return work_order
 
     def _summary_for(self, response, user):
@@ -534,21 +699,29 @@ class TimeWorkedTests(TestCase):
         response = self.client.get(reverse('time_worked'))
         self.assertEqual([row['user'] for row in response.context['summary']], [self.worker])
 
-    def test_collaborator_is_credited_full_job_hours(self):
-        self._job(self.worker, Decimal('3'), collaborators=[self.other_worker])
+    def test_each_person_is_credited_their_own_typed_hours(self):
+        self._job(self.worker, Decimal('3'), collaborators=[(self.other_worker, Decimal('2'))])
         self.client.force_login(self.manager)
         response = self.client.get(reverse('time_worked'))
         self.assertEqual(self._summary_for(response, self.worker)['hours'], Decimal('3.00'))
-        self.assertEqual(self._summary_for(response, self.other_worker)['hours'], Decimal('3.00'))
+        self.assertEqual(self._summary_for(response, self.other_worker)['hours'], Decimal('2.00'))
+
+    def test_machine_hours_do_not_reach_the_summary(self):
+        # A 3-hour crushing run that took the operator 5 hours of labour: this
+        # tab reports the 5, and nothing here is derived from machine runtime.
+        self._job(self.worker, Decimal('5'), machine_hours=Decimal('3'))
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('time_worked'))
+        self.assertEqual(self._summary_for(response, self.worker)['hours'], Decimal('5.00'))
 
     def test_collaborator_summary_does_not_leak_creator_total(self):
         # The job was created by someone else, so the creator must not show up
         # on the collaborating worker's screen.
-        self._job(self.other_worker, Decimal('3'), collaborators=[self.worker])
+        self._job(self.other_worker, Decimal('3'), collaborators=[(self.worker, Decimal('2'))])
         self.client.force_login(self.worker)
         response = self.client.get(reverse('time_worked'))
         self.assertEqual([row['user'] for row in response.context['summary']], [self.worker])
-        self.assertEqual(self._summary_for(response, self.worker)['hours'], Decimal('3.00'))
+        self.assertEqual(self._summary_for(response, self.worker)['hours'], Decimal('2.00'))
 
     def test_creator_hours_not_multiplied_by_collaborator_count(self):
         # Two collaborators make the participation filter's M2M join return the
@@ -556,19 +729,29 @@ class TimeWorkedTests(TestCase):
         # creator with 6 hours for one 3-hour job (and list it twice below).
         # `time_worked` re-queries by pk to avoid it; drop that and this fails.
         third_worker = User.objects.create_user(username='third', password='pw', role=User.Role.WORKER)
-        work_order = self._job(self.worker, Decimal('3'), collaborators=[self.other_worker, third_worker])
+        work_order = self._job(
+            self.worker,
+            Decimal('3'),
+            collaborators=[(self.other_worker, Decimal('1')), (third_worker, Decimal('1'))],
+        )
         self.client.force_login(self.worker)
         response = self.client.get(reverse('time_worked'))
         row = self._summary_for(response, self.worker)
         self.assertEqual(row['hours'], Decimal('3.00'))
         self.assertEqual(row['orders'], 1)
-        self.assertEqual([o.pk for o in response.context['page_obj'].object_list], [work_order.pk])
+        listed = response.context['page_obj'].object_list
+        self.assertEqual([o.pk for o in listed], [work_order.pk])
+        self.assertEqual(listed[0].total_hours, Decimal('5.00'))
 
     def test_manager_filtering_to_one_worker_does_not_multiply_hours(self):
         # Same join, reached the other way: the `worker` filter is the manager's
         # route through _participation_filter.
         third_worker = User.objects.create_user(username='third', password='pw', role=User.Role.WORKER)
-        work_order = self._job(self.worker, Decimal('3'), collaborators=[self.other_worker, third_worker])
+        work_order = self._job(
+            self.worker,
+            Decimal('3'),
+            collaborators=[(self.other_worker, Decimal('1')), (third_worker, Decimal('1'))],
+        )
         self.client.force_login(self.manager)
         response = self.client.get(reverse('time_worked'), {'worker': self.worker.pk})
         self.assertEqual(self._summary_for(response, self.worker)['hours'], Decimal('3.00'))
@@ -582,22 +765,16 @@ class TimeWorkedTests(TestCase):
         users = {row['user'] for row in response.context['summary']}
         self.assertEqual(users, {self.worker, self.other_worker})
 
-    def test_hours_sum_across_multiple_machines_on_one_job(self):
-        work_order = self._job(self.worker, Decimal('2'))
-        MachineUsage.objects.create(work_order=work_order, machine=self.other_machine, hours=Decimal('1.5'))
+    def test_job_without_worker_hours_is_absent_from_the_summary(self):
+        # Nothing on the Transform form can produce this — only a work order
+        # created in the admin with no hours rows on it.
+        work_order = self._job(self.worker, None)
         self.client.force_login(self.worker)
         response = self.client.get(reverse('time_worked'))
-        row = self._summary_for(response, self.worker)
-        self.assertEqual(row['hours'], Decimal('3.50'))
-        self.assertEqual(row['orders'], 1)
-
-    def test_job_without_machine_usage_counts_zero_hours(self):
-        self._job(self.worker, None)
-        self.client.force_login(self.worker)
-        response = self.client.get(reverse('time_worked'))
-        row = self._summary_for(response, self.worker)
-        self.assertEqual(row['hours'], Decimal('0'))
-        self.assertEqual(row['orders'], 1)
+        self.assertEqual(response.context['summary'], [])
+        # It still belongs to the worker, so the job itself stays listed.
+        self.assertEqual([o.pk for o in response.context['page_obj'].object_list], [work_order.pk])
+        self.assertIsNone(response.context['page_obj'].object_list[0].total_hours)
 
     def test_worker_filter_hidden_from_worker(self):
         self.client.force_login(self.worker)
@@ -673,6 +850,7 @@ class EmptyLabelTests(TestCase):
         self.assertContains(response, 'Materiál')
         self.assertContains(response, 'Lokalita')
         self.assertContains(response, 'Stroj')
+        self.assertContains(response, 'Pracovník')
 
     def test_filter_forms_offer_all_in_czech(self):
         self.client.force_login(self.manager)
