@@ -28,5 +28,7 @@
 {% else %}
 <p>Zatím nejsou evidovány žádné zásoby.</p>
 {% endif %}
-<p><a href="{% url 'movement_history' %}">Zobrazit celou historii →</a></p>
+{% if user.is_manager_or_admin %}
+    <p><a href="{% url 'movement_history' %}">Zobrazit celou historii →</a></p>
+{% endif %}
 {% endblock %}

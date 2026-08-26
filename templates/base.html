@@ -166,12 +166,14 @@
     {% if user.is_authenticated %}
     <nav class="bottom">
         <a href="{% url 'dashboard' %}">Sklad</a>
-        <a href="{% url 'receipt_create' %}">Příjem</a>
-        <a href="{% url 'shipment_create' %}">Výdej</a>
         <a href="{% url 'transform_create' %}">Zpracování</a>
-        <a href="{% url 'machine_dashboard' %}">Stroje</a>
         <a href="{% url 'time_worked' %}">Hodiny</a>
-        {% if user.is_manager_or_admin %}<a href="{% url 'adjustment_create' %}">Úprava</a>{% endif %}
+        {% if user.is_manager_or_admin %}
+            <a href="{% url 'receipt_create' %}">Příjem</a>
+            <a href="{% url 'shipment_create' %}">Výdej</a>
+            <a href="{% url 'machine_dashboard' %}">Stroje</a>
+            <a href="{% url 'adjustment_create' %}">Úprava</a>
+        {% endif %}
     </nav>
     {% endif %}
 </body>

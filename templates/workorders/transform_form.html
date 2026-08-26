@@ -14,7 +14,6 @@
         {% for error in order_form.hours.errors %}<p class="messages error">{{ error }}</p>{% endfor %}
 
         <h2>Spolupracovníci</h2>
-        <p><small>Pracovníci, kteří se na zakázce podíleli s vámi, a hodiny, které odpracovali. Zakázku uvidí ve své historii.</small></p>
         {{ worker_formset.management_form }}
         {% for form in worker_formset %}
             <div class="item-row">
