@@ -42,7 +42,7 @@ class ShipmentForm(forms.Form):
             )
             if quantity > available:
                 raise forms.ValidationError(
-                    f'K dispozici je pouze {available} {material.unit_of_measure} materiálu {material} na lokalitě {location}.'
+                    f'K dispozici je pouze {available:.1f} {material.unit_of_measure} materiálu {material} na lokalitě {location}.'
                 )
         return cleaned_data
 
@@ -122,6 +122,6 @@ class AdjustmentForm(forms.Form):
             )
             if quantity > available:
                 raise forms.ValidationError(
-                    f'K dispozici je pouze {available} {material.unit_of_measure} materiálu {material} na lokalitě {location}.'
+                    f'K dispozici je pouze {available:.1f} {material.unit_of_measure} materiálu {material} na lokalitě {location}.'
                 )
         return cleaned_data

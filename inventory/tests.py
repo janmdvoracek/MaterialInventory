@@ -758,7 +758,7 @@ class DashboardTemplateTests(InventoryTestCase):
         self.assertContains(response, '(SKU1)')
         self.assertContains(response, 'Main Depot')
         # Czech locale renders the decimal separator as a comma.
-        self.assertContains(response, '6,000 pcs')
+        self.assertContains(response, '6,0 pcs')
 
     def test_dashboard_flags_negative_stock(self):
         # Styling that exists only in the template — no context value says

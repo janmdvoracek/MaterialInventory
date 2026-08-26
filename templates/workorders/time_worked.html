@@ -29,15 +29,8 @@
             <tr><td colspan="3">Žádné odpracované hodiny neodpovídají zadaným filtrům.</td></tr>
         {% endfor %}
         </tbody>
-        {% if summary|length > 1 %}
-        <tfoot>
-            <tr><th>Celkem</th><th>{{ total_hours }} h</th><th></th></tr>
-        </tfoot>
-        {% endif %}
     </table>
     </div>
-    <small>Hodiny se počítají ze strojů zaznamenaných u zpracování. Každý účastník zakázky
-    má započtené celé její hodiny, takže při spolupráci je součet vyšší než motohodiny strojů.</small>
 </div>
 <div class="card">
     <h2>Detail zakázek</h2>
