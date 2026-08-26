@@ -1,0 +1,93 @@
+#  Czech overrides for strings Django itself has not translated.
+#
+#  Everything in here is a *Django* msgid, not app copy — the app's own text is
+#  hardcoded Czech in the source. These are the leftovers: strings added to
+#  Django recently enough that the `cs` catalogs it ships have no entry for
+#  them, so `LANGUAGE_CODE = 'cs'` leaves them in English. LOCALE_PATHS puts
+#  this catalog ahead of Django's own, which is the supported way to patch them.
+#
+#  After editing this file you MUST recompile it — the runtime reads only the
+#  compiled .mo, and both are committed:
+#
+#      python manage.py compilemessages -l cs --ignore=.venv
+#
+#  Keep the --ignore: compilemessages walks the whole tree from the project
+#  root, and without it recompiles every .po inside the virtualenv too.
+#
+#  To find newly-untranslated strings after a Django upgrade, render the admin
+#  and look for English, or check a msgid with:
+#
+#      from django.utils.translation import gettext as _; _('some msgid')
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: MaterialInventory\n"
+"Report-Msgid-Bugs-To: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: cs\n"
+"Plural-Forms: nplurals=3; plural=(n==1) ? 0 : (n>=2 && n<=4) ? 1 : 2;\n"
+
+#: django/db/models/fields/__init__.py
+msgid "- Select an option -"
+msgstr "Vyberte možnost"
+
+#: django/contrib/admin/templates/admin/date_hierarchy.html
+msgid "Filter by %(field_name)s"
+msgstr "Filtrovat podle: %(field_name)s"
+
+#: django/contrib/admin/templates/admin/search_form.html
+msgid "Search %(name)s"
+msgstr "Hledat – %(name)s"
+
+#: django/contrib/admin/templates/admin/pagination.html
+msgid "Pagination %(name)s"
+msgstr "Stránkování – %(name)s"
+
+#: django/contrib/admin/templates/admin/pagination.html
+msgid "Pagination %(name)s entries"
+msgstr "Stránkování záznamů – %(name)s"
+
+#: django/contrib/admin/templates/admin/auth/user/add_form.html
+msgid ""
+"After you’ve created a user, you’ll be able to edit more user options."
+msgstr "Po vytvoření uživatele budete moci upravit další nastavení."
+
+#: django/contrib/admin/templates/admin/delete_confirmation.html
+msgid ""
+"Are you sure you want to delete the %(object_name)s “%(escaped_object)s”? "
+"All of the following related items will be deleted:"
+msgstr ""
+"Opravdu chcete odstranit %(object_name)s „%(escaped_object)s“? Odstraněny "
+"budou i všechny následující související položky:"
+
+#: django/contrib/admin/templates/admin/delete_confirmation.html
+msgid ""
+"Deleting the %(object_name)s “%(escaped_object)s” would require deleting the "
+"following protected related objects:"
+msgstr ""
+"Odstranění %(object_name)s „%(escaped_object)s“ by vyžadovalo odstranění "
+"následujících chráněných souvisejících objektů:"
+
+#: django/contrib/admin/templates/admin/delete_confirmation.html
+msgid ""
+"Deleting the %(object_name)s “%(escaped_object)s” would result in deleting "
+"related objects, but your account doesn't have permission to delete the "
+"following types of objects:"
+msgstr ""
+"Odstranění %(object_name)s „%(escaped_object)s“ by vedlo k odstranění "
+"souvisejících objektů, ale váš účet nemá oprávnění odstraňovat následující "
+"typy objektů:"
+
+#: django/contrib/admin/templates/admin/login.html
+msgid "In case you’ve forgotten, you are:"
+msgstr "Pro připomenutí — jste přihlášeni jako:"
+
+#: django/contrib/admin/templates/admin/login.html
+msgid ""
+"You are authenticated as %(username)s, but are not authorized to\n"
+"    access this page. Would you like to login to a different account?"
+msgstr ""
+"Jste přihlášeni jako %(username)s, ale nemáte oprávnění zobrazit tuto\n"
+"    stránku. Chcete se přihlásit pod jiným účtem?"

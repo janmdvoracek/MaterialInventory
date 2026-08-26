@@ -127,6 +127,13 @@ AUTH_PASSWORD_VALIDATORS = [
 # is fixed rather than negotiated from the browser's Accept-Language.
 LANGUAGE_CODE = 'cs'
 
+# Czech overrides for the handful of *Django* strings whose `cs` translation
+# Django doesn't ship (the admin's delete confirmation, the date-hierarchy
+# label, `- Select an option -`, ...). LOCALE_PATHS is searched ahead of the
+# app catalogs, so entries here win. See locale/cs/LC_MESSAGES/django.po — the
+# runtime reads the compiled .mo next to it, so edits need `compilemessages`.
+LOCALE_PATHS = [BASE_DIR / 'locale']
+
 # Depot-local time. USE_TZ keeps everything stored as UTC; this only affects
 # how datetimes render and how `__date` lookups (the history date filters) pick
 # their day boundaries.

@@ -3,54 +3,69 @@ from decimal import Decimal
 from django.db import models
 
 RETIRE_HELP_TEXT = (
-    "Uncheck to retire instead of deleting — it disappears from every form's dropdown "
-    '(Receive/Ship/Adjust/Transform) but keeps its history. Deleting is blocked once it '
-    "has any stock movement or usage history, precisely so that history can't vanish."
+    'Odškrtnutím záznam vyřadíte místo smazání — zmizí z nabídek ve všech formulářích '
+    '(Příjem/Výdej/Úprava/Zpracování), ale historie zůstane zachována. Smazání je '
+    'zablokováno, jakmile má záznam nějaký skladový pohyb nebo využití, právě proto, '
+    'aby historie nemohla zmizet.'
 )
 
 
 class Location(models.Model):
-    name = models.CharField(max_length=100, unique=True)
-    is_active = models.BooleanField(default=True, help_text=RETIRE_HELP_TEXT)
+    name = models.CharField(max_length=100, unique=True, verbose_name='název')
+    is_active = models.BooleanField(default=True, help_text=RETIRE_HELP_TEXT, verbose_name='aktivní')
 
     class Meta:
         ordering = ['name']
+        verbose_name = 'lokalita'
+        verbose_name_plural = 'lokality'
 
     def __str__(self):
         return self.name
 
 
 class Material(models.Model):
-    sku = models.CharField(max_length=50, unique=True)
-    name = models.CharField(max_length=200)
-    unit_of_measure = models.CharField(max_length=20, help_text='e.g. kg, m, pcs')
-    category = models.CharField(max_length=100, blank=True)
-    is_active = models.BooleanField(default=True, help_text=RETIRE_HELP_TEXT)
+    sku = models.CharField(max_length=50, unique=True, verbose_name='kód (SKU)')
+    name = models.CharField(max_length=200, verbose_name='název')
+    unit_of_measure = models.CharField(max_length=20, help_text='např. kg, m, ks, t', verbose_name='měrná jednotka')
+    category = models.CharField(max_length=100, blank=True, verbose_name='kategorie')
+    is_active = models.BooleanField(default=True, help_text=RETIRE_HELP_TEXT, verbose_name='aktivní')
     track_stock = models.BooleanField(
         default=True,
         help_text=(
-            'If off, this material can be shipped/consumed/decreased without a stock-sufficiency check '
-            "(e.g. an on-site resource like excavated soil that's never formally received)."
+            'Pokud je vypnuto, lze tento materiál vydat/spotřebovat/snížit bez kontroly dostatku zásoby '
+            '(např. zdroj přímo na místě, jako je vytěžená zemina, který se nikdy formálně nepřijímá).'
         ),
+        verbose_name='sledovat zásobu',
     )
 
     class Meta:
         ordering = ['name']
+        verbose_name = 'materiál'
+        verbose_name_plural = 'materiály'
 
     def __str__(self):
         return f'{self.name} ({self.sku})'
 
 
 class Machine(models.Model):
-    name = models.CharField(max_length=100, unique=True)
-    is_active = models.BooleanField(default=True, help_text=RETIRE_HELP_TEXT)
-    total_hours = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0'))
+    name = models.CharField(max_length=100, unique=True, verbose_name='název')
+    is_active = models.BooleanField(default=True, help_text=RETIRE_HELP_TEXT, verbose_name='aktivní')
+    total_hours = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0'), verbose_name='motohodiny celkem'
+    )
     hourly_rate = models.DecimalField(
-        max_digits=10, decimal_places=2, null=True, blank=True, help_text='Kč/hour, for reference only.'
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text='Kč/hod, pouze pro orientaci.',
+        verbose_name='hodinová sazba',
     )
 
     class Meta:
         ordering = ['name']
+        verbose_name = 'stroj'
+        verbose_name_plural = 'stroje'
 
     def __str__(self):
         return self.name

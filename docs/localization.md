@@ -7,10 +7,13 @@ This is achieved two ways at once, and the split matters.
 |---|---|
 | **App copy** — labels, buttons, messages, choice labels, export headers | **Hardcoded Czech strings** in the source |
 | **Framework strings** — admin chrome, `contrib.auth`, validation errors | `LANGUAGE_CODE = 'cs'`, using the `.mo` catalogs Django ships |
+| **Framework strings Django never translated** | `LOCALE_PATHS` → `locale/cs/LC_MESSAGES/django.po`, holding Django msgids only |
 
-The two are complementary, not alternatives. `LANGUAGE_CODE` is what turns
+The three are complementary, not alternatives. `LANGUAGE_CODE` is what turns
 `This field is required.` into `Toto pole je vyžadováno.` without anyone writing
-it; hardcoding covers everything the app says in its own voice.
+it; hardcoding covers everything the app says in its own voice; the local
+catalog patches the dozen strings Django added faster than its Czech
+translators kept up with. See [the admin](#the-admin) below.
 
 > **Keep new user-facing text hardcoded.** Do not introduce `{% trans %}` or
 > `gettext` for app copy. A half-migrated i18n setup is worse than either
@@ -129,11 +132,61 @@ So the split is not an oversight. Quantities are `Decimal`s from the database
 and cannot carry an injection payload; free text can. Route new columns through
 `_csv_safe` unless they are numbers straight out of the ORM.
 
-## Not localized
+## The admin
 
-Model field `verbose_name`s are still auto-derived English, so the Django admin
-shows Czech chrome over English field labels — `Movement type`, `Created at`.
+The Django admin is Czech as well, and it takes three mechanisms to get there.
+A new model or ModelAdmin needs all three, or it will show English in one spot.
 
-This is acceptable because the admin is a back office for `ADMIN`-role users
-only; depot workers never see it. Adding `verbose_name='Typ pohybu'` and so on
-would be a straightforward improvement if that ever changes.
+**1. App labels.** Each `AppConfig` carries a `verbose_name` — `Katalog`,
+`Sklad`, `Zakázky`, `Uživatelé`. Without it the admin index groups models under
+the Python package name.
+
+**2. Model and field names.** Every `Meta` sets `verbose_name` and
+`verbose_name_plural`, and every field sets a lowercase `verbose_name` (Django
+capitalizes it where it needs to). Note that this is a **migration**:
+`makemigrations` emits an `AlterField` for a label-only change, and CI's
+`makemigrations --check` step fails if it is not committed.
+
+**3. `LOCALE_PATHS`.** Some strings cannot be reached by either of the above,
+because they are Django's own and the `cs` catalogs Django ships have no entry
+for them — the msgid falls straight back to English no matter what
+`LANGUAGE_CODE` says. `locale/cs/LC_MESSAGES/django.po` supplies them:
+
+| String | Where it shows |
+|---|---|
+| `- Select an option -` | the blank option in every admin `<select>` |
+| `Filter by %(field_name)s` | the `date_hierarchy` bar on the movement list |
+| `Are you sure you want to delete the %(object_name)s …` | delete confirmation |
+| `After you’ve created a user, …` | the user add form |
+| `Search %(name)s`, `Pagination %(name)s` | screen-reader-only headings |
+
+This is the one place the project uses the i18n framework. It stays narrow on
+purpose: **Django msgids only.** App copy is still hardcoded, and putting an
+app string in here would restart exactly the half-migrated split the rule above
+exists to prevent.
+
+> **The runtime reads the compiled `.mo`, not the `.po`.** Both are committed.
+> Editing the `.po` without recompiling changes nothing, silently:
+>
+> ```bash
+> python manage.py compilemessages -l cs --ignore=.venv
+> ```
+>
+> Keep the `--ignore`: `compilemessages` walks the tree from the project root
+> and will otherwise recompile every catalog inside the virtualenv too.
+
+`AdminCzechTests` in `accounts/tests.py` covers all three layers, and fails if
+the `.mo` is missing or stale — so a forgotten `compilemessages` is caught by
+CI rather than by a manager seeing English.
+
+### What LOCALE_PATHS cannot fix
+
+`filter_horizontal` builds its labels in JavaScript from the `djangojs` catalog,
+and the admin's `jsi18n` view loads only `django.contrib.admin`'s own locale
+directories — it ignores `LOCALE_PATHS` entirely. Three of those strings
+("Choose %s by selecting them and then select the "Choose" arrow button.") have
+no Czech translation, so the widget renders half-English.
+
+`WorkOrderAdmin` therefore uses the plain multi-select for `collaborators`,
+whose help text *is* translated. Don't reintroduce `filter_horizontal` without
+re-checking that.

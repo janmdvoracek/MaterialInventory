@@ -98,6 +98,23 @@ bare name is always present and the assertion would pass vacuously.
 fails if any `ModelChoiceField` forgets its `empty_label`. See
 [localization.md](localization.md#every-modelchoicefield-needs-an-empty_label).
 
+**`AdminCzechTests`** (in `accounts/tests.py`) fails if the admin drifts back
+to English — including if `locale/cs/LC_MESSAGES/django.mo` is stale. See
+[localization.md](localization.md#the-admin).
+
+## Translations
+
+Only Django's own untranslated strings live in a catalog; app copy is hardcoded
+Czech. After editing `locale/cs/LC_MESSAGES/django.po`, recompile — the runtime
+reads the `.mo`, and both files are committed:
+
+```bash
+python manage.py compilemessages -l cs --ignore=.venv
+```
+
+Requires GNU gettext (`msgfmt`) locally. The Docker image does not need it,
+because the compiled `.mo` ships in the repo rather than being built.
+
 ## Linting
 
 ```bash

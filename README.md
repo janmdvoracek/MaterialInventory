@@ -128,6 +128,7 @@ workorders/   Transform jobs, machine usage, time-worked reporting
 templates/    All HTML; base.html holds the site CSS and bottom nav
 static/       Source static assets (tracked; NOT the collectstatic output)
 seed_data/    CSV templates — real data files are gitignored
+locale/       Czech overrides for Django's own untranslated strings (.po + .mo)
 docs/         Documentation (see below)
 ```
 

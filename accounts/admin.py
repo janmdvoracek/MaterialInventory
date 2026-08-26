@@ -25,9 +25,9 @@ class CustomUserAdmin(UserAdmin):
     )
     fieldsets = (
         (None, {'fields': ('username', 'password')}),
-        ('Personal info', {'fields': ('first_name', 'last_name', 'email')}),
+        ('Osobní údaje', {'fields': ('first_name', 'last_name', 'email')}),
         ('Role', {'fields': ('role', 'is_active')}),
-        ('Important dates', {'fields': ('last_login', 'date_joined')}),
+        ('Důležitá data', {'fields': ('last_login', 'date_joined')}),
     )
     list_display = ('username', 'first_name', 'last_name', 'role', 'is_active')
     list_filter = ('role', 'is_active')

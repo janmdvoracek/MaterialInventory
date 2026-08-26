@@ -4,6 +4,12 @@ from django.urls import include, path, reverse_lazy
 
 from accounts.forms import CzechAuthenticationForm, CzechPasswordChangeForm
 
+# The rest of the admin chrome comes from Django's own `cs` catalogs via
+# LANGUAGE_CODE; these three strings are ours, so they have to be set by hand.
+admin.site.site_header = 'Petrokámen – správa'
+admin.site.site_title = 'Petrokámen'
+admin.site.index_title = 'Správa dat'
+
 urlpatterns = [
     path('admin/', admin.site.urls),
     path(

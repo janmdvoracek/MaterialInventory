@@ -4,11 +4,11 @@ from django.db import models
 
 class User(AbstractUser):
     class Role(models.TextChoices):
-        WORKER = 'WORKER', 'Worker'
-        MANAGER = 'MANAGER', 'Manager'
-        ADMIN = 'ADMIN', 'Admin'
+        WORKER = 'WORKER', 'Pracovník'
+        MANAGER = 'MANAGER', 'Vedoucí'
+        ADMIN = 'ADMIN', 'Správce'
 
-    role = models.CharField(max_length=20, choices=Role.choices, default=Role.WORKER)
+    role = models.CharField(max_length=20, choices=Role.choices, default=Role.WORKER, verbose_name='role')
 
     @property
     def is_manager_or_admin(self):

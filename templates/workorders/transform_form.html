@@ -3,7 +3,6 @@
 {% block content %}
 <div class="card">
     <h1>Zaznamenat zpracování</h1>
-    <p>Uveďte, co bylo spotřebováno a co bylo vyrobeno v rámci této zakázky.</p>
     <form method="post">
         {% csrf_token %}
         <label for="{{ order_form.description.id_for_label }}">Popis</label>
@@ -14,7 +13,7 @@
         <small>{{ order_form.hours.help_text }}</small>
         {% for error in order_form.hours.errors %}<p class="messages error">{{ error }}</p>{% endfor %}
 
-        <h2>Spolupracovníci a hodiny</h2>
+        <h2>Spolupracovníci</h2>
         <p><small>Pracovníci, kteří se na zakázce podíleli s vámi, a hodiny, které odpracovali. Zakázku uvidí ve své historii.</small></p>
         {{ worker_formset.management_form }}
         {% for form in worker_formset %}
@@ -25,7 +24,7 @@
             {% for error in form.non_field_errors %}<p class="messages error">{{ error }}</p>{% endfor %}
         {% endfor %}
 
-        <h2>Spotřebováno tun</h2>
+        <h2>Spotřebováno</h2>
         {{ consumed_formset.management_form }}
         {% for form in consumed_formset %}
             <div class="item-row">
@@ -36,7 +35,7 @@
             {% for error in form.non_field_errors %}<p class="messages error">{{ error }}</p>{% endfor %}
         {% endfor %}
 
-        <h2>Vyrobeno tun</h2>
+        <h2>Vyrobeno</h2>
         {{ produced_formset.management_form }}
         {% for form in produced_formset %}
             <div class="item-row">
@@ -47,7 +46,7 @@
             {% for error in form.non_field_errors %}<p class="messages error">{{ error }}</p>{% endfor %}
         {% endfor %}
 
-        <h2>Použité stroje a motohodiny</h2>
+        <h2>Použité stroje</h2>
         {{ machine_formset.management_form }}
         {% for form in machine_formset %}
             <div class="item-row">

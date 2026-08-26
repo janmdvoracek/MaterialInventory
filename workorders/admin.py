@@ -30,7 +30,10 @@ class WorkerHoursInline(admin.TabularInline):
 class WorkOrderAdmin(admin.ModelAdmin):
     list_display = ('id', 'created_at', 'created_by', 'description')
     readonly_fields = ('created_by',)
-    filter_horizontal = ('collaborators',)
+    # Deliberately not `filter_horizontal`: that widget builds its labels in
+    # JavaScript from strings ("Choose %s by selecting them...") that Django's
+    # Czech catalogs don't translate, so it renders half-English. The plain
+    # multi-select is fully Czech and the staff list is short.
     inlines = [MovementInline, MachineUsageInline, WorkerHoursInline]
 
     def save_model(self, request, obj, form, change):

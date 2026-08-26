@@ -29,7 +29,7 @@ class WorkOrderForm(forms.Form):
         max_digits=12,
         decimal_places=2,
         label='Moje hodiny',
-        help_text='Kolik hodin jste na této zakázce odpracovali vy.',
+        widget=forms.NumberInput(attrs={'placeholder': 'Odpracované hodiny'}),
     )
 
 
