@@ -9,7 +9,7 @@ class WorkOrderForm(forms.Form):
         required=False,
         max_length=255,
         label='Popis',
-        widget=forms.TextInput(attrs={'placeholder': 'např. Řezání ocelových tyčí na konzoly'}),
+        widget=forms.TextInput(attrs={'placeholder': 'Popis provedené práce (volitelné)'}),
     )
     collaborators = forms.ModelMultipleChoiceField(
         queryset=User.objects.none(),
@@ -39,13 +39,13 @@ class MovementItemForm(forms.Form):
         queryset=Material.objects.filter(is_active=True),
         required=False,
         label='Materiál',
-        empty_label='Vyberte materiál',
+        empty_label='Materiál',
     )
     location = forms.ModelChoiceField(
         queryset=Location.objects.filter(is_active=True),
         required=False,
         label='Lokalita',
-        empty_label='Vyberte lokalitu',
+        empty_label='Lokalita',
     )
     quantity = forms.DecimalField(min_value=0.001, max_digits=12, decimal_places=3, required=False, label='Množství')
 
@@ -66,9 +66,15 @@ class MachineUsageForm(forms.Form):
         queryset=Machine.objects.filter(is_active=True),
         required=False,
         label='Stroj',
-        empty_label='Vyberte stroj',
+        empty_label='Stroj',
     )
-    hours = forms.DecimalField(min_value=0.01, max_digits=12, decimal_places=2, required=False, label='Hodiny')
+    hours = forms.DecimalField(
+        min_value=0.01,
+        max_digits=12,
+        decimal_places=2,
+        required=False,
+        label='Hodiny'
+    )
 
     def clean(self):
         cleaned_data = super().clean()

@@ -670,9 +670,9 @@ class EmptyLabelTests(TestCase):
     def test_transform_rows_prompt_in_czech(self):
         self.client.force_login(self.manager)
         response = self.client.get(reverse('transform_create'))
-        self.assertContains(response, 'Vyberte materiál')
-        self.assertContains(response, 'Vyberte lokalitu')
-        self.assertContains(response, 'Vyberte stroj')
+        self.assertContains(response, 'Materiál')
+        self.assertContains(response, 'Lokalita')
+        self.assertContains(response, 'Stroj')
 
     def test_filter_forms_offer_all_in_czech(self):
         self.client.force_login(self.manager)
