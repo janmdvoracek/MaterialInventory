@@ -6,9 +6,16 @@
     <form method="post">
         {% csrf_token %}
         {% for field in form %}
+            {% if field.name == 'custom_datetime' %}
+            {# Checkbox reads as one line, like the collaborator list does. #}
+            <div class="checkbox-list"><div>
+                <label for="{{ field.id_for_label }}">{{ field }} {{ field.label }}</label>
+            </div></div>
+            {% else %}
             <label for="{{ field.id_for_label }}">{{ field.label }}</label>
             {{ field }}
             {% for error in field.errors %}<p class="messages error">{{ error }}</p>{% endfor %}
+            {% endif %}
         {% endfor %}
         <button type="submit">Zaznamenat příjem</button>
     </form>

@@ -23,7 +23,19 @@ materials ─┘        (StockMovement.work_order → WorkOrder)
 | `quantity` | **Signed.** Positive is stock in, negative is stock out. |
 | `movement_type` | `RECEIPT`, `SHIPMENT`, `TRANSFORM_CONSUME`, `TRANSFORM_PRODUCE`, `ADJUSTMENT`. |
 | `work_order` | Set only for the two `TRANSFORM_*` types. |
-| `notes`, `created_at`, `created_by` | Audit trail. |
+| `created_at` | **When the movement happened**, not when it was typed in. Defaults to now; the Receipt and Shipment forms can override it. Everything sorts, filters and exports by this. |
+| `recorded_at` | When the row was written. `auto_now_add`, so it cannot be set. |
+| `notes`, `created_by` | Audit trail. |
+
+The two timestamps exist because depot work is written up after the fact —
+material arrives at seven and is entered at eleven. A worker who ticks *„Jiné
+datum a čas než teď"* on Příjem or Výdej states the real time, and that is what
+the ledger reports; `recorded_at` still records when they actually typed it, so
+a back-dated row is never indistinguishable from a contemporaneous one. Only
+those two forms offer it: Zpracování and Ruční úprava always use now.
+
+`created_at` is therefore **not** `auto_now_add` — passing it to `create()`
+works, and any new code that writes a movement decides whether to.
 
 Current stock is **always derived**:
 
@@ -63,6 +75,11 @@ with transaction.atomic():
         ...reject...
     StockMovement.objects.create(...)
 ```
+
+The check is always against **stock as it stands now**, even for a back-dated
+shipment. `get_available_quantity` sums the whole ledger and ignores
+`created_at`, so stating an earlier time never widens what may be shipped —
+back-dating records history, it doesn't rewrite the balance.
 
 With `lock=True` it issues `SELECT ... FOR UPDATE` on the **`Material` row**
 before summing. Concurrent writers for the same material serialise on that row,

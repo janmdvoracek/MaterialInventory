@@ -167,6 +167,7 @@ def receipt_create(request):
                 movement_type=StockMovement.MovementType.RECEIPT,
                 notes=form.cleaned_data['notes'],
                 created_by=request.user,
+                created_at=form.cleaned_data['occurred_at'] or timezone.now(),
             )
             messages.success(request, 'Příjem byl zaznamenán.')
             return redirect('dashboard')
@@ -202,6 +203,7 @@ def shipment_create(request):
                         movement_type=StockMovement.MovementType.SHIPMENT,
                         notes=form.cleaned_data['notes'],
                         created_by=request.user,
+                        created_at=form.cleaned_data['occurred_at'] or timezone.now(),
                     )
                     messages.success(request, 'Výdej byl zaznamenán.')
                     return redirect('dashboard')

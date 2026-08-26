@@ -10,7 +10,6 @@
 
         <label for="{{ order_form.hours.id_for_label }}">Moje hodiny</label>
         {{ order_form.hours }}
-        <small>{{ order_form.hours.help_text }}</small>
         {% for error in order_form.hours.errors %}<p class="messages error">{{ error }}</p>{% endfor %}
 
         <h2>Spolupracovníci</h2>

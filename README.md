@@ -16,8 +16,8 @@ documentation and code are in English.
 
 | | |
 |---|---|
-| **Receipt** (*Příjem*) | Material arrives at a location. |
-| **Shipment** (*Výdej*) | Material leaves. Blocked if stock is insufficient. |
+| **Receipt** (*Příjem*) | Material arrives at a location. Can be back-dated to when it actually arrived. |
+| **Shipment** (*Výdej*) | Material leaves. Blocked if stock is insufficient. Back-datable too. |
 | **Transform** (*Zpracování*) | One job consumes some materials and produces others — crushing, sorting, cutting. Optionally logs machine hours and names collaborators. |
 | **Adjustment** (*Ruční úprava*) | Manual correction after a stocktake. Manager/Admin only, and always requires a written reason. |
 | **Stock dashboard** (*Sklad*) | Current quantity per material per location. |

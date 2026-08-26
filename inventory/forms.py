@@ -1,11 +1,54 @@
 from django import forms
 from django.db.models import Sum
+from django.utils import timezone
 
 from accounts.models import User
 from materials.models import Location, Material
 
+TIMING_FIELD_ORDER = ['material', 'location', 'quantity', 'notes', 'custom_datetime', 'occurred_at']
 
-class ReceiptForm(forms.Form):
+
+class MovementTimingMixin(forms.Form):
+    """Lets an entry form record when the movement actually happened.
+
+    Depot work gets written up after the fact — material arrives at seven and
+    is entered at eleven. Ticking the box makes the typed time the movement's
+    time; leaving it alone keeps `timezone.now()`.
+
+    Mixin fields would otherwise sort ahead of the form's own, hence
+    `field_order = TIMING_FIELD_ORDER` on each form that uses this.
+    """
+
+    custom_datetime = forms.BooleanField(required=False, label='Jiné datum a čas než teď')
+    occurred_at = forms.DateTimeField(
+        required=False,
+        label='Skutečné datum a čas',
+        # `datetime-local` submits ISO with a T separator, which Django's
+        # DateTimeField parses before it ever reaches the locale's input
+        # formats — and gives mobile users a native picker.
+        widget=forms.DateTimeInput(attrs={'type': 'datetime-local'}),
+    )
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if not cleaned_data.get('custom_datetime'):
+            # The checkbox is the switch: unticked means "now", even if a value
+            # was typed and then abandoned.
+            cleaned_data['occurred_at'] = None
+            return cleaned_data
+        occurred_at = cleaned_data.get('occurred_at')
+        if not occurred_at:
+            # Skip if the field already failed to parse — one error is enough.
+            if 'occurred_at' not in self.errors:
+                self.add_error('occurred_at', 'Vyplňte skutečné datum a čas, nebo odškrtněte políčko výše.')
+        elif occurred_at > timezone.now():
+            self.add_error('occurred_at', 'Datum a čas nemohou být v budoucnosti.')
+        return cleaned_data
+
+
+class ReceiptForm(MovementTimingMixin):
+    field_order = TIMING_FIELD_ORDER
+
     material = forms.ModelChoiceField(
         queryset=Material.objects.filter(is_active=True), label='Materiál', empty_label='Vyberte materiál'
     )
@@ -16,7 +59,9 @@ class ReceiptForm(forms.Form):
     notes = forms.CharField(required=False, max_length=255, label='Poznámka')
 
 
-class ShipmentForm(forms.Form):
+class ShipmentForm(MovementTimingMixin):
+    field_order = TIMING_FIELD_ORDER
+
     material = forms.ModelChoiceField(
         queryset=Material.objects.filter(is_active=True), label='Materiál', empty_label='Vyberte materiál'
     )

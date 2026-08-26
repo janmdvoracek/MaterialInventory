@@ -8,6 +8,7 @@ from django.db import connection, transaction
 from django.test import Client, TestCase, TransactionTestCase
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 from accounts.models import User
 from materials.models import Location, Material
@@ -75,6 +76,105 @@ class ReceiptCreateTests(InventoryTestCase):
         self.assertEqual(movement.movement_type, StockMovement.MovementType.RECEIPT)
         self.assertEqual(movement.quantity, Decimal('10'))
         self.assertEqual(movement.created_by, self.worker)
+
+
+class BackdatedMovementTests(InventoryTestCase):
+    """The entry forms can state when a movement really happened, because depot
+    work is written up after the fact. `created_at` is that stated time;
+    `recorded_at` always stays the moment the row was written.
+    """
+
+    EARLIER = '2026-08-20T07:30'
+
+    def _post(self, url, **overrides):
+        data = {
+            'material': self.material.pk,
+            'location': self.location.pk,
+            'quantity': '10',
+            'notes': '',
+        }
+        data.update(overrides)
+        self.client.force_login(self.worker)
+        return self.client.post(reverse(url), data)
+
+    def _expected(self):
+        # Derived from the same literal that gets posted, and made aware the way
+        # the form does it: the browser sends local wall-clock time, which
+        # Django reads in TIME_ZONE — so this is not simply UTC.
+        return timezone.make_aware(parse_datetime(self.EARLIER))
+
+    def test_receipt_uses_now_when_checkbox_is_unticked(self):
+        before = timezone.now()
+        self.assertRedirects(self._post('receipt_create'), reverse('dashboard'))
+        movement = StockMovement.objects.get()
+        self.assertGreaterEqual(movement.created_at, before)
+        self.assertLessEqual(movement.created_at, timezone.now())
+
+    def test_receipt_stores_the_stated_time(self):
+        response = self._post('receipt_create', custom_datetime='on', occurred_at=self.EARLIER)
+        self.assertRedirects(response, reverse('dashboard'))
+        movement = StockMovement.objects.get()
+        self.assertEqual(movement.created_at, self._expected())
+
+    def test_shipment_stores_the_stated_time(self):
+        self._movement(Decimal('50'))
+        response = self._post('shipment_create', quantity='4', custom_datetime='on', occurred_at=self.EARLIER)
+        self.assertRedirects(response, reverse('dashboard'))
+        shipment = StockMovement.objects.get(movement_type=StockMovement.MovementType.SHIPMENT)
+        self.assertEqual(shipment.created_at, self._expected())
+        self.assertEqual(shipment.quantity, Decimal('-4'))
+
+    def test_backdating_leaves_recorded_at_at_the_real_save_time(self):
+        before = timezone.now()
+        self._post('receipt_create', custom_datetime='on', occurred_at=self.EARLIER)
+        movement = StockMovement.objects.get()
+        self.assertEqual(movement.created_at, self._expected())
+        self.assertGreaterEqual(movement.recorded_at, before)
+
+    def test_unticked_checkbox_ignores_a_filled_in_time(self):
+        # The checkbox is the switch, so a value left behind in the field must
+        # not silently back-date the movement.
+        before = timezone.now()
+        response = self._post('receipt_create', occurred_at=self.EARLIER)
+        self.assertRedirects(response, reverse('dashboard'))
+        self.assertGreaterEqual(StockMovement.objects.get().created_at, before)
+
+    def test_ticked_checkbox_without_a_time_is_rejected(self):
+        response = self._post('receipt_create', custom_datetime='on')
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(StockMovement.objects.exists())
+        self.assertIn('occurred_at', response.context['form'].errors)
+
+    def test_future_time_is_rejected(self):
+        future = timezone.localtime(timezone.now() + timedelta(days=1)).strftime('%Y-%m-%dT%H:%M')
+        response = self._post('receipt_create', custom_datetime='on', occurred_at=future)
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(StockMovement.objects.exists())
+        self.assertIn('occurred_at', response.context['form'].errors)
+
+    def test_backdated_shipment_still_fails_the_stock_check(self):
+        # Back-dating must not become a way around stock sufficiency.
+        self._movement(Decimal('5'))
+        response = self._post('shipment_create', quantity='10', custom_datetime='on', occurred_at=self.EARLIER)
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(StockMovement.objects.filter(movement_type=StockMovement.MovementType.SHIPMENT).exists())
+
+    def test_backdated_movement_sorts_by_the_stated_time(self):
+        # History is ordered by `created_at`, so a back-dated row has to land in
+        # the past, not at the top of the list.
+        self._post('receipt_create')
+        self._post('receipt_create', quantity='7', custom_datetime='on', occurred_at=self.EARLIER)
+        self.client.force_login(self.worker)
+        listed = self.client.get(reverse('movement_history')).context['page_obj'].object_list
+        self.assertEqual([m.quantity for m in listed], [Decimal('10.000'), Decimal('7.000')])
+
+    def test_both_forms_offer_the_checkbox(self):
+        self.client.force_login(self.worker)
+        for url in ('receipt_create', 'shipment_create'):
+            with self.subTest(url=url):
+                response = self.client.get(reverse(url))
+                self.assertContains(response, 'Jiné datum a čas než teď')
+                self.assertContains(response, 'type="datetime-local"')
 
 
 class ShipmentCreateTests(InventoryTestCase):

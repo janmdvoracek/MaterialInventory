@@ -66,10 +66,16 @@ Použijte, když materiál **přijde na sklad**.
 2. Zadejte **Množství**.
 3. Do **Poznámky** můžete napsat například číslo dodacího listu nebo dodavatele.
    Poznámka není povinná, ale hodí se při pozdějším dohledávání.
-4. Klepněte na tlačítko pro uložení.
+4. Zapisujete-li příjem až později, zaškrtněte **Jiné datum a čas než teď** a
+   vyplňte, kdy materiál doopravdy přišel. Bez zaškrtnutí se uloží aktuální čas
+   — políčko s datem se bez něj nepoužije, i kdybyste do něj něco napsali.
+5. Klepněte na tlačítko pro uložení.
 
 Po uložení vás aplikace vrátí na **Sklad** a nahoře se zobrazí potvrzení
 *Příjem byl zaznamenán.*
+
+> Vyplněné datum a čas se použijí všude, kde se pohyb zobrazuje — v **Historii**,
+> ve filtrech i v exportu do Excelu. Nelze zadat čas v budoucnosti.
 
 > **Množství pište s tečkou, ne s čárkou** — tedy `12.5`, nikoli `12,5`.
 > Při čárce se zobrazí chyba *Zadejte číslo.*
@@ -78,7 +84,8 @@ Po uložení vás aplikace vrátí na **Sklad** a nahoře se zobrazí potvrzení
 
 Použijte, když materiál **odchází ze skladu**.
 
-Postup je stejný jako u příjmu. Rozdíl je v kontrole:
+Postup je stejný jako u příjmu, včetně zaškrtávátka **Jiné datum a čas než teď**
+pro výdej zapsaný se zpožděním. Rozdíl je v kontrole:
 
 > Pokud na dané lokalitě není dostatek materiálu, výdej se **neuloží** a zobrazí
 > se hláška *K dispozici je pouze … ; výdej byl zrušen.* Zkontrolujte, zda jste

@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 
 class StockMovement(models.Model):
@@ -34,7 +35,14 @@ class StockMovement(models.Model):
         verbose_name='zakázka',
     )
     notes = models.CharField(max_length=255, blank=True, verbose_name='poznámka')
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name='vytvořeno')
+    # When the movement physically happened. Defaults to now, but the entry
+    # forms let a worker state a different time for something they are only
+    # getting around to recording later — so this is *not* auto_now_add, and
+    # everything that sorts, filters or exports the ledger keys off it.
+    created_at = models.DateTimeField(default=timezone.now, verbose_name='datum a čas pohybu')
+    # When the row was actually written. Untouchable, so a back-dated movement
+    # still leaves a truthful audit trail of when it was entered.
+    recorded_at = models.DateTimeField(auto_now_add=True, verbose_name='zaznamenáno')
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='stock_movements', verbose_name='vytvořil'
     )

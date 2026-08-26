@@ -63,6 +63,23 @@ renders as `14.08.2026`, which `<input type="date">` rejects as invalid and
 displays blank. No form does this today. If you add one, pass the initial value
 as an ISO string.
 
+## The clock in native pickers is the device's, not ours
+
+Everything the app renders is 24-hour: templates use an explicit `H:i`, the CSV
+export uses `%H:%M:%S`, and Czech `TIME_FORMAT` is `G:i`. The
+`<input type="datetime-local">` on Příjem/Výdej is the exception, and it is not
+ours to set — browsers draw that control themselves and format it from the
+**browser or OS language**. A Czech-configured phone shows 24h; an
+English-configured one shows AM/PM, and `lang="cs"` on the document does not
+override it.
+
+This was raised and settled: the alternative is a plain text field taking
+`20.08.2026 07:30` (which Czech `DATETIME_INPUT_FORMATS` already parses), which
+guarantees 24-hour everywhere but costs the tap-to-pick calendar on phones.
+Same trade-off as `localize=False` on the quantity fields above, and it was
+decided the same way — keep the native control. The stored value is unaffected
+either way; only the display differs.
+
 ## Keep explicit date formats in templates
 
 Timestamps use `|date:"Y-m-d H:i"`, which is locale-independent. A bare
