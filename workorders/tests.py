@@ -667,9 +667,7 @@ class TimeWorkedTests(TestCase):
             work_order.collaborators.add(user)
             WorkerHours.objects.create(work_order=work_order, user=user, hours=user_hours)
         if machine_hours is not None:
-            MachineUsage.objects.create(
-                work_order=work_order, machine=machine or self.machine, hours=machine_hours
-            )
+            MachineUsage.objects.create(work_order=work_order, machine=machine or self.machine, hours=machine_hours)
         return work_order
 
     def _summary_for(self, response, user):

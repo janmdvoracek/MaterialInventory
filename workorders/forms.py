@@ -48,7 +48,14 @@ class MovementItemForm(forms.Form):
         label='Lokalita',
         empty_label='Lokalita',
     )
-    quantity = forms.DecimalField(min_value=0.001, max_digits=12, decimal_places=3, required=False, label='Množství')
+    quantity = forms.DecimalField(
+        min_value=0.001,
+        max_digits=12,
+        decimal_places=3,
+        required=False,
+        label='Množství',
+        widget=forms.NumberInput(attrs={'placeholder': 'Množství'}),
+    )
 
     def clean(self):
         cleaned_data = super().clean()
@@ -69,7 +76,14 @@ class MachineUsageForm(forms.Form):
         label='Stroj',
         empty_label='Stroj',
     )
-    hours = forms.DecimalField(min_value=0.01, max_digits=12, decimal_places=2, required=False, label='Hodiny')
+    hours = forms.DecimalField(
+        min_value=0.01,
+        max_digits=12,
+        decimal_places=2,
+        required=False,
+        label='Hodiny',
+        widget=forms.NumberInput(attrs={'placeholder': 'Motohodiny'}),
+    )
 
     def clean(self):
         cleaned_data = super().clean()
