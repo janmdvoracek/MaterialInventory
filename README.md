@@ -2,13 +2,17 @@
 
 [![CI](https://github.com/janmdvoracek/MaterialInventory/actions/workflows/ci.yml/badge.svg)](https://github.com/janmdvoracek/MaterialInventory/actions/workflows/ci.yml)
 
-Stock tracking for a materials depot: what came in, what went out, what was
-transformed into what, and how many machine hours it took.
+Job tracking for a materials depot: what each processing job consumed and
+produced, who worked it and for how long, and how many machine hours it took.
 
-Depot workers record every movement from their phones on a mobile-first web
-form. Managers get filtered history, CSV exports for Excel, and manual stock
-corrections. The app's interface is entirely in **Czech**; this repository's
-documentation and code are in English.
+Depot workers write up each job from their phones on a mobile-first web form.
+The app's interface is entirely in **Czech**; this repository's documentation
+and code are in English.
+
+> **Note:** despite the name, this app does **not** track stock levels. Receipts,
+> shipments, adjustments, the stock dashboard and the movement history were all
+> removed; there are no balances and no sufficiency checks. It records what was
+> processed, not what is on hand.
 
 ---
 
@@ -16,20 +20,14 @@ documentation and code are in English.
 
 | | |
 |---|---|
-| **Receipt** (*Příjem*) | Material arrives at a location. Can be back-dated to when it actually arrived. |
-| **Shipment** (*Výdej*) | Material leaves. Blocked if stock is insufficient. Back-datable too. |
-| **Transform** (*Zpracování*) | One job consumes some materials and produces others — crushing, sorting, cutting. Optionally logs machine hours and names collaborators. |
-| **Adjustment** (*Ruční úprava*) | Manual correction after a stocktake. Manager/Admin only, and always requires a written reason. |
-| **Stock dashboard** (*Sklad*) | Current quantity per material per location. |
-| **History** (*Historie*) | Every movement, filterable, paginated, exportable to Excel-friendly CSV. |
-| **Machines** (*Stroje*) | Running total of hours per machine, plus a usage log. |
+| **Transform** (*Zpracování*) | The main form, and the landing page. One job consumes some materials and produces others — crushing, sorting, cutting — logs the submitter's own hours, names collaborators with their hours, and records machine motohodiny. |
+| **Machines** (*Stroje*) | Running total of hours per machine, plus a filterable usage log. Manager/Admin nav entry. |
 | **Hours** (*Hodiny*) | Hours worked per person, for payroll and job costing. |
 
-The central design decision: **stock is never stored as a number.** Every event
-appends a signed row to an immutable ledger, and the current quantity is always
-`SUM(quantity)` for that material and location. Nothing is ever edited or
-deleted in place, so the stock figure and its full audit trail can never
-disagree. See [docs/architecture.md](docs/architecture.md).
+A job is written as a single transaction: its material line items, every
+participant's hours, and any machine usage all land together or not at all.
+Labour hours and machine motohodiny are deliberately separate numbers — neither
+is derived from the other. See [docs/architecture.md](docs/architecture.md).
 
 ## Tech stack
 
@@ -97,8 +95,8 @@ Full column reference: [docs/development.md](docs/development.md#seeding-data).
 ## Common commands
 
 ```bash
-python manage.py test                  # full suite (171 tests, needs Postgres)
-python manage.py test inventory        # one app
+python manage.py test                  # full suite (113 tests, needs Postgres)
+python manage.py test workorders       # one app
 ruff check . && ruff format .          # lint and format
 docker compose up --build              # full stack
 ```
@@ -110,12 +108,14 @@ More, including single-test invocation and the CI pipeline:
 
 | Role | Can do |
 |---|---|
-| `WORKER` | Receipt, Shipment, Transform. Sees only their own movements and hours, plus jobs they were named a collaborator on. |
-| `MANAGER` | Everything a Worker can, plus Adjustments and an unrestricted view of everyone's history, hours, and exports. **No** Django admin access. |
+| `WORKER` | Transform and Hours. Sees only their own hours and machine usage, plus jobs they were named a collaborator on. |
+| `MANAGER` | Everything a Worker can, plus the Machines pages and an unrestricted view of everyone's hours and machine usage. **No** Django admin access. |
 | `ADMIN` | Everything, plus the Django admin back office for editing the catalog and accounts. |
 
 Workers' scoping is enforced in the database query, not by hiding form fields —
-editing the URL does not widen what they can see.
+editing the URL does not widen what they can see. Note that the Machines pages
+are hidden from a worker's nav but not gated in the view, so a worker who types
+the URL can still reach them.
 
 ## Project layout
 
@@ -123,8 +123,8 @@ editing the URL does not widen what they can see.
 config/       Django project — settings, root URLconf, WSGI/ASGI
 accounts/     Custom User model, roles, role_required decorator, Czech auth forms
 materials/    Material / Location / Machine catalog + the seed_data command
-inventory/    StockMovement ledger, stock dashboard, history, CSV export
-workorders/   Transform jobs, machine usage, time-worked reporting
+inventory/    StockMovement — the material line items of a job. Model + admin only.
+workorders/   Transform form, machine dashboard/history, time-worked reporting, all URLs
 templates/    All HTML; base.html holds the site CSS and bottom nav
 static/       Source static assets (tracked; NOT the collectstatic output)
 seed_data/    CSV templates — real data files are gitignored
@@ -136,10 +136,10 @@ docs/         Documentation (see below)
 
 | Document | For |
 |---|---|
-| [docs/architecture.md](docs/architecture.md) | How the ledger, work orders, roles, and concurrency control fit together. Read before changing anything that writes stock. |
+| [docs/architecture.md](docs/architecture.md) | How work orders, line items, hours and roles fit together. |
 | [docs/development.md](docs/development.md) | Environment setup, testing, linting, seeding, CI. |
 | [docs/configuration.md](docs/configuration.md) | Every environment variable and the settings that need explaining. |
-| [docs/localization.md](docs/localization.md) | The Czech locale's consequences for numbers, dates, forms, and the CSV export. Non-obvious; read it before touching either. |
+| [docs/localization.md](docs/localization.md) | The Czech locale's consequences for numbers, dates and forms. Non-obvious; read it before touching either. |
 | [docs/user-guide.cs.md](docs/user-guide.cs.md) | End-user manual, in Czech, for depot staff. |
 | [DEPLOYMENT_PLAN.md](DEPLOYMENT_PLAN.md) | The plan for the LAN-only company-server deployment. Partly implemented. |
 | [CLAUDE.md](CLAUDE.md) | Working notes for AI coding assistants. Overlaps the docs above but is written as instructions, not explanation. |

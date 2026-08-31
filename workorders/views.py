@@ -10,7 +10,6 @@ from django.shortcuts import redirect, render
 
 from accounts.models import User
 from inventory.models import StockMovement
-from inventory.services import get_available_quantity
 from materials.models import Machine
 
 from .forms import (
@@ -54,64 +53,50 @@ def transform_create(request):
             if not consumed_rows and not produced_rows:
                 messages.error(request, 'Přidejte alespoň jednu položku spotřeby nebo výroby.')
             else:
-                requested = defaultdict(Decimal)
-                for row in consumed_rows:
-                    requested[(row['material'], row['location'])] += row['quantity']
-
+                # Still one transaction: a job's line items, hours and machine
+                # usage are a single record and must not land half-written. There
+                # is no stock-sufficiency check to fail here any more — the app
+                # records what was processed, it does not hold balances.
                 with transaction.atomic():
-                    shortfalls = []
-                    for (material, location), quantity in requested.items():
-                        if not material.track_stock:
-                            continue
-                        available = get_available_quantity(material, location, lock=True)
-                        if quantity > available:
-                            shortfalls.append(
-                                f'K dispozici je pouze {available} {material.unit_of_measure} materiálu {material} '
-                                f'na lokalitě {location} (požadováno {quantity}).'
-                            )
-                    if shortfalls:
-                        for shortfall in shortfalls:
-                            messages.error(request, shortfall)
-                    else:
-                        work_order = WorkOrder.objects.create(
+                    work_order = WorkOrder.objects.create(
+                        created_by=request.user,
+                        description=order_form.cleaned_data['description'],
+                    )
+                    # Collaborators are derived from the hours rows, so the two
+                    # can't disagree about who worked the job.
+                    work_order.collaborators.set(worker_hours.keys())
+                    WorkerHours.objects.create(
+                        work_order=work_order, user=request.user, hours=order_form.cleaned_data['hours']
+                    )
+                    for user, hours in worker_hours.items():
+                        WorkerHours.objects.create(work_order=work_order, user=user, hours=hours)
+                    for row in consumed_rows:
+                        StockMovement.objects.create(
+                            material=row['material'],
+                            location=row['location'],
+                            quantity=-row['quantity'],
+                            movement_type=StockMovement.MovementType.TRANSFORM_CONSUME,
+                            work_order=work_order,
                             created_by=request.user,
-                            description=order_form.cleaned_data['description'],
                         )
-                        # Collaborators are derived from the hours rows, so the
-                        # two can't disagree about who worked the job.
-                        work_order.collaborators.set(worker_hours.keys())
-                        WorkerHours.objects.create(
-                            work_order=work_order, user=request.user, hours=order_form.cleaned_data['hours']
+                    for row in produced_rows:
+                        StockMovement.objects.create(
+                            material=row['material'],
+                            location=row['location'],
+                            quantity=row['quantity'],
+                            movement_type=StockMovement.MovementType.TRANSFORM_PRODUCE,
+                            work_order=work_order,
+                            created_by=request.user,
                         )
-                        for user, hours in worker_hours.items():
-                            WorkerHours.objects.create(work_order=work_order, user=user, hours=hours)
-                        for row in consumed_rows:
-                            StockMovement.objects.create(
-                                material=row['material'],
-                                location=row['location'],
-                                quantity=-row['quantity'],
-                                movement_type=StockMovement.MovementType.TRANSFORM_CONSUME,
-                                work_order=work_order,
-                                created_by=request.user,
-                            )
-                        for row in produced_rows:
-                            StockMovement.objects.create(
-                                material=row['material'],
-                                location=row['location'],
-                                quantity=row['quantity'],
-                                movement_type=StockMovement.MovementType.TRANSFORM_PRODUCE,
-                                work_order=work_order,
-                                created_by=request.user,
-                            )
-                        for row in machine_rows:
-                            # MachineUsage.save() keeps Machine.total_hours in sync.
-                            MachineUsage.objects.create(
-                                work_order=work_order,
-                                machine=row['machine'],
-                                hours=row['hours'],
-                            )
-                        messages.success(request, 'Zpracování bylo zaznamenáno.')
-                        return redirect('dashboard')
+                    for row in machine_rows:
+                        # MachineUsage.save() keeps Machine.total_hours in sync.
+                        MachineUsage.objects.create(
+                            work_order=work_order,
+                            machine=row['machine'],
+                            hours=row['hours'],
+                        )
+                messages.success(request, 'Zpracování bylo zaznamenáno.')
+                return redirect('transform_create')
     else:
         order_form = WorkOrderForm()
         consumed_formset = ConsumedFormSet(prefix='consumed')

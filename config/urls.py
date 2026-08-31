@@ -34,6 +34,5 @@ urlpatterns = [
         auth_views.PasswordChangeDoneView.as_view(template_name='registration/password_change_done.html'),
         name='password_change_done',
     ),
-    path('', include('inventory.urls')),
-    path('workorders/', include('workorders.urls')),
+    path('', include('workorders.urls')),
 ]

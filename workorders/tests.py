@@ -22,15 +22,6 @@ class TransformCreateTests(TestCase):
         self.machine_a = Machine.objects.create(name='Crusher A')
         self.machine_b = Machine.objects.create(name='Excavator B')
 
-    def _seed_stock(self, material, quantity):
-        StockMovement.objects.create(
-            material=material,
-            location=self.location,
-            quantity=quantity,
-            movement_type=StockMovement.MovementType.RECEIPT,
-            created_by=self.worker,
-        )
-
     def _post(
         self,
         consumed_rows,
@@ -84,35 +75,36 @@ class TransformCreateTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertIn('/login/', response.url)
 
-    def test_transform_produce_only_no_stock_check(self):
+    def test_transform_produce_only(self):
         response = self._post(
             [], [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('3')}]
         )
-        self.assertRedirects(response, reverse('dashboard'))
+        self.assertRedirects(response, reverse('transform_create'))
         self.assertTrue(WorkOrder.objects.exists())
         movement = StockMovement.objects.get(movement_type=StockMovement.MovementType.TRANSFORM_PRODUCE)
         self.assertEqual(movement.quantity, Decimal('3'))
 
-    def test_transform_consume_rejected_with_no_stock(self):
+    def test_transform_consume_records_a_negative_line_item(self):
         response = self._post(
             [{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('5')}], []
         )
-        self.assertEqual(response.status_code, 200)
-        self.assertFalse(WorkOrder.objects.exists())
-        self.assertFalse(
-            StockMovement.objects.filter(movement_type=StockMovement.MovementType.TRANSFORM_CONSUME).exists()
-        )
-
-    def test_transform_consume_of_untracked_material_bypasses_stock_check(self):
-        untracked = Material.objects.create(sku='RAW2', name='Zemina', unit_of_measure='t', track_stock=False)
-        response = self._post([{'material': untracked, 'location': self.location, 'quantity': Decimal('500')}], [])
-        self.assertRedirects(response, reverse('dashboard'))
-        self.assertTrue(WorkOrder.objects.exists())
+        self.assertRedirects(response, reverse('transform_create'))
         consumed = StockMovement.objects.get(movement_type=StockMovement.MovementType.TRANSFORM_CONSUME)
-        self.assertEqual(consumed.quantity, Decimal('-500'))
+        self.assertEqual(consumed.quantity, Decimal('-5'))
 
-    def test_transform_consume_aggregates_same_material_location_across_rows(self):
-        self._seed_stock(self.material_raw, Decimal('10'))
+    def test_consume_is_not_limited_by_anything_recorded_before(self):
+        # There are no stock balances any more: a job records what was actually
+        # processed, however much that is, with nothing to check it against.
+        response = self._post(
+            [{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('9999')}], []
+        )
+        self.assertRedirects(response, reverse('transform_create'))
+        consumed = StockMovement.objects.get(movement_type=StockMovement.MovementType.TRANSFORM_CONSUME)
+        self.assertEqual(consumed.quantity, Decimal('-9999'))
+
+    def test_repeated_material_rows_are_kept_as_separate_line_items(self):
+        # The view used to combine these to stock-check them as one. With no
+        # check left, each row is written as typed.
         response = self._post(
             [
                 {'material': self.material_raw, 'location': self.location, 'quantity': Decimal('6')},
@@ -120,41 +112,10 @@ class TransformCreateTests(TestCase):
             ],
             [],
         )
-        self.assertEqual(response.status_code, 200)
-        self.assertFalse(WorkOrder.objects.exists())
-        self.assertFalse(
-            StockMovement.objects.filter(movement_type=StockMovement.MovementType.TRANSFORM_CONSUME).exists()
-        )
-
-    def test_transform_consume_succeeds_at_exact_boundary(self):
-        self._seed_stock(self.material_raw, Decimal('10'))
-        response = self._post(
-            [
-                {'material': self.material_raw, 'location': self.location, 'quantity': Decimal('5')},
-                {'material': self.material_raw, 'location': self.location, 'quantity': Decimal('5')},
-            ],
-            [],
-        )
-        self.assertRedirects(response, reverse('dashboard'))
-        self.assertTrue(WorkOrder.objects.exists())
+        self.assertRedirects(response, reverse('transform_create'))
         consumed = StockMovement.objects.filter(movement_type=StockMovement.MovementType.TRANSFORM_CONSUME)
         self.assertEqual(consumed.count(), 2)
-        self.assertEqual(sum((m.quantity for m in consumed), Decimal('0')), Decimal('-10'))
-
-    def test_transform_atomic_rollback_on_partial_shortfall(self):
-        self._seed_stock(self.material_raw, Decimal('10'))
-        response = self._post(
-            [
-                {'material': self.material_raw, 'location': self.location, 'quantity': Decimal('5')},
-                {'material': self.material_finished, 'location': self.location, 'quantity': Decimal('5')},
-            ],
-            [],
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertFalse(WorkOrder.objects.exists())
-        self.assertFalse(
-            StockMovement.objects.filter(movement_type=StockMovement.MovementType.TRANSFORM_CONSUME).exists()
-        )
+        self.assertEqual(sum((m.quantity for m in consumed), Decimal('0')), Decimal('-12'))
 
     def test_transform_with_single_machine_increments_total_hours(self):
         response = self._post(
@@ -162,7 +123,7 @@ class TransformCreateTests(TestCase):
             [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('3')}],
             machine_rows=[{'machine': self.machine_a, 'hours': Decimal('2.5')}],
         )
-        self.assertRedirects(response, reverse('dashboard'))
+        self.assertRedirects(response, reverse('transform_create'))
         self.machine_a.refresh_from_db()
         self.assertEqual(self.machine_a.total_hours, Decimal('2.5'))
         usage = MachineUsage.objects.get()
@@ -179,7 +140,7 @@ class TransformCreateTests(TestCase):
                 {'machine': self.machine_b, 'hours': Decimal('1.5')},
             ],
         )
-        self.assertRedirects(response, reverse('dashboard'))
+        self.assertRedirects(response, reverse('transform_create'))
         self.machine_a.refresh_from_db()
         self.machine_b.refresh_from_db()
         self.assertEqual(self.machine_a.total_hours, Decimal('2'))
@@ -196,7 +157,7 @@ class TransformCreateTests(TestCase):
                 {'machine': self.machine_a, 'hours': Decimal('1')},
             ],
         )
-        self.assertRedirects(response, reverse('dashboard'))
+        self.assertRedirects(response, reverse('transform_create'))
         self.machine_a.refresh_from_db()
         self.assertEqual(self.machine_a.total_hours, Decimal('2'))
         self.assertEqual(MachineUsage.objects.filter(machine=self.machine_a).count(), 2)
@@ -205,7 +166,7 @@ class TransformCreateTests(TestCase):
         response = self._post(
             [], [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('3')}]
         )
-        self.assertRedirects(response, reverse('dashboard'))
+        self.assertRedirects(response, reverse('transform_create'))
         self.assertFalse(MachineUsage.objects.exists())
 
     def test_machine_row_missing_hours_rejected(self):
@@ -282,7 +243,7 @@ class TransformCreateTests(TestCase):
             [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('3')}],
             hours='6.5',
         )
-        self.assertRedirects(response, reverse('dashboard'))
+        self.assertRedirects(response, reverse('transform_create'))
         entry = WorkerHours.objects.get()
         self.assertEqual(entry.user, self.worker)
         self.assertEqual(entry.hours, Decimal('6.50'))
@@ -306,7 +267,7 @@ class TransformCreateTests(TestCase):
             hours='6.5',
             worker_rows=[{'user': self.other_worker, 'hours': Decimal('4')}],
         )
-        self.assertRedirects(response, reverse('dashboard'))
+        self.assertRedirects(response, reverse('transform_create'))
         self.assertEqual(WorkerHours.objects.get(user=self.worker).hours, Decimal('6.50'))
         self.assertEqual(WorkerHours.objects.get(user=self.other_worker).hours, Decimal('4.00'))
 
@@ -318,7 +279,7 @@ class TransformCreateTests(TestCase):
             [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('3')}],
             worker_rows=[{'user': self.other_worker, 'hours': Decimal('4')}],
         )
-        self.assertRedirects(response, reverse('dashboard'))
+        self.assertRedirects(response, reverse('transform_create'))
         work_order = WorkOrder.objects.get()
         self.assertEqual(list(work_order.collaborators.all()), [self.other_worker])
 
@@ -326,7 +287,7 @@ class TransformCreateTests(TestCase):
         response = self._post(
             [], [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('3')}]
         )
-        self.assertRedirects(response, reverse('dashboard'))
+        self.assertRedirects(response, reverse('transform_create'))
         work_order = WorkOrder.objects.get()
         self.assertFalse(work_order.collaborators.exists())
         self.assertEqual(list(work_order.worker_hours.values_list('user', flat=True)), [self.worker.pk])
@@ -342,7 +303,7 @@ class TransformCreateTests(TestCase):
                 {'user': self.other_worker, 'hours': Decimal('1.5')},
             ],
         )
-        self.assertRedirects(response, reverse('dashboard'))
+        self.assertRedirects(response, reverse('transform_create'))
         self.assertEqual(WorkerHours.objects.get(user=self.other_worker).hours, Decimal('4.50'))
 
     def test_worker_row_missing_hours_rejected(self):
@@ -426,28 +387,23 @@ class TransformCreateTests(TestCase):
         self.assertFalse(WorkOrder.objects.exists())
         self.assertFalse(WorkerHours.objects.exists())
 
-    def test_stock_shortfall_rolls_back_machine_usage_too(self):
+    def test_one_submission_writes_line_items_hours_and_machine_usage_together(self):
+        # The three record types are one job and share a transaction, even
+        # though no stock check can fail inside it any more.
         response = self._post(
             [{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('5')}],
-            [],
+            [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('2')}],
             machine_rows=[{'machine': self.machine_a, 'hours': Decimal('2')}],
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertFalse(WorkOrder.objects.exists())
-        self.assertFalse(MachineUsage.objects.exists())
-        self.machine_a.refresh_from_db()
-        self.assertEqual(self.machine_a.total_hours, Decimal('0'))
-
-    def test_stock_shortfall_rolls_back_worker_hours_too(self):
-        response = self._post(
-            [{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('5')}],
-            [],
             hours='6',
             worker_rows=[{'user': self.other_worker, 'hours': Decimal('4')}],
         )
-        self.assertEqual(response.status_code, 200)
-        self.assertFalse(WorkOrder.objects.exists())
-        self.assertFalse(WorkerHours.objects.exists())
+        self.assertRedirects(response, reverse('transform_create'))
+        work_order = WorkOrder.objects.get()
+        self.assertEqual(work_order.movements.count(), 2)
+        self.assertEqual(work_order.machine_usages.count(), 1)
+        self.assertEqual(work_order.worker_hours.count(), 2)
+        self.machine_a.refresh_from_db()
+        self.assertEqual(self.machine_a.total_hours, Decimal('2'))
 
 
 class MachineUsageModelTests(TestCase):
@@ -509,7 +465,7 @@ class WorkOrderAdminTests(TestCase):
             'movements-MAX_NUM_FORMS': '1000',
             'movements-0-material': self.material.pk,
             'movements-0-location': self.location.pk,
-            'movements-0-movement_type': StockMovement.MovementType.RECEIPT,
+            'movements-0-movement_type': StockMovement.MovementType.TRANSFORM_PRODUCE,
             'movements-0-quantity': '25',
             'movements-0-notes': '',
             'machine_usages-TOTAL_FORMS': '1',

@@ -17,7 +17,7 @@ class LogoutTests(TestCase):
         # Django's LogoutView rejects GET, so the header control has to be a
         # POST form; a plain <a href> would 405 and nobody could log out.
         self.client.force_login(self.user)
-        html = self.client.get(reverse('dashboard')).content.decode()
+        html = self.client.get(reverse('transform_create')).content.decode()
         self.assertIn(f'action="{reverse("logout")}"', html)
         self.assertIn('method="post"', html)
 
@@ -36,7 +36,7 @@ class PasswordChangeTests(TestCase):
         # Not just staff -- every worker needs a way to change their own password
         # without admin access.
         self.client.force_login(self.user)
-        html = self.client.get(reverse('dashboard')).content.decode()
+        html = self.client.get(reverse('transform_create')).content.decode()
         self.assertIn(reverse('password_change'), html)
         self.assertIn('Změnit heslo', html)
 
@@ -99,7 +99,7 @@ class PasswordChangeTests(TestCase):
                 'new_password2': 'brand-new-password-456',
             },
         )
-        response = self.client.get(reverse('dashboard'))
+        response = self.client.get(reverse('transform_create'))
         self.assertEqual(response.status_code, 200)
 
 
@@ -107,14 +107,14 @@ class AdminLinkTests(TestCase):
     def test_admin_link_shown_to_staff_user(self):
         user = User.objects.create_user(username='manager', password='pw', role=User.Role.MANAGER, is_staff=True)
         self.client.force_login(user)
-        html = self.client.get(reverse('dashboard')).content.decode()
+        html = self.client.get(reverse('transform_create')).content.decode()
         self.assertIn(reverse('admin:index'), html)
         self.assertIn('Administrace', html)
 
     def test_admin_link_hidden_from_non_staff_user(self):
         user = User.objects.create_user(username='worker', password='pw', role=User.Role.WORKER, is_staff=False)
         self.client.force_login(user)
-        html = self.client.get(reverse('dashboard')).content.decode()
+        html = self.client.get(reverse('transform_create')).content.decode()
         self.assertNotIn('Administrace', html)
 
 
@@ -133,14 +133,14 @@ class AdminCzechTests(TestCase):
 
     def test_index_lists_apps_and_models_in_czech(self):
         html = self.client.get(reverse('admin:index')).content.decode()
-        for label in ('Katalog', 'Sklad', 'Zakázky', 'Uživatelé', 'Materiály', 'Skladové pohyby'):
+        for label in ('Katalog', 'Zpracování', 'Zakázky', 'Uživatelé', 'Materiály', 'Položky zpracování'):
             with self.subTest(label=label):
                 self.assertIn(label, html)
 
     def test_change_form_labels_are_czech(self):
         response = self.client.get(reverse('admin:materials_material_change', args=[self.material.pk]))
         self.assertContains(response, 'Měrná jednotka')
-        self.assertContains(response, 'Sledovat zásobu')
+        self.assertContains(response, 'Kód (SKU)')
 
     def test_no_english_blank_option_anywhere_in_the_admin(self):
         # Django 6's `- Select an option -`, translated by the local catalog.

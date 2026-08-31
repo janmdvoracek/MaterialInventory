@@ -5,9 +5,9 @@ from .models import Location, Machine, Material
 
 @admin.register(Material)
 class MaterialAdmin(admin.ModelAdmin):
-    list_display = ('name', 'sku', 'unit_of_measure', 'category', 'track_stock', 'is_active')
-    list_editable = ('category', 'track_stock', 'is_active')
-    list_filter = ('category', 'track_stock', 'is_active')
+    list_display = ('name', 'sku', 'unit_of_measure', 'category', 'is_active')
+    list_editable = ('category', 'is_active')
+    list_filter = ('category', 'is_active')
     search_fields = ('name', 'sku')
 
 

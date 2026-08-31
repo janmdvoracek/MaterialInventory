@@ -49,10 +49,6 @@ class Command(BaseCommand):
                 'unit_of_measure': row['unit_of_measure'].strip(),
                 'category': row.get('category', '').strip(),
             }
-            # Only touch track_stock when the column is actually present, so re-seeding
-            # never silently resets a value set by hand in the admin.
-            if row.get('track_stock', '').strip():
-                defaults['track_stock'] = self._parse_bool(row['track_stock'])
             _, was_created = Material.objects.update_or_create(sku=sku, defaults=defaults)
             created += was_created
             updated += not was_created
@@ -87,12 +83,6 @@ class Command(BaseCommand):
             created += was_created
             updated += not was_created
         self.stdout.write(self.style.SUCCESS(f'Machines: {created} created, {updated} updated.'))
-
-    def _parse_bool(self, value, default=True):
-        value = (value or '').strip().lower()
-        if not value:
-            return default
-        return value not in ('0', 'false', 'no', 'ne', 'n')
 
     def seed_users(self, path):
         rows = self._read_csv(path)

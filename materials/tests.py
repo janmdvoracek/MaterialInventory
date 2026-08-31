@@ -17,10 +17,6 @@ class MaterialModelTests(TestCase):
         material = Material.objects.create(sku='SKU1', name='Steel Bar', unit_of_measure='pcs')
         self.assertEqual(str(material), 'Steel Bar (SKU1)')
 
-    def test_material_track_stock_defaults_to_true(self):
-        material = Material.objects.create(sku='SKU1', name='Steel Bar', unit_of_measure='pcs')
-        self.assertTrue(material.track_stock)
-
     def test_material_sku_unique(self):
         Material.objects.create(sku='SKU1', name='Steel Bar', unit_of_measure='pcs')
         with self.assertRaises(IntegrityError), transaction.atomic():
@@ -103,19 +99,6 @@ class SeedDataCommandTests(TestCase):
         machine.refresh_from_db()
         self.assertEqual(machine.total_hours, Decimal('12.5'))
 
-    def test_seed_materials_track_stock_column(self):
-        self._run(
-            materials=(
-                'sku,name,unit_of_measure,category,track_stock\nRAW1,Zemina,t,Zdroj,false\nFIN1,0/20,t,Frakce,true\n'
-            )
-        )
-        self.assertFalse(Material.objects.get(sku='RAW1').track_stock)
-        self.assertTrue(Material.objects.get(sku='FIN1').track_stock)
-
-    def test_seed_materials_track_stock_defaults_true_when_omitted(self):
-        self._run(materials='sku,name,unit_of_measure,category\nSKU1,Steel Bar,pcs,Raw\n')
-        self.assertTrue(Material.objects.get(sku='SKU1').track_stock)
-
     def test_seed_machines_hourly_rate_column(self):
         self._run(machines='name,hourly_rate\nWarrior,83\nKladivo,\n')
         self.assertEqual(Machine.objects.get(name='Warrior').hourly_rate, Decimal('83'))
@@ -137,16 +120,6 @@ class SeedDataCommandTests(TestCase):
         Machine.objects.create(name='Warrior', hourly_rate=Decimal('99'))
         self._run(machines='name,hourly_rate\nWarrior,\n')
         self.assertEqual(Machine.objects.get(name='Warrior').hourly_rate, Decimal('99'))
-
-    def test_seed_materials_preserves_track_stock_when_column_absent(self):
-        Material.objects.create(sku='RAW1', name='Zemina', unit_of_measure='t', track_stock=False)
-        self._run(materials='sku,name,unit_of_measure,category\nRAW1,Zemina,t,Zdroj\n')
-        self.assertFalse(Material.objects.get(sku='RAW1').track_stock)
-
-    def test_seed_materials_preserves_track_stock_when_cell_blank(self):
-        Material.objects.create(sku='RAW1', name='Zemina', unit_of_measure='t', track_stock=False)
-        self._run(materials='sku,name,unit_of_measure,category,track_stock\nRAW1,Zemina,t,Zdroj,\n')
-        self.assertFalse(Material.objects.get(sku='RAW1').track_stock)
 
     def test_seed_users_creates_with_correct_role_and_staff_flag(self):
         self._run(

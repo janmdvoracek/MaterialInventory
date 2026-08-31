@@ -55,12 +55,12 @@ changes.
 
 ```bash
 python manage.py test                                              # everything
-python manage.py test inventory                                    # one app
+python manage.py test workorders                                   # one app
 python manage.py test materials.tests.MaterialModelTests           # one class
 python manage.py test materials.tests.MaterialModelTests.test_material_str
 ```
 
-171 tests, roughly two minutes. Postgres must be reachable.
+113 tests, roughly a minute. Postgres must be reachable.
 
 ### How the tests are written
 
@@ -74,29 +74,20 @@ There is no separate test settings module, so **a change to `config/settings.py`
 is a change to how the suite behaves.** The locale settings in particular are
 load-bearing (see [localization.md](localization.md)).
 
-Three departures from the standard shape, each for a reason:
+Two things to know about where coverage lives:
 
-**`StockLockConcurrencyTests`** (`inventory/tests.py`) is a
-`TransactionTestCase`, not a `TestCase`. `TestCase` wraps each test in a single
-transaction, which would hide the very interleaving these tests exist to
-exercise. Consequences when editing them:
+**`inventory/tests.py` is model-level only.** The app has no views left to
+drive, so everything that exercised a request path went with the stock pages.
+`workorders/tests.py` is where the app is actually covered.
 
-- Worker threads must `connection.close()` in a `finally` block.
-- Thread exceptions are collected into a list and re-asserted on the main
-  thread. A thread that dies silently would otherwise become a *passing* test —
-  hence the `# noqa: BLE001` on the broad except.
-- They are slower and do not share the fixture setup.
-
-**`DashboardTemplateTests` / `MovementHistoryTemplateTests`** assert on rendered
-HTML rather than context, covering what context assertions structurally cannot:
-the Czech comma decimal separator, local-time timestamps, and negative-stock
-styling. When matching a CSS class, match `class="qty-negative"` and not the
-bare string — `base.html` ships a `td.qty-negative` rule on every page, so the
-bare name is always present and the assertion would pass vacuously.
-
-**`EmptyLabelTests`** (in both `inventory/tests.py` and `workorders/tests.py`)
-fails if any `ModelChoiceField` forgets its `empty_label`. See
+**`EmptyLabelTests`** (`workorders/tests.py`) fails if any `ModelChoiceField`
+forgets its `empty_label`. See
 [localization.md](localization.md#every-modelchoicefield-needs-an-empty_label).
+
+The suite no longer has a `TransactionTestCase`. `StockLockConcurrencyTests` was
+the only one, and it went with `select_for_update()`. If you add a concurrent
+write path, it needs one again — a plain `TestCase` wraps each test in a single
+transaction and hides the interleaving that such a test exists to exercise.
 
 **`AdminCzechTests`** (in `accounts/tests.py`) fails if the admin drifts back
 to English — including if `locale/cs/LC_MESSAGES/django.mo` is stale. See
@@ -149,7 +140,7 @@ are committed. Each file path can be overridden, e.g.
 
 | File | Columns |
 |---|---|
-| `materials.csv` | `sku`, `name`, `unit_of_measure`, `category`, `track_stock` *(optional)* |
+| `materials.csv` | `sku`, `name`, `unit_of_measure`, `category` |
 | `locations.csv` | `name` |
 | `machines.csv` | `name`, `hourly_rate` *(optional)* |
 | `users.csv` | `username`, `first_name`, `last_name`, `email`, `role` |
@@ -160,14 +151,8 @@ duplicating. The whole command is one transaction.
 **Optional columns are only written when the cell actually holds a value.**
 Omitting the column, or leaving the cell blank, *preserves* what is already in
 the database — re-seeding never clobbers a rate or flag someone set by hand in
-the admin. New records fall back to the model defaults (`track_stock=True`,
-`hourly_rate=NULL`). Clearing a value back to empty is an admin action, not a
-CSV one.
-
-`track_stock` accepts `true`/`false` (also `0`, `no`, `ne`). It should be
-**false** for materials the depot consumes but never formally receives, such as
-on-site excavated soil — see
-[architecture.md](architecture.md#materials-that-skip-the-check).
+the admin. New records fall back to the model default (`hourly_rate=NULL`).
+Clearing a value back to empty is an admin action, not a CSV one.
 
 `Machine.total_hours` is **never** set by seeding. It only accumulates from
 transformations that log usage.

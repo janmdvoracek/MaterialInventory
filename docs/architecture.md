@@ -2,8 +2,8 @@
 
 A modular monolith: one Django project (`config`) with four apps that depend on
 each other in one direction only — `accounts` and `materials` hold the reference
-data, `inventory` records what happens to it, and `workorders` groups those
-records into jobs.
+data, `inventory` records the material line items, and `workorders` groups those
+into jobs and owns every page.
 
 ```
 accounts ──┐
@@ -11,117 +11,51 @@ accounts ──┐
 materials ─┘        (StockMovement.work_order → WorkOrder)
 ```
 
+> **This app does not track stock.** Receipts, shipments, adjustments, the stock
+> dashboard, the movement history and its CSV export were all removed, along with
+> `Material.track_stock` and every balance and sufficiency check. Nothing sums
+> quantities into an on-hand figure. The repository name is historical.
+
 ---
 
-## The ledger
+## Job line items
 
-`inventory.StockMovement` is the heart of the system, and it is **append-only**.
+`inventory.StockMovement` keeps its name to avoid a table rename, but it is no
+longer a ledger. One row is **one material line on one job**: what the job
+consumed or what it produced.
 
 | Field | Meaning |
 |---|---|
 | `material`, `location` | What, and where. |
-| `quantity` | **Signed.** Positive is stock in, negative is stock out. |
-| `movement_type` | `RECEIPT`, `SHIPMENT`, `TRANSFORM_CONSUME`, `TRANSFORM_PRODUCE`, `ADJUSTMENT`. |
-| `work_order` | Set only for the two `TRANSFORM_*` types. |
-| `created_at` | **When the movement happened**, not when it was typed in. Defaults to now; the Receipt and Shipment forms can override it. Everything sorts, filters and exports by this. |
+| `quantity` | **Signed.** Negative for consumed, positive for produced. |
+| `movement_type` | `TRANSFORM_CONSUME` or `TRANSFORM_PRODUCE`. Nothing else. |
+| `work_order` | The job this line belongs to. Nullable only because pre-removal rows had no job. |
+| `created_at` | Defaults to now. Overridable, but nothing overrides it today. |
 | `recorded_at` | When the row was written. `auto_now_add`, so it cannot be set. |
 | `notes`, `created_by` | Audit trail. |
 
-The two timestamps exist because depot work is written up after the fact —
-material arrives at seven and is entered at eleven. A worker who ticks *„Jiné
-datum a čas než teď"* on Příjem or Výdej states the real time, and that is what
-the ledger reports; `recorded_at` still records when they actually typed it, so
-a back-dated row is never indistinguishable from a contemporaneous one. Only
-those two forms offer it: Zpracování and Ruční úprava always use now.
+Rows written before the removal may still carry raw `RECEIPT`, `SHIPMENT` or
+`ADJUSTMENT` values. Those are no longer members of `MovementType`, so
+`get_movement_type_display()` returns the bare string for them. They were left in
+the database on purpose — deleting them was not part of the change.
 
-`created_at` is therefore **not** `auto_now_add` — passing it to `create()`
-works, and any new code that writes a movement decides whether to.
+`created_at` stays `default=timezone.now` rather than `auto_now_add` so that a
+job could be back-dated later without a schema change. The back-dating checkbox
+that used to set it (*„Jiné datum a čas než teď"*) lived on the Příjem and Výdej
+forms and went with them, so in practice `created_at` always equals
+`recorded_at` right now.
 
-Current stock is **always derived**:
+### What this means for new code
 
-```python
-StockMovement.objects.filter(material=m, location=l).aggregate(Sum('quantity'))
-```
-
-There is no `Material.quantity_on_hand` column and there must never be one. A
-stored counter can drift from the history that produced it; a derived one
-cannot. The cost is a `SUM` per lookup, which is why there's an index on
-`(material, location)`. At depot scale this is not a concern.
-
-Consequences worth internalising:
-
-- **Nothing is corrected by editing or deleting.** A mistake is fixed by
-  appending a compensating `ADJUSTMENT`, which is why adjustments require a
-  written reason.
-- **Stock can go negative** — the dashboard renders negative rows in red rather
-  than hiding them. This is a signal, usually of a missed receipt.
-- **Row count grows forever.** History and exports are paginated (50/page) and
-  the export streams with `.iterator()` rather than materialising the queryset.
-
-## Stock sufficiency, and the race it has to survive
-
-Shipments, transform-consumes, and decreasing adjustments must not take more
-than exists. The naive version — read the sum, compare, write — is a
-check-then-act race: two concurrent shipments can both read "10 available" and
-both write −8.
-
-`inventory/services.py::get_available_quantity(material, location, lock=False)`
-closes it:
-
-```python
-with transaction.atomic():
-    available = get_available_quantity(material, location, lock=True)
-    if quantity > available:
-        ...reject...
-    StockMovement.objects.create(...)
-```
-
-The check is always against **stock as it stands now**, even for a back-dated
-shipment. `get_available_quantity` sums the whole ledger and ignores
-`created_at`, so stating an earlier time never widens what may be shipped —
-back-dating records history, it doesn't rewrite the balance.
-
-With `lock=True` it issues `SELECT ... FOR UPDATE` on the **`Material` row**
-before summing. Concurrent writers for the same material serialise on that row,
-so the second one reads a sum that already includes the first one's write. The
-lock is on `Material` rather than on the movement rows because you cannot lock
-rows that don't exist yet — the point is to serialise writers, and an arbitrary
-shared row is the standard way to do it.
-
-**`lock=True` is only valid inside `transaction.atomic()`.** Outside one, the
-lock is released immediately and buys nothing.
-
-`StockLockConcurrencyTests` in `inventory/tests.py` exercises this with real
-threads and real concurrent transactions. If you change the locking, verify
-those tests by temporarily removing the `select_for_update()` and confirming
-they fail — a concurrency test that cannot fail is worthless.
-
-### Two layers, and only one of them counts
-
-The check appears twice, deliberately:
-
-1. `ShipmentForm.clean()` / `AdjustmentForm.clean()` do an **unlocked** sum so
-   the user gets a friendly inline field error.
-2. The **view** redoes it with `lock=True` inside `transaction.atomic()`.
-
-Only the second is race-safe. The first is a user-experience affordance. **New
-code that writes stock must perform the locked check itself** and must never
-assume a form already validated.
-
-### Materials that skip the check
-
-`Material.track_stock = False` exempts a material from every sufficiency check.
-This is for things the depot consumes but never formally receives — soil
-excavated on site, for example. Without the flag, the first attempt to consume
-such a material fails against a zero balance forever.
-
-The flag is honoured in all four places that consume stock (shipment form and
-view, adjustment form and view, transform view). A new consumption path must
-honour it too.
+There is no available-quantity helper, no `select_for_update()`, and no check to
+perform before writing a line item. A job records what a worker says happened.
+If you ever need balances back, you are adding a genuinely new subsystem — read
+the git history for `inventory/services.py` rather than assuming any of the old
+machinery is still wired up.
 
 ## Work orders
 
-A transformation is one `WorkOrder` plus the movements it caused:
+A transformation is one `WorkOrder` plus everything it produced:
 
 ```
 WorkOrder #17  "Crushing gravel"
@@ -129,24 +63,46 @@ WorkOrder #17  "Crushing gravel"
 ├── StockMovement  TRANSFORM_PRODUCE  +14 t  Gravel 8/16 @ Yard
 ├── StockMovement  TRANSFORM_PRODUCE  +5 t   Gravel 4/8  @ Yard
 ├── MachineUsage   Crusher  3.5 h
-└── collaborators  [novak, svoboda]
+├── WorkerHours    novak 6 h,  svoboda 4 h
+└── collaborators  [svoboda]
 ```
 
-The whole submission is one atomic block. Specifically:
+The whole submission is one `transaction.atomic()` block. Nothing inside it can
+fail on a stock check any more, but the transaction stays: the line items, the
+hours and the machine usage are one job and must not land half-written.
 
-- Consumed rows for the **same material and location** are summed across
-  formset rows *before* the check, so three rows of 5 t are tested as 15 t, not
-  as three independent 5 t checks against the same balance.
-- Every shortfall is collected and reported together, rather than failing on
-  the first — one round trip tells the worker everything that's wrong.
-- A shortfall rolls back machine usage as well. There is no partial job.
+Formset rows are written **exactly as typed**. The view used to combine consumed
+rows for the same material and location so it could test them as a single
+quantity; with no check left, two rows of 6 t are simply two line items.
+
+### `WorkerHours` vs `MachineUsage`
+
+Two unrelated numbers. Do not derive one from the other.
+
+- **`WorkerHours`** is labour: what a person typed for themselves. The
+  submitter's own hours come from `WorkOrderForm.hours` (*„Moje hodiny"*, and it
+  is required); each collaborator's come from a `WorkerHoursFormSet` row. A
+  `UniqueConstraint` allows one row per person per job, and naming the same
+  person on two rows sums their hours rather than tripping it.
+- **`MachineUsage.hours`** is motohodiny — machine runtime.
+
+The Hodiny report totals `WorkerHours` only, so it has no fixed relationship to
+`Machine.total_hours`. That is not a reconciliation bug.
 
 ### `collaborators`
 
-Other people who worked the job. Its only functional effect is **visibility**: a
-collaborator sees the job's movements and hours in their own history, and is
-credited its hours. Workers may only pick other workers; managers and admins may
-pick anyone. Nobody can pick themselves — the submitter is already the creator.
+**Derived, not entered.** `transform_create` calls
+`work_order.collaborators.set(worker_hours.keys())`, so the M2M can never
+disagree with the hours rows about who worked the job. Its functional effect is
+visibility: a collaborator sees the job in their own history and hours.
+
+`collaborator_queryset` decides who may be named — never yourself (you are
+already the creator), and a plain worker may only name other workers.
+
+The one place the two can drift is the Django admin: `WorkOrderAdmin` exposes
+the `collaborators` multi-select and the `WorkerHours` inline as independent
+widgets, so an admin edit can leave a collaborator with no hours row, or a
+person with hours who is not a collaborator.
 
 ### `Machine.total_hours`
 
@@ -161,9 +117,22 @@ edits keep the counter correct too.
 > `queryset.update()`, or `queryset.delete()`.** They bypass the model methods
 > and silently desynchronise the counter, with no error.
 
-This is the one place the codebase stores a derived-looking number. Unlike
-stock, it is a monotonic operational metric rather than an auditable balance,
-and cheap to correct by hand in the admin if it ever drifts.
+## Pages and URLs
+
+Four pages, all in `workorders`, all mounted at the **root** by
+`config/urls.py` — `inventory` contributes no URLs at all.
+
+| URL | Name | What |
+|---|---|---|
+| `/` | `transform_create` | Zpracování — the form, and the landing page |
+| `/hours/` | `time_worked` | Hodiny |
+| `/machines/` | `machine_dashboard` | Stroje |
+| `/machines/history/` | `machine_usage_history` | Machine usage log |
+
+`LOGIN_REDIRECT_URL`, the header logo and the post-submit redirect all point at
+`transform_create`. Login and password change are Django's own generic views,
+wired in `config/urls.py` with Czech form subclasses from `accounts/forms.py`;
+`accounts/views.py` is empty.
 
 ## Roles and permissions
 
@@ -171,8 +140,8 @@ and cheap to correct by hand in the admin if it ever drifts.
 
 | Role | `is_staff` / `is_superuser` | App access |
 |---|---|---|
-| `WORKER` | no | Receipt, Shipment, Transform; own records only |
-| `MANAGER` | no | + Adjustments, + everyone's records |
+| `WORKER` | no | Zpracování, Hodiny; own records only |
+| `MANAGER` | no | + Stroje in the nav, + everyone's records |
 | `ADMIN` | **yes / yes** | + Django admin |
 
 Two gates:
@@ -182,7 +151,13 @@ Two gates:
   not a bounce back to login, which would be a confusing dead end.
 - `User.is_manager_or_admin` for conditional UI and query scoping.
 
-**Superusers bypass both.** `createsuperuser` never sets a `role`, so a
+**No view currently uses `role_required`.** Its only caller was
+`adjustment_create`. The decorator and its tests are kept because it is the
+right tool the moment a page needs gating — and `machine_dashboard` arguably
+does: it is hidden from a worker's nav but reachable by typing the URL. Hiding a
+link is not access control.
+
+**Superusers bypass both gates.** `createsuperuser` never sets a `role`, so a
 bootstrap admin would otherwise default to `WORKER` and be locked out of the app
 it administers.
 
@@ -198,8 +173,8 @@ consistent however the account was created.
 
 ### How worker scoping is enforced
 
-Three views scope their results — movement history, machine-usage history, and
-time worked. Each does it **twice**, and the two are not equivalent:
+Two views scope their results — machine-usage history and time worked. Each does
+it **twice**, and the two are not equivalent:
 
 ```python
 # In the view — this is the real enforcement.
@@ -217,9 +192,13 @@ view has a `test_worker_cannot_bypass_restriction_via_*_param` test asserting
 exactly that. Keep both when adding a scoped view; the enforcement must not
 depend on the form.
 
+`time_worked` needs a **third** step on top: after aggregating, it filters the
+summary rows to the requesting worker. Without that, a job someone else created
+and invited them to would put the creator's hours on their screen.
+
 ## Filter forms
 
-Every list view follows one pattern, and the edge cases are the point:
+Both list views follow one pattern, and the edge cases are the point:
 
 | Request | Behaviour |
 |---|---|
@@ -227,8 +206,8 @@ Every list view follows one pattern, and the edge cases are the point:
 | Valid filters | Apply them. |
 | **Invalid** filters | Return **`.none()`**. |
 
-The last row is deliberate. Silently ignoring a bad filter would hand back the
-entire ledger under a heading that says "these are your filtered results" — the
+The last row is deliberate. Silently ignoring a bad filter would hand back
+everything under a heading that says "these are your filtered results" — the
 most dangerous possible response, because it looks like an answer. The template
 renders an explicit warning instead.
 
@@ -238,31 +217,18 @@ plain page load.
 
 ## Time-worked reporting
 
-`workorders/views.py::_time_worked_summary` credits **every participant with the
-job's full machine hours**, not a per-person share. If two people jointly ran a
-3-hour crushing job, each is credited 3 hours.
-
-So the column deliberately sums to more than `Machine.total_hours` whenever
-people collaborate. It measures **labour time**, not machine runtime. Anyone
-reconciling the two numbers needs to know this; it is not a bug.
+`workorders/views.py::_time_worked_summary` sums `WorkerHours.hours` per person
+over the scoped jobs — the hours each person typed for themselves, not a share
+of anything.
 
 One implementation detail that is easy to break: the view re-queries by
 `pk__in` into a fresh `scoped` queryset before aggregating. The collaborator
 filters join the many-to-many table, and aggregating over a joined queryset
 multiplies the `Sum` by the number of matched collaborators.
 
-## The CSV export
-
-`inventory/views.py::movement_history_export` streams the currently filtered
-history. It targets **Czech Excel, not RFC 4180**, and every deviation is
-deliberate. See [localization.md](localization.md#the-csv-export) for the four
-format decisions and the formula-injection guard.
-
-It respects the same scoping as the history view it mirrors — a worker's export
-contains only a worker's rows.
-
 ## What is deliberately absent
 
+- **No stock balances.** See the note at the top; this is the big one.
 - **No REST API.** `rest_framework` is installed and configured for session auth,
   but there are no serializers, viewsets, or routes. It is a placeholder.
 - **No JavaScript.** `django_htmx` is installed and htmx is loaded in

@@ -5,7 +5,7 @@ This is achieved two ways at once, and the split matters.
 
 | Layer | Mechanism |
 |---|---|
-| **App copy** — labels, buttons, messages, choice labels, export headers | **Hardcoded Czech strings** in the source |
+| **App copy** — labels, buttons, messages, choice labels | **Hardcoded Czech strings** in the source |
 | **Framework strings** — admin chrome, `contrib.auth`, validation errors | `LANGUAGE_CODE = 'cs'`, using the `.mo` catalogs Django ships |
 | **Framework strings Django never translated** | `LOCALE_PATHS` → `locale/cs/LC_MESSAGES/django.po`, holding Django msgids only |
 
@@ -32,7 +32,7 @@ section before touching any of them.
 
 ## Numbers render with a comma
 
-`{{ movement.quantity }}` renders **`12,50`**, not `12.50`.
+`{{ row.hours }}` renders **`12,50`**, not `12.50`.
 
 So tests asserting on rendered quantities must use the comma:
 
@@ -65,25 +65,24 @@ as an ISO string.
 
 ## The clock in native pickers is the device's, not ours
 
-Everything the app renders is 24-hour: templates use an explicit `H:i`, the CSV
-export uses `%H:%M:%S`, and Czech `TIME_FORMAT` is `G:i`. The
-`<input type="datetime-local">` on Příjem/Výdej is the exception, and it is not
-ours to set — browsers draw that control themselves and format it from the
-**browser or OS language**. A Czech-configured phone shows 24h; an
-English-configured one shows AM/PM, and `lang="cs"` on the document does not
-override it.
+Everything the app renders is 24-hour: templates use an explicit `H:i` and Czech
+`TIME_FORMAT` is `G:i`.
 
-This was raised and settled: the alternative is a plain text field taking
-`20.08.2026 07:30` (which Czech `DATETIME_INPUT_FORMATS` already parses), which
-guarantees 24-hour everywhere but costs the tap-to-pick calendar on phones.
-Same trade-off as `localize=False` on the quantity fields above, and it was
-decided the same way — keep the native control. The stored value is unaffected
-either way; only the display differs.
+The app no longer renders an `<input type="datetime-local">` anywhere — it
+existed only for the back-dating checkbox on Příjem and Výdej, and went with
+them. It is recorded here because the caveat returns with the widget: browsers
+draw that control themselves and format it from the **browser or OS language**,
+so a Czech-configured phone shows 24h while an English-configured one shows
+AM/PM, and `lang="cs"` does not override it. The alternative — a text field
+taking `20.08.2026 07:30`, which Czech `DATETIME_INPUT_FORMATS` already parses —
+guarantees 24-hour but costs the tap-to-pick calendar on phones. That trade was
+settled in favour of the native control, the same way as `localize=False` on
+quantities above.
 
 ## Keep explicit date formats in templates
 
 Timestamps use `|date:"Y-m-d H:i"`, which is locale-independent. A bare
-`{{ movement.created_at }}` would render `14. srpna 2026` instead.
+`{{ usage.created_at }}` would render `14. srpna 2026` instead.
 
 ## Every `ModelChoiceField` needs an `empty_label`
 
@@ -95,14 +94,15 @@ The wording depends on what a blank choice *means*:
 
 | Form type | Blank means | Wording |
 |---|---|---|
-| Entry (receive, ship, adjust, transform) | "you must choose" | `Vyberte materiál`, `Vyberte lokalitu`, `Vyberte stroj` |
-| Filter (history, hours, machine usage) | "don't filter by this" | `Všechny materiály`, `Všechny lokality`, `Všichni uživatelé`, `Všechny stroje`, `Všichni pracovníci` |
+| Transform formset rows | it *is* the label | `Materiál`, `Lokalita`, `Stroj`, `Pracovník` |
+| Filter (hours, machine usage) | "don't filter by this" | `Všechny stroje`, `Všichni pracovníci`, `Všichni uživatelé` |
 
-Filter wording matches the `Všechny typy` choice that
-`HistoryFilterForm.__init__` sets for `movement_type`.
+The transform rows use the bare noun rather than a `Vyberte ...` prompt because
+each row renders its selects side by side with no room for a visible label, so
+the empty option is doing the labelling. The `hours` input on those rows carries
+a placeholder for the same reason.
 
-`EmptyLabelTests`, in both `inventory/tests.py` and `workorders/tests.py`, fails
-if a new field forgets. `ModelMultipleChoiceField` — `collaborators`, for
+`EmptyLabelTests` in `workorders/tests.py` fails if a new field forgets. `ModelMultipleChoiceField` — `collaborators`, for
 example — has no blank option and needs nothing.
 
 ## Time zones
@@ -112,42 +112,8 @@ rendering and the day boundaries that `__date` lookups use for the history date
 filters.
 
 Templates localize automatically. **Python code does not.** Anything formatting
-a datetime outside a template must call `timezone.localtime()` explicitly — the
-CSV export does, so its timestamps match the ones on screen.
-
-## The CSV export
-
-`inventory/views.py::movement_history_export` targets **Czech Excel, not
-RFC 4180**. Four deliberate deviations:
-
-| Decision | Reason |
-|---|---|
-| Semicolon separator | The Windows list separator under a Czech locale. Commas would put every row in one cell. |
-| Comma decimals (`-12,500`) | Otherwise Excel reads quantities as text. |
-| `dd.mm.yyyy hh:mm:ss` dates | Czech order, so Excel parses them as dates rather than leaving them as text. |
-| UTF-8 **BOM** | Without it Excel assumes windows-1250 and mangles every diacritic in the material names. |
-
-`ExportExcelCompatibilityTests` asserts all four against the raw response bytes.
-
-**Anything machine-reading this file needs `delimiter=';'` and
-`decode('utf-8-sig')`.** It is not a general-purpose interchange format; it is
-an Excel file that happens to be CSV.
-
-### The two escaping helpers
-
-Text fields go through `_csv_safe`, which prefixes an apostrophe to anything
-starting with `=`, `+`, `-`, `@`, tab, or carriage return. Excel and LibreOffice
-execute such cells as formulas, so a note reading `=cmd|...` would otherwise run
-on whoever opens the export.
-
-Quantities go through `_csv_number` instead, which only swaps the decimal
-separator. This is deliberate: **every shipment quantity is negative**, and
-`_csv_safe` would prefix an apostrophe to all of them, turning the entire
-quantity column into text and breaking every sum in the spreadsheet.
-
-So the split is not an oversight. Quantities are `Decimal`s from the database
-and cannot carry an injection payload; free text can. Route new columns through
-`_csv_safe` unless they are numbers straight out of the ORM.
+a datetime outside a template must call `timezone.localtime()` explicitly.
+Nothing does today — the CSV export that did was removed with the stock pages.
 
 ## The admin
 

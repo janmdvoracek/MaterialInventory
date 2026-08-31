@@ -60,7 +60,7 @@ MIDDLEWARE = [
 AUTH_USER_MODEL = 'accounts.User'
 
 LOGIN_URL = 'login'
-LOGIN_REDIRECT_URL = 'dashboard'
+LOGIN_REDIRECT_URL = 'transform_create'
 LOGOUT_REDIRECT_URL = 'login'
 
 ROOT_URLCONF = 'config.urls'

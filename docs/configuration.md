@@ -170,9 +170,8 @@ USE_TZ = True
 rather than negotiated per-request from `Accept-Language`. Depot workers get
 Czech regardless of their browser settings.
 
-These settings change how numbers and dates render, how form input parses, and
-how the CSV export is read by Excel. They are not cosmetic. See
-[localization.md](localization.md).
+These settings change how numbers and dates render and how form input parses.
+They are not cosmetic. See [localization.md](localization.md).
 
 ## Python version
 
@@ -192,6 +191,6 @@ production. Worth aligning.
 | Setting | Value | Why |
 |---|---|---|
 | `AUTH_USER_MODEL` | `accounts.User` | Custom user with `role`. Reference it as `settings.AUTH_USER_MODEL`, never by importing `User` into a model module. |
-| `LOGIN_URL` / `LOGIN_REDIRECT_URL` | `login` / `dashboard` | |
+| `LOGIN_URL` / `LOGIN_REDIRECT_URL` | `login` / `transform_create` | Zpracování is the landing page. |
 | `REST_FRAMEWORK` | session auth, `IsAuthenticated` | Configured but unused — there are no API routes. |
-| `DEFAULT_AUTO_FIELD` | `BigAutoField` | The ledger is append-only and grows indefinitely. |
+| `DEFAULT_AUTO_FIELD` | `BigAutoField` | Job line items are never deleted, so the table grows indefinitely. |

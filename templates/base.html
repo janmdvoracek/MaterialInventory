@@ -108,9 +108,6 @@
         th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid #e5e7eb; white-space: nowrap; }
         th { color: var(--brand-dark); border-bottom: 2px solid var(--brand-green); }
         .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-        td.qty-negative { color: #991b1b; font-weight: 700; }
-        /* Stock dashboard: let the material name wrap instead of widening the table */
-        .page-dashboard td:first-child { white-space: normal; overflow-wrap: break-word; }
         nav.bottom {
             position: fixed;
             bottom: 0;
@@ -139,7 +136,7 @@
 </head>
 <body class="page-{{ request.resolver_match.url_name }}">
     <header>
-        <a href="{% url 'dashboard' %}"><img class="logo" src="{% static 'img/logo.png' %}" alt="Petrokámen"></a>
+        <a href="{% url 'transform_create' %}"><img class="logo" src="{% static 'img/logo.png' %}" alt="Petrokámen"></a>
         {% if user.is_authenticated %}
             <div class="header-actions">
                 <a class="header-link" href="{% url 'password_change' %}">Změnit heslo</a>
@@ -165,14 +162,10 @@
     </main>
     {% if user.is_authenticated %}
     <nav class="bottom">
-        <a href="{% url 'dashboard' %}">Sklad</a>
         <a href="{% url 'transform_create' %}">Zpracování</a>
         <a href="{% url 'time_worked' %}">Hodiny</a>
         {% if user.is_manager_or_admin %}
-            <a href="{% url 'receipt_create' %}">Příjem</a>
-            <a href="{% url 'shipment_create' %}">Výdej</a>
             <a href="{% url 'machine_dashboard' %}">Stroje</a>
-            <a href="{% url 'adjustment_create' %}">Úprava</a>
         {% endif %}
     </nav>
     {% endif %}

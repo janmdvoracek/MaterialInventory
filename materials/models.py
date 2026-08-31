@@ -3,10 +3,10 @@ from decimal import Decimal
 from django.db import models
 
 RETIRE_HELP_TEXT = (
-    'Odškrtnutím záznam vyřadíte místo smazání — zmizí z nabídek ve všech formulářích '
-    '(Příjem/Výdej/Úprava/Zpracování), ale historie zůstane zachována. Smazání je '
-    'zablokováno, jakmile má záznam nějaký skladový pohyb nebo využití, právě proto, '
-    'aby historie nemohla zmizet.'
+    'Odškrtnutím záznam vyřadíte místo smazání — zmizí z nabídek ve formuláři '
+    'Zpracování, ale historie zůstane zachována. Smazání je zablokováno, jakmile '
+    'má záznam nějakou položku zpracování nebo využití, právě proto, aby historie '
+    'nemohla zmizet.'
 )
 
 
@@ -29,14 +29,6 @@ class Material(models.Model):
     unit_of_measure = models.CharField(max_length=20, help_text='např. kg, m, ks, t', verbose_name='měrná jednotka')
     category = models.CharField(max_length=100, blank=True, verbose_name='kategorie')
     is_active = models.BooleanField(default=True, help_text=RETIRE_HELP_TEXT, verbose_name='aktivní')
-    track_stock = models.BooleanField(
-        default=True,
-        help_text=(
-            'Pokud je vypnuto, lze tento materiál vydat/spotřebovat/snížit bez kontroly dostatku zásoby '
-            '(např. zdroj přímo na místě, jako je vytěžená zemina, který se nikdy formálně nepřijímá).'
-        ),
-        verbose_name='sledovat zásobu',
-    )
 
     class Meta:
         ordering = ['name']
