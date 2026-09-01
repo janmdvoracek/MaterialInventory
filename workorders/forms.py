@@ -97,7 +97,7 @@ class MachineUsageForm(forms.Form):
         return cleaned_data
 
 
-MachineUsageFormSet = forms.formset_factory(MachineUsageForm, extra=3)
+MachineUsageFormSet = forms.formset_factory(MachineUsageForm, extra=4)
 
 
 class WorkerHoursForm(forms.Form):
