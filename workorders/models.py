@@ -71,9 +71,7 @@ class MachineUsage(models.Model):
     # Nullable only because rows written before the column existed have no
     # answer — unknown, not zero. The Transform form requires it on every row
     # it writes, alongside the machine and its hours.
-    tons = models.DecimalField(
-        max_digits=12, decimal_places=2, null=True, blank=True, verbose_name='odpracované tuny'
-    )
+    tons = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, verbose_name='odpracované tuny')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='vytvořeno')
 
     class Meta:
