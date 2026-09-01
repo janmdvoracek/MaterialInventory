@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}Zpracování #{{ work_order.pk }}{% endblock %}
+{% block content %}
+<h1>Zpracování #{{ work_order.pk }}</h1>
+<div class="card">
+    <p>
+        <span class="status-badge {{ work_order.status|lower }}">{{ work_order.get_status_display }}</span>
+    </p>
+    <table>
+        <tbody>
+            <tr><th>Datum</th><td>{{ work_order.created_at|date:"Y-m-d H:i" }}</td></tr>
+            <tr><th>Zaznamenal</th><td>{{ work_order.created_by.username }}</td></tr>
+            <tr><th>Popis</th><td>{{ work_order.description|default:"—" }}</td></tr>
+            {% if work_order.reviewed_at %}
+                <tr><th>Posouzeno</th><td>{{ work_order.reviewed_at|date:"Y-m-d H:i" }}{% if work_order.reviewed_by %} ({{ work_order.reviewed_by.username }}){% endif %}</td></tr>
+            {% endif %}
+            {% if work_order.review_note %}
+                <tr><th>Důvod vrácení</th><td>{{ work_order.review_note }}</td></tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+
+<div class="card">
+    <h2>Pracovníci</h2>
+    <div class="table-scroll">
+    <table>
+        <thead><tr><th>Pracovník</th><th>Hodiny</th></tr></thead>
+        <tbody>
+        {% for row in worker_hours %}
+            <tr><td>{{ row.user.username }}</td><td>{{ row.hours|floatformat:1 }} h</td></tr>
+        {% empty %}
+            <tr><td colspan="2">Žádné odpracované hodiny.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Spotřebováno</h2>
+    <div class="table-scroll">
+    <table>
+        <thead><tr><th>Materiál</th><th>Lokalita</th><th>Množství</th></tr></thead>
+        <tbody>
+        {% for item in consumed %}
+            <tr>
+                <td>{{ item.material.name }}</td>
+                <td>{{ item.location.name }}</td>
+                <td>{{ item.typed_quantity|floatformat:2 }} {{ item.material.unit_of_measure }}</td>
+            </tr>
+        {% empty %}
+            <tr><td colspan="3">Žádné položky.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Vyrobeno</h2>
+    <div class="table-scroll">
+    <table>
+        <thead><tr><th>Materiál</th><th>Lokalita</th><th>Množství</th></tr></thead>
+        <tbody>
+        {% for item in produced %}
+            <tr>
+                <td>{{ item.material.name }}</td>
+                <td>{{ item.location.name }}</td>
+                <td>{{ item.typed_quantity|floatformat:2 }} {{ item.material.unit_of_measure }}</td>
+            </tr>
+        {% empty %}
+            <tr><td colspan="3">Žádné položky.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Použité stroje</h2>
+    <div class="table-scroll">
+    <table>
+        <thead><tr><th>Stroj</th><th>Motohodiny</th><th>Tuny</th></tr></thead>
+        <tbody>
+        {% for usage in machine_usages %}
+            <tr>
+                <td>{{ usage.machine.name }}</td>
+                <td>{{ usage.hours|floatformat:1 }} h</td>
+                <td>{{ usage.tons|floatformat:2|default:"—" }}</td>
+            </tr>
+        {% empty %}
+            <tr><td colspan="3">Žádné stroje.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Akce</h2>
+    {% if not work_order.is_approved %}
+        <form method="post" action="{% url 'job_approve' work_order.pk %}">
+            {% csrf_token %}
+            <button type="submit">Schválit</button>
+        </form>
+    {% endif %}
+    <a class="btn secondary" href="{% url 'job_edit' work_order.pk %}">Upravit</a>
+    <form method="post" action="{% url 'job_return' work_order.pk %}">
+        {% csrf_token %}
+        <label for="{{ review_form.note.id_for_label }}">{{ review_form.note.label }}</label>
+        {{ review_form.note }}
+        <button class="btn secondary" type="submit">Vrátit k přepracování</button>
+    </form>
+    <a class="btn danger" href="{% url 'job_delete' work_order.pk %}">Smazat</a>
+</div>
+<p><a href="{% url 'job_dashboard' %}">← Zpět na přehled</a></p>
+{% endblock %}

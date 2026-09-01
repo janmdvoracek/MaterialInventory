@@ -6,7 +6,18 @@ from materials.models import Machine
 
 
 class WorkOrder(models.Model):
-    """Groups the stock movements produced by a single transformation job."""
+    """Groups the stock movements produced by a single transformation job.
+
+    A job a worker submits is a *proposal* until a manager or admin approves it:
+    only APPROVED jobs are counted by the Hodiny, Stroje and machine-history
+    pages. A manager's own submission is approved on the spot — there is nobody
+    above them to sign it off.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = 'PENDING', 'Čeká na schválení'
+        APPROVED = 'APPROVED', 'Schváleno'
+        RETURNED = 'RETURNED', 'Vráceno k přepracování'
 
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='vytvořeno')
     created_by = models.ForeignKey(
@@ -19,6 +30,19 @@ class WorkOrder(models.Model):
         verbose_name='spolupracovníci',
     )
     description = models.CharField(max_length=255, blank=True, verbose_name='popis')
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING, verbose_name='stav')
+    reviewed_at = models.DateTimeField(null=True, blank=True, verbose_name='posouzeno')
+    # Null for jobs approved by the backfill migration — they predate the rule
+    # and were never signed off by a person.
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name='reviewed_work_orders',
+        null=True,
+        blank=True,
+        verbose_name='posoudil',
+    )
+    review_note = models.CharField(max_length=255, blank=True, verbose_name='poznámka k posouzení')
 
     class Meta:
         ordering = ['-created_at']
@@ -27,6 +51,10 @@ class WorkOrder(models.Model):
 
     def __str__(self):
         return f'WorkOrder #{self.pk} - {self.description or "untitled"}'
+
+    @property
+    def is_approved(self):
+        return self.status == self.Status.APPROVED
 
 
 class WorkerHours(models.Model):

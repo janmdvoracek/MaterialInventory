@@ -17,6 +17,8 @@ adrese, kterou vám dal správce, a přihlaste se uživatelským jménem a hesle
 - [Přihlášení a změna hesla](#přihlášení-a-změna-hesla)
 - [Spodní menu](#spodní-menu)
 - [Zpracování](#zpracování)
+- [Schvalování](#schvalování)
+- [Přehled zpracování (pro vedoucí)](#přehled-zpracování-pro-vedoucí)
 - [Stroje](#stroje)
 - [Hodiny](#hodiny)
 - [Časté potíže](#časté-potíže)
@@ -39,6 +41,7 @@ Ve spodní části obrazovky je menu, ze kterého se dostanete všude:
 |---|---|
 | **Zpracování** | Z jednoho materiálu vznikl jiný — hlavní formulář |
 | **Hodiny** | Odpracované hodiny lidí |
+| **Přehled** | Všechna zapsaná zpracování ke schválení — vidí jen vedoucí |
 | **Stroje** | Celkové motohodiny a sazby strojů — vidí jen vedoucí |
 
 Po přihlášení se rovnou otevře **Zpracování**. Stejně tak se tam vrátíte
@@ -103,10 +106,48 @@ vyplněný celý.
 > Celá zakázka se ukládá najednou — položky, hodiny lidí i hodiny strojů. Po
 > uložení se formulář vyprázdní a můžete zapsat další zakázku.
 
+## Schvalování
+
+**Zakázku, kterou zapíše pracovník, musí schválit vedoucí.** Po odeslání se
+uloží a aplikace napíše, že *čeká na schválení*. Do té doby se **nezapočítává**
+do přehledu **Hodiny** ani do **Strojů** — proto tam své hodiny hned po odeslání
+neuvidíte. Jakmile ji vedoucí schválí, objeví se všude.
+
+Zakázka zapsaná vedoucím je schválená rovnou.
+
+Když je něco špatně, vedoucí zakázku **vrátí k přepracování** a napíše proč.
+Vrácené zakázky uvidíte nahoře na stránce **Zpracování** i s důvodem. Opravu
+provede vedoucí — vy ji opravit nemůžete, takže mu dejte vědět, jak to bylo
+správně. Vrácená zakázka se do přehledů nepočítá.
+
+## Přehled zpracování (pro vedoucí)
+
+Tuto sekci mají v menu pouze vedoucí a správci. Je v ní **seznam všech
+zapsaných zpracování** — datum, kdo je zapsal, popis, hodiny celkem a stav.
+Zakázky, které čekají na schválení, jsou **žlutě** zvýrazněné, vrácené
+**červeně**; nahoře je počet čekajících. Filtrovat lze podle stavu, pracovníka
+a data.
+
+Klepnutím na **Detail** otevřete celou zakázku se vším, co bylo ve formuláři
+vyplněno — hodiny všech lidí, spotřeba, výroba i stroje s motohodinami a tunami.
+Dole jsou akce:
+
+| Akce | Co udělá |
+|---|---|
+| **Schválit** | Zakázka se započítá do Hodin i Strojů. |
+| **Upravit** | Otevře stejný formulář jako Zpracování, předvyplněný. Uložením se řádky přepíšou. **Schválení tím nevzniká** — po opravě je ještě potřeba schválit. |
+| **Vrátit k přepracování** | Vyžaduje důvod. Ten se ukáže pracovníkovi na stránce Zpracování. |
+| **Smazat** | Nevratně smaže celou zakázku i její řádky; motohodiny se strojům odečtou. |
+
+Při úpravě platí stejná pravidla jako při zápisu — hlavně že se **součty
+spotřeby a výroby musí rovnat**. Pole *hodiny* patří tomu, kdo zakázku zapsal,
+ne vám.
+
 ## Stroje
 
-Přehled strojů a jejich **celkových motohodin**. Číslo se navyšuje automaticky
-pokaždé, když někdo ve **Zpracování** vyplní hodiny stroje.
+Přehled strojů a jejich **celkových motohodin**. Číslo se navyšuje pokaždé, když
+někdo ve **Zpracování** vyplní hodiny stroje a vedoucí zakázku **schválí** —
+neschválené zakázky se do něj nepočítají.
 
 Vedle motohodin se zobrazují dvě sazby stroje: **Sazba (Kč/hod)** a
 **Cena (Kč/t)** za tunu zpracovaného materiálu. Obě jsou pouze orientační —
@@ -159,8 +200,11 @@ hlášky jsou obě čísla. Sčítají se všechny řádky dohromady, takže chy
 řádek, nebo je někde překlep v množství. Dokud to nesedí, neuloží se ani hodiny
 a stroje.
 
-**Nevidím v menu Stroje.**
-Je jen pro vedoucí. Pokud je potřebujete, řekněte si správci o změnu role.
+**Nevidím v menu Stroje ani Přehled.**
+Jsou jen pro vedoucí. Pokud je potřebujete, řekněte si správci o změnu role.
+
+**Zapsal jsem zakázku, ale v Hodinách ji nevidím.**
+Čeká na schválení vedoucím. Po schválení se v Hodinách i ve Strojích objeví.
 
 **Nevidím záznamy kolegů.**
 Běžný pracovník vidí své záznamy a zakázky, kde je uvedený jako spolupracovník.
@@ -174,5 +218,5 @@ aktivní.
 Aplikace neumí obnovu hesla přes e-mail. Požádejte správce o nastavení nového.
 
 **Špatně zadaná zakázka.**
-Ve formuláři se opravit nedá — záznamy se nemažou. Opravu provede správce
-v administraci.
+Jako pracovník ji opravit nemůžete. Řekněte vedoucímu — ten ji v **Přehledu**
+opraví, nebo vám ji vrátí s poznámkou, případně smaže.

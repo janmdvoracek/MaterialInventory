@@ -132,6 +132,36 @@
         nav.bottom a:hover, nav.bottom a:active { color: var(--brand-green); }
         .item-row { display: flex; gap: 0.5rem; align-items: flex-end; margin-bottom: 0.5rem; }
         .item-row > div { flex: 1; }
+        /* Jobs still waiting for a manager, and ones sent back, are the whole
+           point of the Přehled page, so they have to stand out from the rest.
+           (No em dashes anywhere in this block: it is served on every page and
+           tests count that character in rendered output.) */
+        tr.row-pending > td { background: #fef3c7; }
+        tr.row-returned > td { background: #fee2e2; }
+        .status-badge {
+            display: inline-block;
+            padding: 0.15rem 0.5rem;
+            border-radius: 999px;
+            font-size: 0.78rem;
+            font-weight: 700;
+            white-space: nowrap;
+            background: #e5e7eb;
+            color: #374151;
+        }
+        .status-badge.pending { background: #fde68a; color: #78350f; }
+        .status-badge.approved { background: #d1fae5; color: #065f46; }
+        .status-badge.returned { background: #fecaca; color: #991b1b; }
+        .notice-returned {
+            border-left: 4px solid #dc2626;
+            background: #fef2f2;
+        }
+        .job-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+        .job-actions form, .job-actions .btn { flex: 1; margin: 0; }
+        .btn.secondary { background: #e5e7eb; color: var(--brand-dark); }
+        .btn.secondary:hover { background: #d1d5db; }
+        .btn.danger { background: #fecaca; color: #7f1d1d; }
+        .btn.danger:hover { background: #fca5a5; }
+        .muted { color: #6b7280; }
     </style>
 </head>
 <body class="page-{{ request.resolver_match.url_name }}">
@@ -165,6 +195,7 @@
         <a href="{% url 'transform_create' %}">Zpracování</a>
         <a href="{% url 'time_worked' %}">Hodiny</a>
         {% if user.is_manager_or_admin %}
+            <a href="{% url 'job_dashboard' %}">Přehled</a>
             <a href="{% url 'machine_dashboard' %}">Stroje</a>
         {% endif %}
     </nav>

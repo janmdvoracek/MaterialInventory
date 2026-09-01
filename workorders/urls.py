@@ -9,4 +9,12 @@ urlpatterns = [
     path('machines/', views.machine_dashboard, name='machine_dashboard'),
     path('machines/history/', views.machine_usage_history, name='machine_usage_history'),
     path('hours/', views.time_worked, name='time_worked'),
+    # Manager review of recorded jobs. Every view behind these is gated by
+    # role_required, not just hidden from the nav.
+    path('jobs/', views.job_dashboard, name='job_dashboard'),
+    path('jobs/<int:pk>/', views.job_detail, name='job_detail'),
+    path('jobs/<int:pk>/upravit/', views.job_edit, name='job_edit'),
+    path('jobs/<int:pk>/schvalit/', views.job_approve, name='job_approve'),
+    path('jobs/<int:pk>/vratit/', views.job_return, name='job_return'),
+    path('jobs/<int:pk>/smazat/', views.job_delete, name='job_delete'),
 ]

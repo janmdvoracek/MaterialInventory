@@ -630,6 +630,8 @@ class WorkOrderAdminTests(TestCase):
         self.client.force_login(self.admin_user)
         data = {
             'description': 'Admin-created job',
+            'status': WorkOrder.Status.APPROVED,
+            'review_note': '',
             'movements-TOTAL_FORMS': '1',
             'movements-INITIAL_FORMS': '0',
             'movements-MIN_NUM_FORMS': '0',
@@ -680,8 +682,12 @@ class WorkOrderAdminTests(TestCase):
 class MachineDashboardTests(TestCase):
     def setUp(self):
         self.worker = User.objects.create_user(username='worker', password='pw', role=User.Role.WORKER)
-        self.machine_active = Machine.objects.create(name='Crusher A', total_hours=Decimal('12.5'))
+        self.machine_active = Machine.objects.create(name='Crusher A')
         self.machine_retired = Machine.objects.create(name='Old Excavator', total_hours=Decimal('99'), is_active=False)
+
+    def _usage(self, hours, status=WorkOrder.Status.APPROVED):
+        work_order = WorkOrder.objects.create(created_by=self.worker, description='job', status=status)
+        return MachineUsage.objects.create(work_order=work_order, machine=self.machine_active, hours=hours)
 
     def test_dashboard_requires_login(self):
         response = self.client.get(reverse('machine_dashboard'))
@@ -693,11 +699,28 @@ class MachineDashboardTests(TestCase):
         response = self.client.get(reverse('machine_dashboard'))
         self.assertEqual(list(response.context['machines']), [self.machine_active])
 
-    def test_dashboard_shows_current_total_hours(self):
+    def test_dashboard_shows_approved_hours(self):
+        self._usage(Decimal('12.5'))
         self.client.force_login(self.worker)
         response = self.client.get(reverse('machine_dashboard'))
         # Comma decimal separator: template output is localised under cs.
         self.assertContains(response, '12,5 h')
+
+    def test_dashboard_ignores_hours_from_unapproved_jobs(self):
+        # Machine.total_hours is bumped the moment the row is written, so the
+        # page cannot read it: a job nobody has signed off must not move the
+        # number a manager reads off this screen.
+        self._usage(Decimal('4'), status=WorkOrder.Status.PENDING)
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('machine_dashboard'))
+        self.assertContains(response, '0,0 h')
+        self.machine_active.refresh_from_db()
+        self.assertEqual(self.machine_active.total_hours, Decimal('4'))
+
+    def test_dashboard_shows_zero_for_machine_without_usage(self):
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('machine_dashboard'))
+        self.assertContains(response, '0,0 h')
 
     def test_dashboard_shows_both_rates(self):
         self.machine_active.hourly_rate = Decimal('83')
@@ -722,8 +745,11 @@ class MachineUsageHistoryTests(TestCase):
         self.machine = Machine.objects.create(name='Crusher A')
         self.other_machine = Machine.objects.create(name='Excavator B')
 
-    def _usage(self, user, machine=None, hours=Decimal('1'), tons=None):
-        work_order = WorkOrder.objects.create(created_by=user, description='job')
+    def _usage(self, user, machine=None, hours=Decimal('1'), tons=None, status=WorkOrder.Status.APPROVED):
+        # Approved by default: the history reports signed-off jobs only, so an
+        # unapproved fixture would be invisible for reasons unrelated to the
+        # scoping these tests are about.
+        work_order = WorkOrder.objects.create(created_by=user, description='job', status=status)
         return MachineUsage.objects.create(
             work_order=work_order, machine=machine or self.machine, hours=hours, tons=tons
         )
@@ -750,7 +776,9 @@ class MachineUsageHistoryTests(TestCase):
         self.assertNotIn(other, usages)
 
     def test_worker_sees_usage_from_collaborated_work_order(self):
-        work_order = WorkOrder.objects.create(created_by=self.manager, description='Joint job')
+        work_order = WorkOrder.objects.create(
+            created_by=self.manager, description='Joint job', status=WorkOrder.Status.APPROVED
+        )
         work_order.collaborators.add(self.worker)
         shared = MachineUsage.objects.create(work_order=work_order, machine=self.machine, hours=Decimal('2'))
         self.client.force_login(self.worker)
@@ -815,11 +843,15 @@ class TimeWorkedTests(TestCase):
         self.machine = Machine.objects.create(name='Crusher A')
         self.other_machine = Machine.objects.create(name='Screener B')
 
-    def _job(self, creator, hours, collaborators=(), machine_hours=None, machine=None):
+    def _job(
+        self, creator, hours, collaborators=(), machine_hours=None, machine=None, status=WorkOrder.Status.APPROVED
+    ):
         """A job with `hours` of labour by `creator`, plus `(user, hours)` pairs
         for anyone who worked it alongside them. `machine_hours` is machine
-        runtime, which is a separate figure and must not reach this tab."""
-        work_order = WorkOrder.objects.create(created_by=creator, description='job')
+        runtime, which is a separate figure and must not reach this tab.
+
+        Approved by default: this tab reports signed-off jobs only."""
+        work_order = WorkOrder.objects.create(created_by=creator, description='job', status=status)
         if hours is not None:
             WorkerHours.objects.create(work_order=work_order, user=creator, hours=hours)
         for user, user_hours in collaborators:
@@ -997,7 +1029,7 @@ class EmptyLabelTests(TestCase):
 
     def test_pages_have_no_english_placeholder(self):
         self.client.force_login(self.manager)
-        for name in ('transform_create', 'machine_usage_history', 'time_worked'):
+        for name in ('transform_create', 'machine_usage_history', 'time_worked', 'job_dashboard'):
             with self.subTest(view=name):
                 self.assertNotContains(self.client.get(reverse(name)), self.DJANGO_DEFAULT)
 
@@ -1013,3 +1045,445 @@ class EmptyLabelTests(TestCase):
         self.client.force_login(self.manager)
         self.assertContains(self.client.get(reverse('machine_usage_history')), 'Všechny stroje')
         self.assertContains(self.client.get(reverse('time_worked')), 'Všichni pracovníci')
+        response = self.client.get(reverse('job_dashboard'))
+        self.assertContains(response, 'Všichni uživatelé')
+        self.assertContains(response, 'Všechny stavy')
+
+
+def job_payload(consumed_rows, produced_rows, machine_rows=None, worker_rows=None, description='Test job', hours='1'):
+    """POST data for the Transform form, which the edit form re-uses verbatim."""
+    machine_rows = machine_rows or []
+    worker_rows = worker_rows or []
+    data = {
+        'description': description,
+        'hours': hours,
+        'consumed-TOTAL_FORMS': str(max(len(consumed_rows), 1)),
+        'consumed-INITIAL_FORMS': '0',
+        'consumed-MIN_NUM_FORMS': '0',
+        'consumed-MAX_NUM_FORMS': '1000',
+        'produced-TOTAL_FORMS': str(max(len(produced_rows), 1)),
+        'produced-INITIAL_FORMS': '0',
+        'produced-MIN_NUM_FORMS': '0',
+        'produced-MAX_NUM_FORMS': '1000',
+        'machines-TOTAL_FORMS': str(max(len(machine_rows), 1)),
+        'machines-INITIAL_FORMS': '0',
+        'machines-MIN_NUM_FORMS': '0',
+        'machines-MAX_NUM_FORMS': '1000',
+        'workers-TOTAL_FORMS': str(max(len(worker_rows), 1)),
+        'workers-INITIAL_FORMS': '0',
+        'workers-MIN_NUM_FORMS': '0',
+        'workers-MAX_NUM_FORMS': '1000',
+    }
+    for i, row in enumerate(worker_rows):
+        data[f'workers-{i}-user'] = row['user'].pk
+        data[f'workers-{i}-hours'] = str(row['hours'])
+    for i, row in enumerate(consumed_rows):
+        data[f'consumed-{i}-material'] = row['material'].pk
+        data[f'consumed-{i}-location'] = row['location'].pk
+        data[f'consumed-{i}-quantity'] = str(row['quantity'])
+    for i, row in enumerate(produced_rows):
+        data[f'produced-{i}-material'] = row['material'].pk
+        data[f'produced-{i}-location'] = row['location'].pk
+        data[f'produced-{i}-quantity'] = str(row['quantity'])
+    for i, row in enumerate(machine_rows):
+        data[f'machines-{i}-machine'] = row['machine'].pk
+        data[f'machines-{i}-hours'] = str(row['hours'])
+        data[f'machines-{i}-tons'] = str(row.get('tons', '5'))
+    return data
+
+
+class ReviewFixtureMixin:
+    """Catalog, people and a helper that records a job the way the app does."""
+
+    def setUp(self):
+        self.material_raw = Material.objects.create(sku='RAW', name='Štěrk', unit_of_measure='t')
+        self.material_finished = Material.objects.create(sku='FIN', name='Frakce 8/16', unit_of_measure='t')
+        self.location = Location.objects.create(name='Main Depot')
+        self.worker = User.objects.create_user(username='worker', password='pw', role=User.Role.WORKER)
+        self.other_worker = User.objects.create_user(username='other', password='pw', role=User.Role.WORKER)
+        self.manager = User.objects.create_user(username='manager', password='pw', role=User.Role.MANAGER)
+        self.machine_a = Machine.objects.create(name='Crusher A')
+        self.machine_b = Machine.objects.create(name='Excavator B')
+
+    def submit_job(self, user, quantity=Decimal('5'), machine_rows=None, worker_rows=None, hours='1'):
+        """Record a job through the real form, as `user` would."""
+        self.client.force_login(user)
+        response = self.client.post(
+            reverse('transform_create'),
+            job_payload(
+                [{'material': self.material_raw, 'location': self.location, 'quantity': quantity}],
+                [{'material': self.material_finished, 'location': self.location, 'quantity': quantity}],
+                machine_rows=machine_rows,
+                worker_rows=worker_rows,
+                hours=hours,
+            ),
+        )
+        self.assertRedirects(response, reverse('transform_create'))
+        return WorkOrder.objects.order_by('-pk').first()
+
+
+class JobReviewTests(ReviewFixtureMixin, TestCase):
+    def test_worker_submission_waits_for_approval(self):
+        work_order = self.submit_job(self.worker)
+        self.assertEqual(work_order.status, WorkOrder.Status.PENDING)
+        self.assertIsNone(work_order.reviewed_at)
+        self.assertIsNone(work_order.reviewed_by)
+
+    def test_manager_submission_is_approved_on_the_spot(self):
+        # Nobody above a manager signs their work off, so waiting for approval
+        # would leave it stuck forever.
+        work_order = self.submit_job(self.manager)
+        self.assertEqual(work_order.status, WorkOrder.Status.APPROVED)
+        self.assertEqual(work_order.reviewed_by, self.manager)
+        self.assertIsNotNone(work_order.reviewed_at)
+
+    def test_superuser_submission_is_approved_on_the_spot(self):
+        # createsuperuser leaves role=WORKER, and is_manager_or_admin covers it.
+        admin_user = User.objects.create_superuser(username='root', password='pw')
+        work_order = self.submit_job(admin_user)
+        self.assertEqual(work_order.status, WorkOrder.Status.APPROVED)
+
+    def test_worker_is_told_the_job_awaits_approval(self):
+        # follow=True because the message is consumed by the page the redirect
+        # lands on, which is where the worker actually reads it.
+        self.client.force_login(self.worker)
+        response = self.client.post(
+            reverse('transform_create'),
+            job_payload(
+                [{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('5')}],
+                [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('5')}],
+            ),
+            follow=True,
+        )
+        self.assertContains(response, 'čeká na schválení')
+
+    def test_pending_job_is_absent_from_time_worked(self):
+        self.submit_job(self.worker, hours='3')
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('time_worked'))
+        self.assertEqual(response.context['summary'], [])
+
+    def test_pending_job_is_absent_from_machine_history(self):
+        self.submit_job(self.worker, machine_rows=[{'machine': self.machine_a, 'hours': '2'}])
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('machine_usage_history'))
+        self.assertEqual(len(response.context['page_obj'].object_list), 0)
+
+    def test_approval_lets_the_job_into_the_reports(self):
+        work_order = self.submit_job(self.worker, hours='3', machine_rows=[{'machine': self.machine_a, 'hours': '2'}])
+        self.client.force_login(self.manager)
+        self.client.post(reverse('job_approve', args=[work_order.pk]))
+
+        response = self.client.get(reverse('time_worked'))
+        self.assertEqual([row['user'] for row in response.context['summary']], [self.worker])
+        response = self.client.get(reverse('machine_usage_history'))
+        self.assertEqual(len(response.context['page_obj'].object_list), 1)
+        response = self.client.get(reverse('machine_dashboard'))
+        self.assertContains(response, '2,0 h')
+
+    def test_approve_records_who_signed_it_off(self):
+        work_order = self.submit_job(self.worker)
+        self.client.force_login(self.manager)
+        response = self.client.post(reverse('job_approve', args=[work_order.pk]))
+        self.assertRedirects(response, reverse('job_detail', args=[work_order.pk]))
+        work_order.refresh_from_db()
+        self.assertEqual(work_order.status, WorkOrder.Status.APPROVED)
+        self.assertEqual(work_order.reviewed_by, self.manager)
+        self.assertIsNotNone(work_order.reviewed_at)
+
+    def test_approve_rejects_a_get(self):
+        work_order = self.submit_job(self.worker)
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('job_approve', args=[work_order.pk]))
+        self.assertEqual(response.status_code, 405)
+        work_order.refresh_from_db()
+        self.assertEqual(work_order.status, WorkOrder.Status.PENDING)
+
+    def test_return_records_the_reason(self):
+        work_order = self.submit_job(self.worker)
+        self.client.force_login(self.manager)
+        self.client.post(reverse('job_return', args=[work_order.pk]), {'note': 'Špatná frakce'})
+        work_order.refresh_from_db()
+        self.assertEqual(work_order.status, WorkOrder.Status.RETURNED)
+        self.assertEqual(work_order.review_note, 'Špatná frakce')
+        self.assertEqual(work_order.reviewed_by, self.manager)
+
+    def test_return_without_a_reason_is_refused(self):
+        # The note is all the author ever sees about the review.
+        work_order = self.submit_job(self.worker)
+        self.client.force_login(self.manager)
+        self.client.post(reverse('job_return', args=[work_order.pk]), {'note': ''})
+        work_order.refresh_from_db()
+        self.assertEqual(work_order.status, WorkOrder.Status.PENDING)
+
+    def test_returned_job_stays_out_of_the_reports(self):
+        work_order = self.submit_job(self.worker, hours='3')
+        self.client.force_login(self.manager)
+        self.client.post(reverse('job_return', args=[work_order.pk]), {'note': 'Chybí stroj'})
+        response = self.client.get(reverse('time_worked'))
+        self.assertEqual(response.context['summary'], [])
+
+    def test_author_sees_the_reason_on_the_transform_page(self):
+        work_order = self.submit_job(self.worker)
+        self.client.force_login(self.manager)
+        self.client.post(reverse('job_return', args=[work_order.pk]), {'note': 'Chybí tuny'})
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('transform_create'))
+        self.assertEqual(list(response.context['returned_jobs']), [work_order])
+        self.assertContains(response, 'Chybí tuny')
+
+    def test_someone_elses_returned_job_is_not_shown(self):
+        work_order = self.submit_job(self.worker)
+        self.client.force_login(self.manager)
+        self.client.post(reverse('job_return', args=[work_order.pk]), {'note': 'Chybí tuny'})
+        self.client.force_login(self.other_worker)
+        response = self.client.get(reverse('transform_create'))
+        self.assertEqual(list(response.context['returned_jobs']), [])
+
+    def test_approving_a_returned_job_clears_the_reason(self):
+        work_order = self.submit_job(self.worker)
+        self.client.force_login(self.manager)
+        self.client.post(reverse('job_return', args=[work_order.pk]), {'note': 'Chybí tuny'})
+        self.client.post(reverse('job_approve', args=[work_order.pk]))
+        work_order.refresh_from_db()
+        self.assertEqual(work_order.status, WorkOrder.Status.APPROVED)
+        self.assertEqual(work_order.review_note, '')
+
+    def test_review_pages_are_closed_to_workers(self):
+        # Hiding the nav entry is not access control: the views are gated too.
+        work_order = self.submit_job(self.worker)
+        self.client.force_login(self.worker)
+        for name, method in (
+            ('job_dashboard', 'get'),
+            ('job_detail', 'get'),
+            ('job_edit', 'get'),
+            ('job_delete', 'get'),
+            ('job_approve', 'post'),
+            ('job_return', 'post'),
+        ):
+            with self.subTest(view=name):
+                url = reverse(name) if name == 'job_dashboard' else reverse(name, args=[work_order.pk])
+                response = getattr(self.client, method)(url)
+                self.assertEqual(response.status_code, 403)
+
+    def test_review_pages_require_login(self):
+        response = self.client.get(reverse('job_dashboard'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/login/', response.url)
+
+
+class JobDashboardTests(ReviewFixtureMixin, TestCase):
+    def test_dashboard_lists_every_job_whoever_recorded_it(self):
+        mine = self.submit_job(self.manager)
+        theirs = self.submit_job(self.worker)
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('job_dashboard'))
+        self.assertEqual(set(response.context['page_obj'].object_list), {mine, theirs})
+
+    def test_dashboard_highlights_jobs_awaiting_review(self):
+        self.submit_job(self.worker)
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('job_dashboard'))
+        self.assertContains(response, 'row-pending')
+        self.assertEqual(response.context['pending_count'], 1)
+
+    def test_dashboard_highlights_returned_jobs(self):
+        work_order = self.submit_job(self.worker)
+        self.client.force_login(self.manager)
+        self.client.post(reverse('job_return', args=[work_order.pk]), {'note': 'Chybí tuny'})
+        response = self.client.get(reverse('job_dashboard'))
+        self.assertContains(response, 'row-returned')
+
+    def test_dashboard_shows_the_hours_of_everyone_on_the_job(self):
+        self.submit_job(self.worker, hours='3', worker_rows=[{'user': self.other_worker, 'hours': '2'}])
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('job_dashboard'))
+        self.assertEqual(response.context['page_obj'].object_list[0].total_hours, Decimal('5.00'))
+
+    def test_dashboard_filters_by_status(self):
+        approved = self.submit_job(self.manager)
+        self.submit_job(self.worker)
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('job_dashboard'), {'status': WorkOrder.Status.APPROVED})
+        self.assertEqual(list(response.context['page_obj'].object_list), [approved])
+
+    def test_dashboard_filters_by_author(self):
+        self.submit_job(self.manager)
+        theirs = self.submit_job(self.worker)
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('job_dashboard'), {'created_by': self.worker.pk})
+        self.assertEqual(list(response.context['page_obj'].object_list), [theirs])
+
+    def test_dashboard_shows_no_rows_when_filter_is_invalid(self):
+        # An unusable filter must not fall through to showing everything.
+        self.submit_job(self.worker)
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('job_dashboard'), {'date_from': 'not-a-date'})
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.context['form'].is_valid())
+        self.assertEqual(len(response.context['page_obj'].object_list), 0)
+
+    def test_detail_shows_everything_that_was_filled_in(self):
+        work_order = self.submit_job(
+            self.worker,
+            quantity=Decimal('7.5'),
+            hours='3',
+            machine_rows=[{'machine': self.machine_a, 'hours': '2', 'tons': '4.25'}],
+            worker_rows=[{'user': self.other_worker, 'hours': '1.5'}],
+        )
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('job_detail', args=[work_order.pk]))
+        self.assertEqual(len(response.context['consumed']), 1)
+        self.assertEqual(len(response.context['produced']), 1)
+        # Consumed quantities are stored negative; the reviewer sees what was typed.
+        self.assertEqual(response.context['consumed'][0].typed_quantity, Decimal('7.5'))
+        self.assertEqual(len(response.context['machine_usages']), 1)
+        self.assertEqual(len(response.context['worker_hours']), 2)
+        self.assertContains(response, 'Crusher A')
+        self.assertContains(response, '4,25')
+
+
+class JobEditTests(ReviewFixtureMixin, TestCase):
+    def _edit(self, work_order, **kwargs):
+        self.client.force_login(self.manager)
+        return self.client.post(reverse('job_edit', args=[work_order.pk]), job_payload(**kwargs))
+
+    def test_edit_form_is_prefilled_with_what_was_recorded(self):
+        work_order = self.submit_job(
+            self.worker, quantity=Decimal('5'), hours='3', machine_rows=[{'machine': self.machine_a, 'hours': '2'}]
+        )
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('job_edit', args=[work_order.pk]))
+        self.assertEqual(response.context['order_form'].initial['hours'], Decimal('3'))
+        self.assertEqual(
+            response.context['consumed_formset'].initial,
+            [{'material': self.material_raw.pk, 'location': self.location.pk, 'quantity': Decimal('5')}],
+        )
+        self.assertEqual(response.context['machine_formset'].initial[0]['hours'], Decimal('2'))
+
+    def test_prefilled_form_can_be_saved_unchanged(self):
+        # The models store more decimal places than the form accepts, so a raw
+        # prefill would make the edit form reject its own values.
+        work_order = self.submit_job(
+            self.worker, quantity=Decimal('5'), hours='1.5', machine_rows=[{'machine': self.machine_a, 'hours': '2'}]
+        )
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('job_edit', args=[work_order.pk]))
+        data = job_payload(
+            [{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('5')}],
+            [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('5')}],
+            machine_rows=[{'machine': self.machine_a, 'hours': '2'}],
+            hours=str(response.context['order_form'].initial['hours']),
+        )
+        response = self.client.post(reverse('job_edit', args=[work_order.pk]), data)
+        self.assertRedirects(response, reverse('job_detail', args=[work_order.pk]))
+
+    def test_edit_rewrites_the_line_items(self):
+        work_order = self.submit_job(self.worker, quantity=Decimal('5'))
+        response = self._edit(
+            work_order,
+            consumed_rows=[{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('8')}],
+            produced_rows=[{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('8')}],
+            description='Opraveno',
+        )
+        self.assertRedirects(response, reverse('job_detail', args=[work_order.pk]))
+        work_order.refresh_from_db()
+        self.assertEqual(work_order.description, 'Opraveno')
+        self.assertEqual(work_order.movements.count(), 2)
+        consumed = work_order.movements.get(movement_type=StockMovement.MovementType.TRANSFORM_CONSUME)
+        self.assertEqual(consumed.quantity, Decimal('-8'))
+        # The rows still belong to whoever did the work, not to the reviewer.
+        self.assertEqual(consumed.created_by, self.worker)
+
+    def test_edit_does_not_approve_the_job(self):
+        work_order = self.submit_job(self.worker)
+        self._edit(
+            work_order,
+            consumed_rows=[{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('5')}],
+            produced_rows=[{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('5')}],
+        )
+        work_order.refresh_from_db()
+        self.assertEqual(work_order.status, WorkOrder.Status.PENDING)
+
+    def test_edit_rejects_unbalanced_totals(self):
+        work_order = self.submit_job(self.worker, quantity=Decimal('5'))
+        response = self._edit(
+            work_order,
+            consumed_rows=[{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('8')}],
+            produced_rows=[{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('5')}],
+        )
+        self.assertEqual(response.status_code, 200)
+        consumed = work_order.movements.get(movement_type=StockMovement.MovementType.TRANSFORM_CONSUME)
+        self.assertEqual(consumed.quantity, Decimal('-5'))
+
+    def test_edit_rewrites_the_hours_and_collaborators(self):
+        work_order = self.submit_job(self.worker, hours='3', worker_rows=[{'user': self.other_worker, 'hours': '2'}])
+        self._edit(
+            work_order,
+            consumed_rows=[{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('5')}],
+            produced_rows=[{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('5')}],
+            hours='4',
+        )
+        self.assertEqual(
+            {(row.user, row.hours) for row in work_order.worker_hours.all()},
+            {(self.worker, Decimal('4.00'))},
+        )
+        # Collaborators stay derived from the hours rows.
+        self.assertEqual(list(work_order.collaborators.all()), [])
+
+    def test_edit_keeps_machine_total_hours_correct(self):
+        work_order = self.submit_job(self.worker, machine_rows=[{'machine': self.machine_a, 'hours': '3'}])
+        self.machine_a.refresh_from_db()
+        self.assertEqual(self.machine_a.total_hours, Decimal('3'))
+        self._edit(
+            work_order,
+            consumed_rows=[{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('5')}],
+            produced_rows=[{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('5')}],
+            machine_rows=[{'machine': self.machine_b, 'hours': '5'}],
+        )
+        self.machine_a.refresh_from_db()
+        self.machine_b.refresh_from_db()
+        # Replacing a machine row has to give the hours back to the old machine:
+        # a queryset delete here would skip MachineUsage.delete() and leave
+        # Crusher A carrying hours it never ran.
+        self.assertEqual(self.machine_a.total_hours, Decimal('0'))
+        self.assertEqual(self.machine_b.total_hours, Decimal('5'))
+
+    def test_collaborator_choices_exclude_the_author_not_the_reviewer(self):
+        work_order = self.submit_job(self.worker)
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('job_edit', args=[work_order.pk]))
+        choices = set(response.context['worker_formset'].forms[0].fields['user'].queryset)
+        self.assertNotIn(self.worker, choices)
+        self.assertIn(self.other_worker, choices)
+
+
+class JobDeleteTests(ReviewFixtureMixin, TestCase):
+    def test_confirmation_page_lists_what_will_go(self):
+        work_order = self.submit_job(self.worker, machine_rows=[{'machine': self.machine_a, 'hours': '3'}])
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('job_delete', args=[work_order.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.context['machine_usages']), 1)
+        self.assertTrue(WorkOrder.objects.filter(pk=work_order.pk).exists())
+
+    def test_delete_removes_the_job_and_all_its_rows(self):
+        work_order = self.submit_job(self.worker, machine_rows=[{'machine': self.machine_a, 'hours': '3'}], hours='2')
+        self.client.force_login(self.manager)
+        response = self.client.post(reverse('job_delete', args=[work_order.pk]))
+        self.assertRedirects(response, reverse('job_dashboard'))
+        self.assertFalse(WorkOrder.objects.filter(pk=work_order.pk).exists())
+        self.assertFalse(StockMovement.objects.exists())
+        self.assertFalse(WorkerHours.objects.exists())
+        self.assertFalse(MachineUsage.objects.exists())
+
+    def test_delete_gives_the_hours_back_to_the_machine(self):
+        # A cascading delete would skip MachineUsage.delete() and leave the
+        # counter carrying a job that no longer exists.
+        work_order = self.submit_job(self.worker, machine_rows=[{'machine': self.machine_a, 'hours': '3'}])
+        self.machine_a.refresh_from_db()
+        self.assertEqual(self.machine_a.total_hours, Decimal('3'))
+        self.client.force_login(self.manager)
+        self.client.post(reverse('job_delete', args=[work_order.pk]))
+        self.machine_a.refresh_from_db()
+        self.assertEqual(self.machine_a.total_hours, Decimal('0'))

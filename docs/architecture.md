@@ -95,6 +95,39 @@ rows for the same material and location so it could test them as a single
 quantity; with no such check left, two rows of 6 t are simply two line items
 that contribute 12 t to the consumed total.
 
+### Approval
+
+A `WorkOrder` carries a `status` — `PENDING`, `APPROVED` or `RETURNED` — plus
+`reviewed_at`, `reviewed_by` and a `review_note`.
+
+**A job counts only once it is approved.** Hodiny, Stroje and the machine-usage
+history all report `status=APPROVED` rows and nothing else, so a job a worker
+submits is recorded immediately but stays out of the reports until a manager
+signs it off. A manager's or admin's own submission is written `APPROVED` with
+themselves as the reviewer — there is nobody above them to approve it, so
+waiting would leave it stuck forever.
+
+Returning a job requires a reason, because that sentence is the only thing its
+author ever sees about the review: `transform_create` lists the requesting
+user's own `RETURNED` jobs above the form, with the note. **Only a manager can
+correct a job** — the worker gets the notice, not an edit link.
+
+Editing does **not** approve. A manager can fix a job and still leave the
+sign-off to someone else, so `job_edit` never touches `status`.
+
+`job_edit` rewrites the job's rows through the same helpers the submission uses
+(`_collect_rows`, `_balance_error`, `_write_job_rows` in `workorders/views.py`),
+so the mass balance is enforced on a correction exactly as on the original. Two
+things it has to get right, and both have a test:
+
+- The rows belong to the **author**, not to the reviewer: the *„Moje hodiny"*
+  field is the author's hours, `collaborator_queryset` is built from the author
+  (so it excludes them and not the manager), and rewritten `StockMovement` rows
+  keep `created_by = author`.
+- `_write_job_rows` and `job_delete` delete `MachineUsage` **one instance at a
+  time**. See `Machine.total_hours` below — a cascade or a queryset delete would
+  leave a machine carrying the hours of a job that no longer exists.
+
 ### `WorkerHours` vs `MachineUsage`
 
 Two unrelated numbers. Do not derive one from the other.
@@ -143,12 +176,21 @@ edits keep the counter correct too.
 
 > **Therefore: never write `MachineUsage` through `bulk_create()`,
 > `queryset.update()`, or `queryset.delete()`.** They bypass the model methods
-> and silently desynchronise the counter, with no error.
+> and silently desynchronise the counter, with no error. A **cascading delete
+> counts as one of those**: deleting a `WorkOrder` does not call
+> `MachineUsage.delete()`, which is why `job_delete` walks the rows itself.
+
+**The Stroje page does not read this counter.** The counter is bumped the moment
+a row is written, so it includes jobs still waiting for approval;
+`machine_dashboard` instead annotates `Sum('usages__hours')` filtered to
+approved jobs, so all three read-only pages report the same scope. The counter
+stays as it is — the admin shows it, and it is still what `MachineUsage` keeps
+correct — so the two numbers legitimately differ while a job is pending.
 
 ## Pages and URLs
 
-Four pages, all in `workorders`, all mounted at the **root** by
-`config/urls.py` — `inventory` contributes no URLs at all.
+All in `workorders`, all mounted at the **root** by `config/urls.py` —
+`inventory` contributes no URLs at all.
 
 | URL | Name | What |
 |---|---|---|
@@ -156,6 +198,15 @@ Four pages, all in `workorders`, all mounted at the **root** by
 | `/hours/` | `time_worked` | Hodiny |
 | `/machines/` | `machine_dashboard` | Stroje |
 | `/machines/history/` | `machine_usage_history` | Machine usage log |
+| `/jobs/` | `job_dashboard` | Přehled — every job, review state highlighted |
+| `/jobs/<pk>/` | `job_detail` | One job in full, with the review actions |
+| `/jobs/<pk>/upravit/` | `job_edit` | Correct a recorded job |
+| `/jobs/<pk>/schvalit/` | `job_approve` | POST only |
+| `/jobs/<pk>/vratit/` | `job_return` | POST only, note required |
+| `/jobs/<pk>/smazat/` | `job_delete` | GET confirms, POST deletes |
+
+The six `/jobs/` views are the review pages, and every one of them carries
+`@role_required(MANAGER, ADMIN)`.
 
 `LOGIN_REDIRECT_URL`, the header logo and the post-submit redirect all point at
 `transform_create`. Login and password change are Django's own generic views,
@@ -168,8 +219,8 @@ wired in `config/urls.py` with Czech form subclasses from `accounts/forms.py`;
 
 | Role | `is_staff` / `is_superuser` | App access |
 |---|---|---|
-| `WORKER` | no | Zpracování, Hodiny; own records only |
-| `MANAGER` | no | + Stroje in the nav, + everyone's records |
+| `WORKER` | no | Zpracování, Hodiny; own records only; submissions await approval |
+| `MANAGER` | no | + Přehled (approve/edit/return/delete), + Stroje in the nav, + everyone's records |
 | `ADMIN` | **yes / yes** | + Django admin |
 
 Two gates:
@@ -179,11 +230,10 @@ Two gates:
   not a bounce back to login, which would be a confusing dead end.
 - `User.is_manager_or_admin` for conditional UI and query scoping.
 
-**No view currently uses `role_required`.** Its only caller was
-`adjustment_create`. The decorator and its tests are kept because it is the
-right tool the moment a page needs gating — and `machine_dashboard` arguably
-does: it is hidden from a worker's nav but reachable by typing the URL. Hiding a
-link is not access control.
+**The `/jobs/` review views all use `role_required`** — a worker who types one of
+those URLs gets a 403, not a page. `machine_dashboard` and
+`machine_usage_history` still do not: they are hidden from a worker's nav but
+reachable by typing the URL. Hiding a link is not access control.
 
 **Superusers bypass both gates.** `createsuperuser` never sets a `role`, so a
 bootstrap admin would otherwise default to `WORKER` and be locked out of the app
@@ -226,7 +276,8 @@ and invited them to would put the creator's hours on their screen.
 
 ## Filter forms
 
-Both list views follow one pattern, and the edge cases are the point:
+All three list views — machine history, time worked, and the job dashboard —
+follow one pattern, and the edge cases are the point:
 
 | Request | Behaviour |
 |---|---|
@@ -242,6 +293,9 @@ renders an explicit warning instead.
 Note the ordering: `is_bound` is checked *before* `is_valid()`, because an
 unbound form is also not valid, and conflating them would return nothing on a
 plain page load.
+
+`JobFilterForm` has no worker variant: the page it filters is manager/admin only
+in the view, so there is no field to hide and no scoping to double up on.
 
 ## Time-worked reporting
 

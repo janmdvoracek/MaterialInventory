@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Smazat zpracování #{{ work_order.pk }}{% endblock %}
+{% block content %}
+<div class="card">
+    <h1>Smazat zpracování #{{ work_order.pk }}?</h1>
+    <p>
+        Zaznamenal {{ work_order.created_by.username }}, {{ work_order.created_at|date:"Y-m-d H:i" }}.
+        Smazání je nevratné — zmizí položky spotřeby i výroby, odpracované hodiny
+        a využití strojů, a motohodiny se strojům odečtou.
+    </p>
+    <div class="table-scroll">
+    <table>
+        <thead><tr><th>Co se smaže</th><th>Počet</th></tr></thead>
+        <tbody>
+            <tr><td>Položky spotřeby</td><td>{{ consumed|length }}</td></tr>
+            <tr><td>Položky výroby</td><td>{{ produced|length }}</td></tr>
+            <tr><td>Řádky strojů</td><td>{{ machine_usages|length }}</td></tr>
+            <tr><td>Odpracované hodiny</td><td>{{ work_order.worker_hours.count }}</td></tr>
+        </tbody>
+    </table>
+    </div>
+    <form method="post">
+        {% csrf_token %}
+        <button class="btn danger" type="submit">Ano, smazat</button>
+    </form>
+    <a class="btn secondary" href="{% url 'job_detail' work_order.pk %}">Zpět</a>
+</div>
+{% endblock %}

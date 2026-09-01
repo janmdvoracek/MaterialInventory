@@ -5,6 +5,8 @@ from django import forms
 from accounts.models import User
 from materials.models import Location, Machine, Material
 
+from .models import WorkOrder
+
 
 def collaborator_queryset(user):
     """People `user` may name as having worked a job alongside them."""
@@ -205,3 +207,41 @@ class MachineHistoryFilterForm(forms.Form):
         if date_from and date_to and date_from > date_to:
             raise forms.ValidationError('„Datum od“ musí být dřívější nebo stejné jako „datum do“.')
         return cleaned_data
+
+
+class JobFilterForm(forms.Form):
+    """Filters for the manager dashboard. No worker variant: the whole view is
+    manager/admin only, so nothing has to be hidden from anyone."""
+
+    created_by = forms.ModelChoiceField(
+        queryset=User.objects.all().order_by('username'),
+        required=False,
+        label='Vytvořil',
+        empty_label='Všichni uživatelé',
+    )
+    status = forms.ChoiceField(
+        choices=[('', 'Všechny stavy')] + WorkOrder.Status.choices,
+        required=False,
+        label='Stav',
+    )
+    date_from = forms.DateField(required=False, widget=forms.DateInput(attrs={'type': 'date'}), label='Datum od')
+    date_to = forms.DateField(required=False, widget=forms.DateInput(attrs={'type': 'date'}), label='Datum do')
+
+    def clean(self):
+        cleaned_data = super().clean()
+        date_from = cleaned_data.get('date_from')
+        date_to = cleaned_data.get('date_to')
+        if date_from and date_to and date_from > date_to:
+            raise forms.ValidationError('„Datum od“ musí být dřívější nebo stejné jako „datum do“.')
+        return cleaned_data
+
+
+class ReviewNoteForm(forms.Form):
+    """Why a job is being sent back. Required — the worker only ever sees this
+    sentence, so an empty one tells them nothing."""
+
+    note = forms.CharField(
+        max_length=255,
+        label='Důvod vrácení',
+        widget=forms.TextInput(attrs={'placeholder': 'Co je potřeba opravit'}),
+    )

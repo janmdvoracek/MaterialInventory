@@ -6,18 +6,23 @@ from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Count, Q, Sum
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from django.utils.formats import localize
+from django.views.decorators.http import require_POST
 
+from accounts.decorators import role_required
 from accounts.models import User
 from inventory.models import StockMovement
 from materials.models import Machine
 
 from .forms import (
     ConsumedFormSet,
+    JobFilterForm,
     MachineHistoryFilterForm,
     MachineUsageFormSet,
     ProducedFormSet,
+    ReviewNoteForm,
     TimeWorkedFilterForm,
     WorkerHoursFormSet,
     WorkOrderForm,
@@ -25,6 +30,101 @@ from .forms import (
 from .models import MachineUsage, WorkerHours, WorkOrder
 
 HISTORY_PAGE_SIZE = 50
+# Reviewing a job is a manager/admin job. Gated on the view, not just by hiding
+# the nav entry — a hidden link is not access control.
+REVIEWER_ROLES = (User.Role.MANAGER, User.Role.ADMIN)
+
+
+def _collect_rows(consumed_formset, produced_formset, machine_formset, worker_formset):
+    """The filled-in rows of a submitted job, one collection per section.
+
+    Rows are taken exactly as typed — repeated material rows stay separate line
+    items. Only the worker rows are combined: naming the same person twice adds
+    their hours up rather than tripping `unique_worker_hours_per_work_order`.
+    """
+    consumed_rows = [f.cleaned_data for f in consumed_formset if f.cleaned_data.get('material')]
+    produced_rows = [f.cleaned_data for f in produced_formset if f.cleaned_data.get('material')]
+    machine_rows = [f.cleaned_data for f in machine_formset if f.cleaned_data.get('machine')]
+    worker_hours = defaultdict(Decimal)
+    for form in worker_formset:
+        if form.cleaned_data.get('user'):
+            worker_hours[form.cleaned_data['user']] += form.cleaned_data['hours']
+    return consumed_rows, produced_rows, machine_rows, worker_hours
+
+
+def _balance_error(consumed_rows, produced_rows):
+    """The Czech complaint about a job that doesn't add up, or None.
+
+    Mass balance: a transformation moves material between fractions, it does not
+    create or destroy it, so the two sides have to add up. Compared as totals,
+    not row by row — one input is normally crushed into several output
+    fractions. Exact Decimal equality; the form accepts 2 decimal places and
+    Decimal('5.0') == Decimal('5'), so trailing zeros don't matter. There is no
+    database state behind this, which is why it runs before the write rather
+    than in a model `clean()`.
+    """
+    if not consumed_rows or not produced_rows:
+        return 'Přidejte alespoň jednu položku spotřeby a jednu položku výroby.'
+    consumed_total = sum((row['quantity'] for row in consumed_rows), Decimal('0'))
+    produced_total = sum((row['quantity'] for row in produced_rows), Decimal('0'))
+    if consumed_total != produced_total:
+        # localize() and not an f-string: the rest of the UI shows 9,5 and this
+        # message would otherwise print 9.5.
+        return (
+            'Celkové množství spotřeby a výroby se musí rovnat '
+            f'(spotřeba {localize(consumed_total)}, výroba {localize(produced_total)}).'
+        )
+    return None
+
+
+def _write_job_rows(work_order, author, own_hours, consumed_rows, produced_rows, machine_rows, worker_hours):
+    """Make the job's line items, hours and machine usage match what was typed.
+
+    Used by both the worker's own submission and a manager's later edit, so it
+    clears what is there before writing. The caller must already be inside a
+    `transaction.atomic()`: the three record types are one job and must not land
+    half-written. `author` — not the person doing the editing — owns the rows.
+    """
+    # Collaborators are derived from the hours rows, so the two can't disagree
+    # about who worked the job.
+    work_order.collaborators.set(worker_hours.keys())
+    work_order.worker_hours.all().delete()
+    WorkerHours.objects.create(work_order=work_order, user=author, hours=own_hours)
+    for user, hours in worker_hours.items():
+        WorkerHours.objects.create(work_order=work_order, user=user, hours=hours)
+
+    work_order.movements.all().delete()
+    for row in consumed_rows:
+        StockMovement.objects.create(
+            material=row['material'],
+            location=row['location'],
+            quantity=-row['quantity'],
+            movement_type=StockMovement.MovementType.TRANSFORM_CONSUME,
+            work_order=work_order,
+            created_by=author,
+        )
+    for row in produced_rows:
+        StockMovement.objects.create(
+            material=row['material'],
+            location=row['location'],
+            quantity=row['quantity'],
+            movement_type=StockMovement.MovementType.TRANSFORM_PRODUCE,
+            work_order=work_order,
+            created_by=author,
+        )
+
+    # One instance at a time, never queryset.delete(): MachineUsage.delete() is
+    # what keeps Machine.total_hours in sync, and a bulk delete skips it.
+    for usage in work_order.machine_usages.all():
+        usage.delete()
+    for row in machine_rows:
+        # MachineUsage.save() keeps Machine.total_hours in sync.
+        MachineUsage.objects.create(
+            work_order=work_order,
+            machine=row['machine'],
+            hours=row['hours'],
+            tons=row['tons'],
+        )
 
 
 @login_required
@@ -42,77 +142,41 @@ def transform_create(request):
             and machine_formset.is_valid()
             and worker_formset.is_valid()
         ):
-            consumed_rows = [f.cleaned_data for f in consumed_formset if f.cleaned_data.get('material')]
-            produced_rows = [f.cleaned_data for f in produced_formset if f.cleaned_data.get('material')]
-            machine_rows = [f.cleaned_data for f in machine_formset if f.cleaned_data.get('machine')]
-            # Same combining rule as the consumed rows: naming a person twice
-            # adds their hours up rather than failing the unique constraint.
-            worker_hours = defaultdict(Decimal)
-            for form in worker_formset:
-                if form.cleaned_data.get('user'):
-                    worker_hours[form.cleaned_data['user']] += form.cleaned_data['hours']
-            # Mass balance: a transformation moves material between fractions,
-            # it does not create or destroy it, so the two sides have to add up.
-            # Compared as totals, not row by row — one input is normally crushed
-            # into several output fractions. Exact Decimal equality; the form
-            # accepts 2 decimal places and Decimal('5.0') == Decimal('5'), so
-            # trailing zeros don't matter.
-            consumed_total = sum((row['quantity'] for row in consumed_rows), Decimal('0'))
-            produced_total = sum((row['quantity'] for row in produced_rows), Decimal('0'))
-            if not consumed_rows or not produced_rows:
-                messages.error(request, 'Přidejte alespoň jednu položku spotřeby a jednu položku výroby.')
-            elif consumed_total != produced_total:
-                messages.error(
-                    request,
-                    'Celkové množství spotřeby a výroby se musí rovnat '
-                    f'(spotřeba {localize(consumed_total)}, výroba {localize(produced_total)}).',
-                )
+            consumed_rows, produced_rows, machine_rows, worker_hours = _collect_rows(
+                consumed_formset, produced_formset, machine_formset, worker_formset
+            )
+            error = _balance_error(consumed_rows, produced_rows)
+            if error:
+                messages.error(request, error)
             else:
-                # Still one transaction: a job's line items, hours and machine
-                # usage are a single record and must not land half-written.
-                # Nothing inside here can fail a business rule: the mass-balance
-                # check above is about this one job's own rows, not a stock
-                # level, so it needs no database state and runs before the write.
+                # A worker's job is a proposal until a manager signs it off, so
+                # it stays out of the Hodiny/Stroje reports until then. A
+                # manager has nobody above them to approve it, so theirs counts
+                # straight away.
+                approved = request.user.is_manager_or_admin
                 with transaction.atomic():
                     work_order = WorkOrder.objects.create(
                         created_by=request.user,
                         description=order_form.cleaned_data['description'],
+                        status=WorkOrder.Status.APPROVED if approved else WorkOrder.Status.PENDING,
+                        reviewed_at=timezone.now() if approved else None,
+                        reviewed_by=request.user if approved else None,
                     )
-                    # Collaborators are derived from the hours rows, so the two
-                    # can't disagree about who worked the job.
-                    work_order.collaborators.set(worker_hours.keys())
-                    WorkerHours.objects.create(
-                        work_order=work_order, user=request.user, hours=order_form.cleaned_data['hours']
+                    _write_job_rows(
+                        work_order,
+                        request.user,
+                        order_form.cleaned_data['hours'],
+                        consumed_rows,
+                        produced_rows,
+                        machine_rows,
+                        worker_hours,
                     )
-                    for user, hours in worker_hours.items():
-                        WorkerHours.objects.create(work_order=work_order, user=user, hours=hours)
-                    for row in consumed_rows:
-                        StockMovement.objects.create(
-                            material=row['material'],
-                            location=row['location'],
-                            quantity=-row['quantity'],
-                            movement_type=StockMovement.MovementType.TRANSFORM_CONSUME,
-                            work_order=work_order,
-                            created_by=request.user,
-                        )
-                    for row in produced_rows:
-                        StockMovement.objects.create(
-                            material=row['material'],
-                            location=row['location'],
-                            quantity=row['quantity'],
-                            movement_type=StockMovement.MovementType.TRANSFORM_PRODUCE,
-                            work_order=work_order,
-                            created_by=request.user,
-                        )
-                    for row in machine_rows:
-                        # MachineUsage.save() keeps Machine.total_hours in sync.
-                        MachineUsage.objects.create(
-                            work_order=work_order,
-                            machine=row['machine'],
-                            hours=row['hours'],
-                            tons=row['tons'],
-                        )
-                messages.success(request, 'Zpracování bylo zaznamenáno.')
+                messages.success(
+                    request,
+                    'Zpracování bylo zaznamenáno.'
+                    if approved
+                    else 'Zpracování bylo zaznamenáno a čeká na schválení vedoucím.',
+                )
                 return redirect('transform_create')
     else:
         order_form = WorkOrderForm()
@@ -129,19 +193,39 @@ def transform_create(request):
             'produced_formset': produced_formset,
             'machine_formset': machine_formset,
             'worker_formset': worker_formset,
+            # A returned job is the only review outcome a worker can act on, and
+            # it is invisible everywhere else: unapproved jobs are filtered out
+            # of Hodiny and the machine history. Fixing it is still a manager's
+            # job — this is a notice, not an edit link.
+            'returned_jobs': WorkOrder.objects.filter(
+                created_by=request.user, status=WorkOrder.Status.RETURNED
+            ).order_by('-reviewed_at'),
         },
     )
 
 
 @login_required
 def machine_dashboard(request):
-    machines = Machine.objects.filter(is_active=True).order_by('name')
+    # Summed from the approved usage rows rather than read off
+    # `Machine.total_hours`: that counter is bumped the moment a row is written,
+    # so it also holds hours from jobs still waiting for approval. The counter
+    # stays as it is (the admin shows it, and MachineUsage keeps it correct);
+    # this page just reports the same scope as Hodiny and the machine history.
+    machines = (
+        Machine.objects.filter(is_active=True)
+        .annotate(approved_hours=Sum('usages__hours', filter=Q(usages__work_order__status=WorkOrder.Status.APPROVED)))
+        .order_by('name')
+    )
     return render(request, 'workorders/machine_dashboard.html', {'machines': machines})
 
 
 def _filtered_machine_usages(request):
     form = MachineHistoryFilterForm(request.GET or None, user=request.user)
-    usages = MachineUsage.objects.select_related('machine', 'work_order', 'work_order__created_by')
+    # Unapproved jobs are proposals, not evidence — they stay out of the ledger
+    # until a manager signs them off.
+    usages = MachineUsage.objects.filter(work_order__status=WorkOrder.Status.APPROVED).select_related(
+        'machine', 'work_order', 'work_order__created_by'
+    )
     if not request.user.is_manager_or_admin:
         # Workers only ever see their own machine usage, plus usage from
         # transformations they collaborated on; enforced here (not just by
@@ -214,7 +298,9 @@ def _time_worked_summary(work_orders):
 @login_required
 def time_worked(request):
     form = TimeWorkedFilterForm(request.GET or None, user=request.user)
-    work_orders = WorkOrder.objects.all()
+    # Approved jobs only: hours a manager has not signed off yet are not
+    # reportable, so they do not show up here for anyone, not even their author.
+    work_orders = WorkOrder.objects.filter(status=WorkOrder.Status.APPROVED)
     if not request.user.is_manager_or_admin:
         # Workers only ever see jobs they took part in; enforced here (not just
         # by hiding the `worker` filter field) so it can't be bypassed via the
@@ -261,5 +347,267 @@ def time_worked(request):
             'total_hours': sum((row['hours'] for row in summary), Decimal('0')),
             'page_obj': page_obj,
             'querystring': querystring.urlencode(),
+        },
+    )
+
+
+def _trim(value):
+    """A stored quantity as the entry form would have accepted it.
+
+    The models keep more decimal places than the form allows (quantity: 3 vs 2)
+    and the hours fields are stored with 2 places but typed with 1, so feeding a
+    raw value back as `initial` renders `5.000` and the edit form then rejects
+    its own prefill. Trailing zeros are what makes the difference, so drop them
+    — without letting normalize() turn 100.00 into 1E+2.
+    """
+    normalized = value.normalize()
+    return normalized.quantize(Decimal(1)) if normalized.as_tuple().exponent > 0 else normalized
+
+
+@role_required(*REVIEWER_ROLES)
+def job_dashboard(request):
+    """Every recorded job, newest first, with the ones awaiting review flagged.
+
+    No worker scoping here, unlike the other list views — the whole page is
+    manager/admin only.
+    """
+    form = JobFilterForm(request.GET or None)
+    jobs = (
+        WorkOrder.objects.select_related('created_by', 'reviewed_by')
+        .annotate(total_hours=Sum('worker_hours__hours'))
+        .prefetch_related('worker_hours__user')
+        .order_by('-created_at')
+    )
+    if form.is_bound:
+        if not form.is_valid():
+            # Same rule as the other lists: an unusable filter shows nothing
+            # rather than quietly handing back everything.
+            jobs = jobs.none()
+        else:
+            data = form.cleaned_data
+            if data.get('created_by'):
+                jobs = jobs.filter(created_by=data['created_by'])
+            if data.get('status'):
+                jobs = jobs.filter(status=data['status'])
+            if data.get('date_from'):
+                jobs = jobs.filter(created_at__date__gte=data['date_from'])
+            if data.get('date_to'):
+                jobs = jobs.filter(created_at__date__lte=data['date_to'])
+    page_obj = Paginator(jobs, HISTORY_PAGE_SIZE).get_page(request.GET.get('page'))
+    querystring = request.GET.copy()
+    querystring.pop('page', None)
+    return render(
+        request,
+        'workorders/job_dashboard.html',
+        {
+            'form': form,
+            'page_obj': page_obj,
+            'querystring': querystring.urlencode(),
+            'pending_count': WorkOrder.objects.filter(status=WorkOrder.Status.PENDING).count(),
+        },
+    )
+
+
+def _job_line_items(work_order):
+    """The job's consumed and produced rows, quantities as they were typed."""
+    consumed, produced = [], []
+    for movement in work_order.movements.select_related('material', 'location'):
+        # Consumed quantities are stored negative; the form asked for a
+        # positive number and that is what the reviewer should see.
+        movement.typed_quantity = abs(movement.quantity)
+        if movement.movement_type == StockMovement.MovementType.TRANSFORM_CONSUME:
+            consumed.append(movement)
+        else:
+            produced.append(movement)
+    return consumed, produced
+
+
+@role_required(*REVIEWER_ROLES)
+def job_detail(request, pk):
+    work_order = get_object_or_404(WorkOrder.objects.select_related('created_by', 'reviewed_by'), pk=pk)
+    consumed, produced = _job_line_items(work_order)
+    return render(
+        request,
+        'workorders/job_detail.html',
+        {
+            'work_order': work_order,
+            'consumed': consumed,
+            'produced': produced,
+            'machine_usages': work_order.machine_usages.select_related('machine'),
+            'worker_hours': work_order.worker_hours.select_related('user'),
+            'review_form': ReviewNoteForm(),
+        },
+    )
+
+
+@role_required(*REVIEWER_ROLES)
+def job_edit(request, pk):
+    """Correct a recorded job. Approving it stays a separate step — a manager
+    can fix a job and still leave the sign-off to someone else."""
+    work_order = get_object_or_404(WorkOrder.objects.select_related('created_by'), pk=pk)
+    # The rows belong to whoever recorded the job, not to the manager editing
+    # it: the "moje hodiny" field is the author's, and the collaborator list has
+    # to exclude the author rather than the editor.
+    author = work_order.created_by
+    if request.method == 'POST':
+        order_form = WorkOrderForm(request.POST)
+        consumed_formset = ConsumedFormSet(request.POST, prefix='consumed')
+        produced_formset = ProducedFormSet(request.POST, prefix='produced')
+        machine_formset = MachineUsageFormSet(request.POST, prefix='machines')
+        worker_formset = WorkerHoursFormSet(request.POST, prefix='workers', form_kwargs={'user': author})
+        if (
+            order_form.is_valid()
+            and consumed_formset.is_valid()
+            and produced_formset.is_valid()
+            and machine_formset.is_valid()
+            and worker_formset.is_valid()
+        ):
+            consumed_rows, produced_rows, machine_rows, worker_hours = _collect_rows(
+                consumed_formset, produced_formset, machine_formset, worker_formset
+            )
+            error = _balance_error(consumed_rows, produced_rows)
+            if error:
+                messages.error(request, error)
+            else:
+                with transaction.atomic():
+                    work_order.description = order_form.cleaned_data['description']
+                    work_order.save(update_fields=['description'])
+                    _write_job_rows(
+                        work_order,
+                        author,
+                        order_form.cleaned_data['hours'],
+                        consumed_rows,
+                        produced_rows,
+                        machine_rows,
+                        worker_hours,
+                    )
+                messages.success(request, 'Zpracování bylo upraveno.')
+                return redirect('job_detail', pk=work_order.pk)
+    else:
+        consumed, produced = _job_line_items(work_order)
+        own_hours = work_order.worker_hours.filter(user=author).first()
+        order_form = WorkOrderForm(
+            initial={
+                'description': work_order.description,
+                'hours': _trim(own_hours.hours) if own_hours else None,
+            }
+        )
+        consumed_formset = ConsumedFormSet(
+            prefix='consumed',
+            initial=[
+                {
+                    'material': movement.material_id,
+                    'location': movement.location_id,
+                    'quantity': _trim(movement.typed_quantity),
+                }
+                for movement in consumed
+            ],
+        )
+        produced_formset = ProducedFormSet(
+            prefix='produced',
+            initial=[
+                {
+                    'material': movement.material_id,
+                    'location': movement.location_id,
+                    'quantity': _trim(movement.typed_quantity),
+                }
+                for movement in produced
+            ],
+        )
+        machine_formset = MachineUsageFormSet(
+            prefix='machines',
+            initial=[
+                {
+                    'machine': usage.machine_id,
+                    'hours': _trim(usage.hours),
+                    'tons': _trim(usage.tons) if usage.tons is not None else None,
+                }
+                for usage in work_order.machine_usages.all()
+            ],
+        )
+        worker_formset = WorkerHoursFormSet(
+            prefix='workers',
+            form_kwargs={'user': author},
+            initial=[
+                {'user': row.user_id, 'hours': _trim(row.hours)} for row in work_order.worker_hours.exclude(user=author)
+            ],
+        )
+    return render(
+        request,
+        'workorders/job_edit.html',
+        {
+            'work_order': work_order,
+            'order_form': order_form,
+            'consumed_formset': consumed_formset,
+            'produced_formset': produced_formset,
+            'machine_formset': machine_formset,
+            'worker_formset': worker_formset,
+        },
+    )
+
+
+@role_required(*REVIEWER_ROLES)
+@require_POST
+def job_approve(request, pk):
+    work_order = get_object_or_404(WorkOrder, pk=pk)
+    work_order.status = WorkOrder.Status.APPROVED
+    work_order.reviewed_at = timezone.now()
+    work_order.reviewed_by = request.user
+    # Whatever it was sent back for no longer applies once it is approved.
+    work_order.review_note = ''
+    work_order.save(update_fields=['status', 'reviewed_at', 'reviewed_by', 'review_note'])
+    messages.success(request, 'Zpracování bylo schváleno.')
+    return redirect('job_detail', pk=work_order.pk)
+
+
+@role_required(*REVIEWER_ROLES)
+@require_POST
+def job_return(request, pk):
+    """Send a job back with a reason. Its author sees the reason on the
+    Zpracování page; correcting it is still the manager's job."""
+    work_order = get_object_or_404(WorkOrder, pk=pk)
+    form = ReviewNoteForm(request.POST)
+    if not form.is_valid():
+        # The note is the only thing the author ever sees about the review, so
+        # an empty one would tell them nothing.
+        messages.error(request, 'Uveďte důvod vrácení.')
+        return redirect('job_detail', pk=work_order.pk)
+    work_order.status = WorkOrder.Status.RETURNED
+    work_order.reviewed_at = timezone.now()
+    work_order.reviewed_by = request.user
+    work_order.review_note = form.cleaned_data['note']
+    work_order.save(update_fields=['status', 'reviewed_at', 'reviewed_by', 'review_note'])
+    messages.success(request, 'Zpracování bylo vráceno k přepracování.')
+    return redirect('job_detail', pk=work_order.pk)
+
+
+@role_required(*REVIEWER_ROLES)
+def job_delete(request, pk):
+    work_order = get_object_or_404(WorkOrder.objects.select_related('created_by'), pk=pk)
+    if request.method == 'POST':
+        with transaction.atomic():
+            # Machine usage one row at a time, and before the cascade could get
+            # to it: a cascading delete does not call MachineUsage.delete(), so
+            # Machine.total_hours would keep the hours of a job that no longer
+            # exists. The line items have to go first as well — their FK to the
+            # job is PROTECT, so the job cannot be deleted while they point at
+            # it.
+            for usage in work_order.machine_usages.all():
+                usage.delete()
+            work_order.movements.all().delete()
+            work_order.worker_hours.all().delete()
+            work_order.collaborators.clear()
+            work_order.delete()
+        messages.success(request, 'Zpracování bylo smazáno.')
+        return redirect('job_dashboard')
+    consumed, produced = _job_line_items(work_order)
+    return render(
+        request,
+        'workorders/job_confirm_delete.html',
+        {
+            'work_order': work_order,
+            'consumed': consumed,
+            'produced': produced,
+            'machine_usages': work_order.machine_usages.select_related('machine'),
         },
     )

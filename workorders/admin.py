@@ -28,8 +28,11 @@ class WorkerHoursInline(admin.TabularInline):
 
 @admin.register(WorkOrder)
 class WorkOrderAdmin(admin.ModelAdmin):
-    list_display = ('id', 'created_at', 'created_by', 'description')
-    readonly_fields = ('created_by',)
+    list_display = ('id', 'created_at', 'created_by', 'description', 'status', 'reviewed_by')
+    list_filter = ('status',)
+    # Who reviewed it and when is written by the approve/return views; leaving
+    # them editable here would let the two disagree about what happened.
+    readonly_fields = ('created_by', 'reviewed_at', 'reviewed_by')
     # Deliberately not `filter_horizontal`: that widget builds its labels in
     # JavaScript from strings ("Choose %s by selecting them...") that Django's
     # Czech catalogs don't translate, so it renders half-English. The plain
