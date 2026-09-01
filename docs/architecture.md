@@ -75,8 +75,8 @@ not the line items, not the hours, not the machine usage.
 
 The comparison is between *totals*, not between matching rows, because the
 normal case is one input crushed into several output fractions. Equality is
-exact `Decimal` comparison with no tolerance: `5.000` balances against `5`,
-while `5.001` against `5` is refused. It lives in the view, before the
+exact `Decimal` comparison with no tolerance: `5.00` balances against `5`,
+while `5.01` against `5` is refused. It lives in the view, before the
 transaction opens, because unlike the old stock check it needs no database
 state — only the rows being submitted.
 

@@ -54,8 +54,8 @@ def transform_create(request):
             # Mass balance: a transformation moves material between fractions,
             # it does not create or destroy it, so the two sides have to add up.
             # Compared as totals, not row by row — one input is normally crushed
-            # into several output fractions. Exact Decimal equality; `quantity`
-            # carries 3 decimal places and Decimal('5.0') == Decimal('5'), so
+            # into several output fractions. Exact Decimal equality; the form
+            # accepts 2 decimal places and Decimal('5.0') == Decimal('5'), so
             # trailing zeros don't matter.
             consumed_total = sum((row['quantity'] for row in consumed_rows), Decimal('0'))
             produced_total = sum((row['quantity'] for row in produced_rows), Decimal('0'))

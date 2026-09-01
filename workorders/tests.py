@@ -489,18 +489,18 @@ class TransformCreateTests(TestCase):
         self.assertEqual(StockMovement.objects.count(), 4)
 
     def test_trailing_zeros_do_not_break_the_balance(self):
-        # Decimal compares numerically, so 5.000 and 5 are equal here.
+        # Decimal compares numerically, so 5.00 and 5 are equal here.
         response = self._post(
-            [{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('5.000')}],
+            [{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('5.00')}],
             [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('5')}],
         )
         self.assertRedirects(response, reverse('transform_create'))
 
     def test_smallest_recordable_difference_is_still_rejected(self):
-        # `quantity` carries 3 decimal places, so this is the tightest mismatch
-        # the form can express. Exact equality means it must not slip through.
+        # The form accepts 2 decimal places, so this is the tightest mismatch it
+        # can express. Exact equality means it must not slip through.
         response = self._post(
-            [{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('5.001')}],
+            [{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('5.01')}],
             [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('5')}],
         )
         self.assertEqual(response.status_code, 200)

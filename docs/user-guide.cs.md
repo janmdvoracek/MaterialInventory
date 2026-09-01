@@ -56,6 +56,9 @@ Formulář má čtyři části:
   Je nepovinný.
 - **Moje hodiny** — kolik hodin jste na zakázce odpracovali **vy**. Toto pole je
   **povinné**.
+- Hodiny se zapisují **po půlhodinách** — `0.5`, `1`, `1.5`, `2` a tak dále.
+  Nejmenší zapsatelná hodnota je půl hodiny. Totéž platí pro hodiny
+  spolupracovníků i pro motohodiny strojů.
 
 **2. Spolupracovníci**
 
@@ -123,6 +126,10 @@ filtrovat podle pracovníka.
 
 **„Zadejte číslo."**
 Použili jste čárku. Desetinná místa pište s tečkou — `12.5`.
+
+**„Zajistěte, aby tato hodnota byla 0.5 násobkem velikosti kroku…"**
+U hodin jste zapsali jinou hodnotu než celou nebo půlhodinu — třeba `1.25`.
+Zaokrouhlete na nejbližší půlhodinu.
 
 **„Toto pole je vyžadováno."**
 Některé povinné pole zůstalo prázdné — nejčastěji *Moje hodiny*.

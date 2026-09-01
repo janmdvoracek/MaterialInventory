@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django import forms
 
 from accounts.models import User
@@ -25,9 +27,10 @@ class WorkOrderForm(forms.Form):
         widget=forms.TextInput(attrs={'placeholder': 'Popis provedené práce (volitelné)'}),
     )
     hours = forms.DecimalField(
-        min_value=0.01,
+        min_value=Decimal('0.5'),
         max_digits=12,
-        decimal_places=2,
+        step_size=Decimal('0.5'),
+        decimal_places=1,
         label='Moje hodiny',
         widget=forms.NumberInput(attrs={'placeholder': 'Odpracované hodiny'}),
     )
@@ -49,9 +52,9 @@ class MovementItemForm(forms.Form):
         empty_label='Lokalita',
     )
     quantity = forms.DecimalField(
-        min_value=0.001,
-        max_digits=12,
-        decimal_places=3,
+        min_value=Decimal('0.01'),
+        max_digits=7,
+        decimal_places=2,
         required=False,
         label='Množství',
         widget=forms.NumberInput(attrs={'placeholder': 'Množství'}),
@@ -77,9 +80,10 @@ class MachineUsageForm(forms.Form):
         empty_label='Stroj',
     )
     hours = forms.DecimalField(
-        min_value=0.01,
+        min_value=Decimal('0.5'),
         max_digits=12,
-        decimal_places=2,
+        step_size=Decimal('0.5'),
+        decimal_places=1,
         required=False,
         label='Hodiny',
         widget=forms.NumberInput(attrs={'placeholder': 'Motohodiny'}),
@@ -109,9 +113,10 @@ class WorkerHoursForm(forms.Form):
     # The row layout has no room for a visible label, so the placeholder is it —
     # same reason the selects use the bare noun as their `empty_label`.
     hours = forms.DecimalField(
-        min_value=0.01,
+        min_value=Decimal('0.5'),
         max_digits=12,
-        decimal_places=2,
+        step_size=Decimal('0.5'),
+        decimal_places=1,
         required=False,
         label='Hodiny',
         widget=forms.NumberInput(attrs={'placeholder': 'Hodiny'}),
