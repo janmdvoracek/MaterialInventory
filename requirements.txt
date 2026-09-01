@@ -3,7 +3,7 @@ Django==6.1
 django-htmx==1.29.0
 django-widget-tweaks==1.5.1
 djangorestframework==3.18.0
-gunicorn==26.1.0
+gunicorn==26.2.0
 packaging==26.3
 psycopg2-binary==2.9.12
 python-decouple==3.8
