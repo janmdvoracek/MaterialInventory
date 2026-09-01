@@ -47,6 +47,10 @@ class MachineModelTests(TestCase):
         machine = Machine.objects.create(name='Crusher A')
         self.assertIsNone(machine.hourly_rate)
 
+    def test_machine_rate_per_ton_defaults_to_none(self):
+        machine = Machine.objects.create(name='Crusher A')
+        self.assertIsNone(machine.rate_per_ton)
+
     def test_machine_name_unique(self):
         Machine.objects.create(name='Crusher A')
         with self.assertRaises(IntegrityError), transaction.atomic():
@@ -120,6 +124,32 @@ class SeedDataCommandTests(TestCase):
         Machine.objects.create(name='Warrior', hourly_rate=Decimal('99'))
         self._run(machines='name,hourly_rate\nWarrior,\n')
         self.assertEqual(Machine.objects.get(name='Warrior').hourly_rate, Decimal('99'))
+
+    def test_seed_machines_rate_per_ton_column(self):
+        self._run(machines='name,rate_per_ton\nWarrior,35\nKladivo,\n')
+        self.assertEqual(Machine.objects.get(name='Warrior').rate_per_ton, Decimal('35'))
+        self.assertIsNone(Machine.objects.get(name='Kladivo').rate_per_ton)
+
+    def test_seed_machines_rate_per_ton_updates_on_rerun(self):
+        self._run(machines='name,rate_per_ton\nWarrior,35\n')
+        self._run(machines='name,rate_per_ton\nWarrior,40\n')
+        self.assertEqual(Machine.objects.get(name='Warrior').rate_per_ton, Decimal('40'))
+
+    def test_seed_machines_preserves_rate_per_ton_when_column_absent(self):
+        Machine.objects.create(name='Warrior', rate_per_ton=Decimal('99'))
+        self._run(machines='name\nWarrior\n')
+        self.assertEqual(Machine.objects.get(name='Warrior').rate_per_ton, Decimal('99'))
+
+    def test_seed_machines_preserves_rate_per_ton_when_cell_blank(self):
+        Machine.objects.create(name='Warrior', rate_per_ton=Decimal('99'))
+        self._run(machines='name,rate_per_ton\nWarrior,\n')
+        self.assertEqual(Machine.objects.get(name='Warrior').rate_per_ton, Decimal('99'))
+
+    def test_seed_machines_both_rate_columns(self):
+        self._run(machines='name,hourly_rate,rate_per_ton\nWarrior,83,35\n')
+        machine = Machine.objects.get(name='Warrior')
+        self.assertEqual(machine.hourly_rate, Decimal('83'))
+        self.assertEqual(machine.rate_per_ton, Decimal('35'))
 
     def test_seed_users_creates_with_correct_role_and_staff_flag(self):
         self._run(

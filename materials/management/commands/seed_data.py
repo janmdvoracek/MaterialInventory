@@ -73,12 +73,13 @@ class Command(BaseCommand):
             name = row['name'].strip()
             if not name:
                 continue
-            # Only touch hourly_rate when the column carries a value, so re-seeding
+            # Only touch the rate columns when they carry a value, so re-seeding
             # never silently wipes a rate set by hand in the admin.
             defaults = {}
-            hourly_rate_raw = row.get('hourly_rate', '').strip()
-            if hourly_rate_raw:
-                defaults['hourly_rate'] = Decimal(hourly_rate_raw)
+            for column in ('hourly_rate', 'rate_per_ton'):
+                raw = row.get(column, '').strip()
+                if raw:
+                    defaults[column] = Decimal(raw)
             _, was_created = Machine.objects.update_or_create(name=name, defaults=defaults)
             created += was_created
             updated += not was_created

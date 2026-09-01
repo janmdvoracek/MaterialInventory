@@ -19,7 +19,7 @@ class LocationAdmin(admin.ModelAdmin):
 
 @admin.register(Machine)
 class MachineAdmin(admin.ModelAdmin):
-    list_display = ('name', 'total_hours', 'hourly_rate', 'is_active')
-    list_editable = ('total_hours', 'hourly_rate', 'is_active')
+    list_display = ('name', 'total_hours', 'hourly_rate', 'rate_per_ton', 'is_active')
+    list_editable = ('total_hours', 'hourly_rate', 'rate_per_ton', 'is_active')
     list_filter = ('is_active',)
     search_fields = ('name',)

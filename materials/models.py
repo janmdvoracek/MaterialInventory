@@ -53,6 +53,14 @@ class Machine(models.Model):
         help_text='Kč/hod, pouze pro orientaci.',
         verbose_name='hodinová sazba',
     )
+    rate_per_ton = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text='Kč za tunu zpracovaného materiálu, pouze pro orientaci.',
+        verbose_name='cena za tunu',
+    )
 
     class Meta:
         ordering = ['name']

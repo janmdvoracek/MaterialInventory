@@ -60,7 +60,7 @@ python manage.py test materials.tests.MaterialModelTests           # one class
 python manage.py test materials.tests.MaterialModelTests.test_material_str
 ```
 
-121 tests, roughly a minute. Postgres must be reachable.
+127 tests, roughly a minute. Postgres must be reachable.
 
 ### How the tests are written
 
@@ -142,7 +142,7 @@ are committed. Each file path can be overridden, e.g.
 |---|---|
 | `materials.csv` | `sku`, `name`, `unit_of_measure`, `category` |
 | `locations.csv` | `name` |
-| `machines.csv` | `name`, `hourly_rate` *(optional)* |
+| `machines.csv` | `name`, `hourly_rate` *(optional)*, `rate_per_ton` *(optional)* |
 | `users.csv` | `username`, `first_name`, `last_name`, `email`, `role` |
 
 `sku` and `name` are the match keys, so re-running updates in place rather than
@@ -151,7 +151,8 @@ duplicating. The whole command is one transaction.
 **Optional columns are only written when the cell actually holds a value.**
 Omitting the column, or leaving the cell blank, *preserves* what is already in
 the database — re-seeding never clobbers a rate or flag someone set by hand in
-the admin. New records fall back to the model default (`hourly_rate=NULL`).
+the admin. New records fall back to the model default (`hourly_rate=NULL`,
+`rate_per_ton=NULL`).
 Clearing a value back to empty is an admin action, not a CSV one.
 
 `Machine.total_hours` is **never** set by seeding. It only accumulates from
