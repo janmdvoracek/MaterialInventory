@@ -182,21 +182,20 @@ The middle step of the test job is the one that surprises people: **a model
 change without its migration file fails CI even when every test passes.** Run
 `makemigrations` and commit the result alongside any `models.py` edit.
 
-**Documentation and dotfile changes skip CI entirely.** Both triggers carry a
-`paths-ignore` list covering `**.md` plus dotfiles and dot-directories at any
-depth. A commit touching nothing but those runs **no jobs at all**; a commit
+**Documentation-only changes skip CI entirely.** Both triggers carry a
+`paths-ignore` list, and since `30c6477` it holds a single pattern: `'**.md'`.
+A commit touching nothing but Markdown runs **no jobs at all**; a commit
 touching even one other file runs the full pipeline.
 
-In practice the exempt set is exactly: `*.md` anywhere, `.gitignore`,
-`.dockerignore`, `.env.example`, and everything under `.github/`. Note that
-`Dockerfile`, `docker-compose.yml`, `pyproject.toml`, and `requirements*.txt`
-are **not** dotfiles and still trigger CI.
+Dotfiles and dot-directories used to be exempt too, via four extra globs
+(`.*`, `.*/**`, `**/.*`, `**/.*/**`). Those were removed, so `.gitignore`,
+`.dockerignore`, `.env.example`, and everything under `.github/` now trigger
+CI like any other file — which is the safer default, since `.dockerignore`
+decides what lands in the image and `ci.yml` *is* the pipeline.
 
-> **Two of the exempt files do affect CI.** `.dockerignore` determines what
-> lands in the image — it is what keeps `.env` and `static/xlsx/` out — and
-> `.github/workflows/ci.yml` is the pipeline itself. A change to either ships
-> unverified until the next code push. If you edit them, push a trivial code
-> change alongside, or trigger a run manually.
+> **The comment block above `on:` in `ci.yml` was not updated with the keys.**
+> It still explains the four dotfile globs as though they were live. Read the
+> `paths-ignore` keys themselves; the prose above them is stale.
 
 > **Watch out if `main` has branch protection** with these jobs as *required
 > status checks*. A skipped workflow reports nothing rather than success, so a
