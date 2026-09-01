@@ -59,7 +59,7 @@ class WorkerHours(models.Model):
 
 
 class MachineUsage(models.Model):
-    """One machine's hours logged against a single transformation job."""
+    """One machine's hours and processed tonnage on a single transformation job."""
 
     work_order = models.ForeignKey(
         WorkOrder, on_delete=models.CASCADE, related_name='machine_usages', verbose_name='zakázka'
@@ -68,6 +68,12 @@ class MachineUsage(models.Model):
         'materials.Machine', on_delete=models.PROTECT, related_name='usages', verbose_name='stroj'
     )
     hours = models.DecimalField(max_digits=12, decimal_places=2, verbose_name='motohodiny')
+    # Nullable only because rows written before the column existed have no
+    # answer — unknown, not zero. The Transform form requires it on every row
+    # it writes, alongside the machine and its hours.
+    tons = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True, verbose_name='odpracované tuny'
+    )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='vytvořeno')
 
     class Meta:

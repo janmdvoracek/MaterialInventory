@@ -90,9 +90,15 @@ on. Kdo je tu uvedený, uvidí zakázku ve své historii a hodiny se mu započí
 
 **4. Stroje**
 
-Vyplňte **Stroj** a počet **Hodin** (motohodin). Pokud šel materiál přes více
-strojů za sebou, použijte více řádků. Stejný stroj můžete uvést vícekrát.
-Stroje jsou nepovinné — pokud se žádný nepoužil, nechte řádky prázdné.
+Vyplňte **Stroj**, počet **Hodin** (motohodin) a **Tuny**, které stroj
+zpracoval. Pokud šel materiál přes více strojů za sebou, použijte více řádků.
+Stejný stroj můžete uvést vícekrát. Stroje jsou nepovinné — pokud se žádný
+nepoužil, nechte řádky prázdné. Jakmile ale řádek začnete vyplňovat, musí být
+vyplněný celý.
+
+> Tuny u stroje se **nezapočítávají** do kontroly součtů spotřeby a výroby.
+> Když materiál projde třemi stroji za sebou, projde každý z nich stejné
+> množství — proto se tato čísla nesčítají do celkové výroby.
 
 > Celá zakázka se ukládá najednou — položky, hodiny lidí i hodiny strojů. Po
 > uložení se formulář vyprázdní a můžete zapsat další zakázku.

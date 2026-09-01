@@ -70,6 +70,7 @@ class TransformCreateTests(TestCase):
         for i, row in enumerate(machine_rows):
             data[f'machines-{i}-machine'] = row['machine'].pk
             data[f'machines-{i}-hours'] = str(row['hours'])
+            data[f'machines-{i}-tons'] = str(row.get('tons', '5'))
         self.client.force_login(self.worker)
         return self.client.post(reverse('transform_create'), data)
 
@@ -135,7 +136,7 @@ class TransformCreateTests(TestCase):
         response = self._post(
             [{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('3')}],
             [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('3')}],
-            machine_rows=[{'machine': self.machine_a, 'hours': Decimal('2.5')}],
+            machine_rows=[{'machine': self.machine_a, 'hours': Decimal('2.5'), 'tons': Decimal('8')}],
         )
         self.assertRedirects(response, reverse('transform_create'))
         self.machine_a.refresh_from_db()
@@ -145,13 +146,70 @@ class TransformCreateTests(TestCase):
         self.assertEqual(usage.hours, Decimal('2.5'))
         self.assertEqual(usage.work_order, WorkOrder.objects.get())
 
+    def test_transform_records_tons_per_machine_row(self):
+        # Tonnage is per machine and independent of the job's mass balance:
+        # both machines put the same 3 t through, so these do not sum to the
+        # consumed or produced total and are not checked against it.
+        response = self._post(
+            [{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('3')}],
+            [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('3')}],
+            machine_rows=[
+                {'machine': self.machine_a, 'hours': Decimal('2'), 'tons': Decimal('3')},
+                {'machine': self.machine_b, 'hours': Decimal('1.5'), 'tons': Decimal('3')},
+            ],
+        )
+        self.assertRedirects(response, reverse('transform_create'))
+        self.assertEqual(MachineUsage.objects.get(machine=self.machine_a).tons, Decimal('3'))
+        self.assertEqual(MachineUsage.objects.get(machine=self.machine_b).tons, Decimal('3'))
+
+    def test_machine_row_missing_tons_rejected(self):
+        self.client.force_login(self.worker)
+        data = {
+            'description': 'Test job',
+            'hours': '2',
+            'consumed-TOTAL_FORMS': '1',
+            'consumed-INITIAL_FORMS': '0',
+            'consumed-MIN_NUM_FORMS': '0',
+            'consumed-MAX_NUM_FORMS': '1000',
+            # Balances the produced row below, so this POST is rejected for the
+            # reason under test and not by the mass-balance check.
+            'consumed-0-material': self.material_raw.pk,
+            'consumed-0-location': self.location.pk,
+            'consumed-0-quantity': '3',
+            'produced-TOTAL_FORMS': '1',
+            'produced-INITIAL_FORMS': '0',
+            'produced-MIN_NUM_FORMS': '0',
+            'produced-MAX_NUM_FORMS': '1000',
+            'produced-0-material': self.material_finished.pk,
+            'produced-0-location': self.location.pk,
+            'produced-0-quantity': '3',
+            'machines-TOTAL_FORMS': '1',
+            'machines-INITIAL_FORMS': '0',
+            'machines-MIN_NUM_FORMS': '0',
+            'machines-MAX_NUM_FORMS': '1000',
+            'machines-0-machine': self.machine_a.pk,
+            'machines-0-hours': '2',
+            'machines-0-tons': '',
+            'workers-TOTAL_FORMS': '1',
+            'workers-INITIAL_FORMS': '0',
+            'workers-MIN_NUM_FORMS': '0',
+            'workers-MAX_NUM_FORMS': '1000',
+        }
+        response = self.client.post(reverse('transform_create'), data)
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(WorkOrder.objects.exists())
+        self.assertFalse(MachineUsage.objects.exists())
+        # A rejected row must not have moved the counter either.
+        self.machine_a.refresh_from_db()
+        self.assertEqual(self.machine_a.total_hours, Decimal('0'))
+
     def test_transform_with_chained_machines_each_increment_independently(self):
         response = self._post(
             [{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('3')}],
             [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('3')}],
             machine_rows=[
-                {'machine': self.machine_a, 'hours': Decimal('2')},
-                {'machine': self.machine_b, 'hours': Decimal('1.5')},
+                {'machine': self.machine_a, 'hours': Decimal('2'), 'tons': Decimal('8')},
+                {'machine': self.machine_b, 'hours': Decimal('1.5'), 'tons': Decimal('8')},
             ],
         )
         self.assertRedirects(response, reverse('transform_create'))
@@ -213,6 +271,7 @@ class TransformCreateTests(TestCase):
             'machines-MAX_NUM_FORMS': '1000',
             'machines-0-machine': self.machine_a.pk,
             'machines-0-hours': '',
+            'machines-0-tons': '8',
             'workers-TOTAL_FORMS': '1',
             'workers-INITIAL_FORMS': '0',
             'workers-MIN_NUM_FORMS': '0',
@@ -252,6 +311,7 @@ class TransformCreateTests(TestCase):
             'machines-MAX_NUM_FORMS': '1000',
             'machines-0-machine': '',
             'machines-0-hours': '2',
+            'machines-0-tons': '8',
             'workers-TOTAL_FORMS': '1',
             'workers-INITIAL_FORMS': '0',
             'workers-MIN_NUM_FORMS': '0',
@@ -662,9 +722,11 @@ class MachineUsageHistoryTests(TestCase):
         self.machine = Machine.objects.create(name='Crusher A')
         self.other_machine = Machine.objects.create(name='Excavator B')
 
-    def _usage(self, user, machine=None, hours=Decimal('1')):
+    def _usage(self, user, machine=None, hours=Decimal('1'), tons=None):
         work_order = WorkOrder.objects.create(created_by=user, description='job')
-        return MachineUsage.objects.create(work_order=work_order, machine=machine or self.machine, hours=hours)
+        return MachineUsage.objects.create(
+            work_order=work_order, machine=machine or self.machine, hours=hours, tons=tons
+        )
 
     def test_history_requires_login(self):
         response = self.client.get(reverse('machine_usage_history'))
@@ -695,6 +757,21 @@ class MachineUsageHistoryTests(TestCase):
         response = self.client.get(reverse('machine_usage_history'))
         usages = response.context['page_obj'].object_list
         self.assertIn(shared, usages)
+
+    def test_history_shows_tons(self):
+        self._usage(self.worker, tons=Decimal('12.5'))
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('machine_usage_history'))
+        # Comma decimal separator: template output is localised under cs.
+        self.assertContains(response, '12,50')
+
+    def test_history_shows_dash_for_row_without_tons(self):
+        # Rows written before the column existed have no tonnage; the table
+        # must still render them.
+        self._usage(self.worker)
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('machine_usage_history'))
+        self.assertContains(response, '—')
 
     def test_created_by_filter_hidden_from_worker(self):
         self.client.force_login(self.worker)

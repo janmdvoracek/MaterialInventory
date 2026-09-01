@@ -88,12 +88,24 @@ class MachineUsageForm(forms.Form):
         label='Hodiny',
         widget=forms.NumberInput(attrs={'placeholder': 'Motohodiny'}),
     )
+    # Tonnage this machine put through on this job. Unrelated to the job's
+    # own consumed/produced totals — several chained machines each process the
+    # same material, so these do not add up to the mass balance and are not
+    # checked against it.
+    tons = forms.DecimalField(
+        min_value=Decimal('0.01'),
+        max_digits=7,
+        decimal_places=2,
+        required=False,
+        label='Tuny',
+        widget=forms.NumberInput(attrs={'placeholder': 'Tuny'}),
+    )
 
     def clean(self):
         cleaned_data = super().clean()
-        filled = [cleaned_data.get('machine'), cleaned_data.get('hours')]
+        filled = [cleaned_data.get('machine'), cleaned_data.get('hours'), cleaned_data.get('tons')]
         if any(filled) and not all(filled):
-            raise forms.ValidationError('Vyplňte stroj a počet hodin, nebo řádek nechte prázdný.')
+            raise forms.ValidationError('Vyplňte stroj, motohodiny a tuny, nebo řádek nechte prázdný.')
         return cleaned_data
 
 

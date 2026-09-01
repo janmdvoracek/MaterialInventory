@@ -62,7 +62,7 @@ WorkOrder #17  "Crushing gravel"
 ├── StockMovement  TRANSFORM_CONSUME  −20 t  Raw stone   @ Yard
 ├── StockMovement  TRANSFORM_PRODUCE  +14 t  Gravel 8/16 @ Yard
 ├── StockMovement  TRANSFORM_PRODUCE  +6 t   Gravel 4/8  @ Yard
-├── MachineUsage   Crusher  3.5 h
+├── MachineUsage   Crusher  3.5 h, 20 t
 ├── WorkerHours    novak 6 h,  svoboda 4 h
 └── collaborators  [svoboda]
 ```
@@ -108,6 +108,14 @@ Two unrelated numbers. Do not derive one from the other.
 
 The Hodiny report totals `WorkerHours` only, so it has no fixed relationship to
 `Machine.total_hours`. That is not a reconciliation bug.
+
+`MachineUsage.tons` is a third independent number: how much material that one
+machine put through on that job. **It is not part of the mass balance.** Chained
+machines each handle the same material, so the tonnage column sums to a multiple
+of the job's consumed total, not to it — nothing compares the two. The Transform
+form requires it on any machine row that names a machine, but the column is
+nullable because rows written before it existed have no answer (unknown, not
+zero), and the history table renders those as a dash.
 
 ### `collaborators`
 

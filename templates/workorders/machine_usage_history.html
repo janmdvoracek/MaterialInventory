@@ -15,7 +15,7 @@
     <div class="table-scroll">
     <table>
         <thead>
-            <tr><th>Datum</th><th>Stroj</th><th>Hodiny</th><th>Zakázka</th><th>Kým</th></tr>
+            <tr><th>Datum</th><th>Stroj</th><th>Hodiny</th><th>Tuny</th><th>Zakázka</th><th>Kým</th></tr>
         </thead>
         <tbody>
         {% for usage in page_obj %}
@@ -23,11 +23,12 @@
                 <td>{{ usage.created_at|date:"Y-m-d H:i" }}</td>
                 <td>{{ usage.machine.name }}</td>
                 <td>{{ usage.hours|floatformat:1 }} h</td>
+                <td>{{ usage.tons|floatformat:2|default:"—" }}</td>
                 <td>{{ usage.work_order.description|default:"—" }}</td>
                 <td>{{ usage.work_order.created_by.username }}</td>
             </tr>
         {% empty %}
-            <tr><td colspan="5">Žádné záznamy neodpovídají zadaným filtrům.</td></tr>
+            <tr><td colspan="6">Žádné záznamy neodpovídají zadaným filtrům.</td></tr>
         {% endfor %}
         </tbody>
     </table>

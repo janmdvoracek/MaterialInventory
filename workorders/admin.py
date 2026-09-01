@@ -15,7 +15,7 @@ class MovementInline(admin.TabularInline):
 class MachineUsageInline(admin.TabularInline):
     model = MachineUsage
     extra = 1
-    fields = ('machine', 'hours', 'created_at')
+    fields = ('machine', 'hours', 'tons', 'created_at')
     readonly_fields = ('created_at',)
 
 

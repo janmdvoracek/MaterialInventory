@@ -110,6 +110,7 @@ def transform_create(request):
                             work_order=work_order,
                             machine=row['machine'],
                             hours=row['hours'],
+                            tons=row['tons'],
                         )
                 messages.success(request, 'Zpracování bylo zaznamenáno.')
                 return redirect('transform_create')
