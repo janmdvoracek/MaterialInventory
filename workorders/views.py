@@ -7,6 +7,7 @@ from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Count, Q, Sum
 from django.shortcuts import redirect, render
+from django.utils.formats import localize
 
 from accounts.models import User
 from inventory.models import StockMovement
@@ -50,13 +51,28 @@ def transform_create(request):
             for form in worker_formset:
                 if form.cleaned_data.get('user'):
                     worker_hours[form.cleaned_data['user']] += form.cleaned_data['hours']
-            if not consumed_rows and not produced_rows:
-                messages.error(request, 'Přidejte alespoň jednu položku spotřeby nebo výroby.')
+            # Mass balance: a transformation moves material between fractions,
+            # it does not create or destroy it, so the two sides have to add up.
+            # Compared as totals, not row by row — one input is normally crushed
+            # into several output fractions. Exact Decimal equality; `quantity`
+            # carries 3 decimal places and Decimal('5.0') == Decimal('5'), so
+            # trailing zeros don't matter.
+            consumed_total = sum((row['quantity'] for row in consumed_rows), Decimal('0'))
+            produced_total = sum((row['quantity'] for row in produced_rows), Decimal('0'))
+            if not consumed_rows or not produced_rows:
+                messages.error(request, 'Přidejte alespoň jednu položku spotřeby a jednu položku výroby.')
+            elif consumed_total != produced_total:
+                messages.error(
+                    request,
+                    'Celkové množství spotřeby a výroby se musí rovnat '
+                    f'(spotřeba {localize(consumed_total)}, výroba {localize(produced_total)}).',
+                )
             else:
                 # Still one transaction: a job's line items, hours and machine
-                # usage are a single record and must not land half-written. There
-                # is no stock-sufficiency check to fail here any more — the app
-                # records what was processed, it does not hold balances.
+                # usage are a single record and must not land half-written.
+                # Nothing inside here can fail a business rule: the mass-balance
+                # check above is about this one job's own rows, not a stock
+                # level, so it needs no database state and runs before the write.
                 with transaction.atomic():
                     work_order = WorkOrder.objects.create(
                         created_by=request.user,

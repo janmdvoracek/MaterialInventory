@@ -73,7 +73,17 @@ on. Kdo je tu uvedený, uvidí zakázku ve své historii a hodiny se mu započí
 - Řádků je připraveno několik. Nepoužité nechte prázdné.
 - Vyplnit musíte buď celý řádek, nebo žádný — samotné množství bez materiálu
   aplikace odmítne.
-- Vyplněná musí být alespoň jedna položka spotřeby nebo výroby.
+- Vyplněná musí být **alespoň jedna položka spotřeby a alespoň jedna položka
+  výroby**. Samotná spotřeba bez výroby (ani naopak) se uložit nedá.
+- **Celkové množství spotřeby se musí rovnat celkovému množství výroby.**
+  Sčítají se všechny řádky dohromady, ne řádek proti řádku — když z 20 t
+  kameniva vznikne 14 t frakce 8/16 a 6 t frakce 4/8, souhlasí to.
+- Musí to sedět přesně. Když se součty liší, aplikace zakázku neuloží a nahoře
+  napíše, kolik jí na které straně vyšlo — například *„Celkové množství spotřeby
+  a výroby se musí rovnat (spotřeba 20, výroba 19)."* Dopište chybějící řádek
+  nebo opravte množství.
+- Neuloží se přitom **nic** — ani hodiny, ani stroje. Po opravě součtů se odešle
+  celá zakázka najednou.
 
 **4. Stroje**
 
@@ -121,8 +131,15 @@ Některé povinné pole zůstalo prázdné — nejčastěji *Moje hodiny*.
 Ve **Zpracování** je rozepsaný řádek. Buď ho doplňte celý, nebo vymažte. Stejně
 to platí pro řádky spolupracovníků a strojů.
 
-**„Přidejte alespoň jednu položku spotřeby nebo výroby."**
-Zakázka musí obsahovat aspoň jeden materiálový řádek.
+**„Přidejte alespoň jednu položku spotřeby a jednu položku výroby."**
+Zakázka musí mít obě strany — co se spotřebovalo i co vzniklo. Jednostranný
+záznam aplikace neuloží.
+
+**„Celkové množství spotřeby a výroby se musí rovnat."**
+Součet množství na straně spotřeby nesedí se součtem na straně výroby; v závorce
+hlášky jsou obě čísla. Sčítají se všechny řádky dohromady, takže chybí buď
+řádek, nebo je někde překlep v množství. Dokud to nesedí, neuloží se ani hodiny
+a stroje.
 
 **Nevidím v menu Stroje.**
 Je jen pro vedoucí. Pokud je potřebujete, řekněte si správci o změnu role.

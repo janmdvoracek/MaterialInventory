@@ -61,19 +61,39 @@ A transformation is one `WorkOrder` plus everything it produced:
 WorkOrder #17  "Crushing gravel"
 ├── StockMovement  TRANSFORM_CONSUME  −20 t  Raw stone   @ Yard
 ├── StockMovement  TRANSFORM_PRODUCE  +14 t  Gravel 8/16 @ Yard
-├── StockMovement  TRANSFORM_PRODUCE  +5 t   Gravel 4/8  @ Yard
+├── StockMovement  TRANSFORM_PRODUCE  +6 t   Gravel 4/8  @ Yard
 ├── MachineUsage   Crusher  3.5 h
 ├── WorkerHours    novak 6 h,  svoboda 4 h
 └── collaborators  [svoboda]
 ```
 
+The consumed and produced sides of that job add up to the same 20 t, and that
+is enforced. **A submission must carry at least one consumed row and one
+produced row, and their totals must be exactly equal**; otherwise
+`transform_create` re-renders the form with an error and writes nothing at all —
+not the line items, not the hours, not the machine usage.
+
+The comparison is between *totals*, not between matching rows, because the
+normal case is one input crushed into several output fractions. Equality is
+exact `Decimal` comparison with no tolerance: `5.000` balances against `5`,
+while `5.001` against `5` is refused. It lives in the view, before the
+transaction opens, because unlike the old stock check it needs no database
+state — only the rows being submitted.
+
+> The two sides are summed together, so they only mean something in a shared
+> unit. The real catalog is entirely in tonnes (`Zdroj` and `Frakce` alike), but
+> nothing in the model enforces that; a mixed-unit catalog would make the rule
+> compare quantities that are not comparable.
+
 The whole submission is one `transaction.atomic()` block. Nothing inside it can
-fail on a stock check any more, but the transaction stays: the line items, the
-hours and the machine usage are one job and must not land half-written.
+fail a business rule — the balance check has already run by then — but the
+transaction stays: the line items, the hours and the machine usage are one job
+and must not land half-written.
 
 Formset rows are written **exactly as typed**. The view used to combine consumed
 rows for the same material and location so it could test them as a single
-quantity; with no check left, two rows of 6 t are simply two line items.
+quantity; with no such check left, two rows of 6 t are simply two line items
+that contribute 12 t to the consumed total.
 
 ### `WorkerHours` vs `MachineUsage`
 
