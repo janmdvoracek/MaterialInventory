@@ -639,6 +639,21 @@ class MachineDashboardTests(TestCase):
         # Comma decimal separator: template output is localised under cs.
         self.assertContains(response, '12,5 h')
 
+    def test_dashboard_shows_both_rates(self):
+        self.machine_active.hourly_rate = Decimal('83')
+        self.machine_active.rate_per_ton = Decimal('35.50')
+        self.machine_active.save()
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('machine_dashboard'))
+        self.assertContains(response, '83,00')
+        self.assertContains(response, '35,50')
+
+    def test_dashboard_shows_dash_for_unset_rates(self):
+        # Both rates are optional, so an unpriced machine must still render a row.
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('machine_dashboard'))
+        self.assertContains(response, '—', count=2)
+
 
 class MachineUsageHistoryTests(TestCase):
     def setUp(self):

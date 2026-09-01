@@ -4,9 +4,10 @@
 <h1>Aktuální stav strojů</h1>
 {% if machines %}
 <div class="card">
+    <div class="table-scroll">
     <table>
         <thead>
-            <tr><th>Stroj</th><th>Celkem hodin</th></tr>
+            <tr><th>Stroj</th><th>Celkem hodin</th><th>Sazba (Kč/hod)</th><th>Cena (Kč/t)</th></tr>
         </thead>
         <tbody>
         {% for machine in machines %}
@@ -15,10 +16,13 @@
                     <a href="{% url 'machine_usage_history' %}?machine={{ machine.id }}">{{ machine.name }}</a>
                 </td>
                 <td>{{ machine.total_hours|floatformat:1 }} h</td>
+                <td>{{ machine.hourly_rate|floatformat:2|default:"—" }}</td>
+                <td>{{ machine.rate_per_ton|floatformat:2|default:"—" }}</td>
             </tr>
         {% endfor %}
         </tbody>
     </table>
+    </div>
 </div>
 {% else %}
 <p>Zatím nejsou evidovány žádné aktivní stroje.</p>

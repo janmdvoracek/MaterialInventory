@@ -39,7 +39,7 @@ Ve spodní části obrazovky je menu, ze kterého se dostanete všude:
 |---|---|
 | **Zpracování** | Z jednoho materiálu vznikl jiný — hlavní formulář |
 | **Hodiny** | Odpracované hodiny lidí |
-| **Stroje** | Celkové motohodiny strojů — vidí jen vedoucí |
+| **Stroje** | Celkové motohodiny a sazby strojů — vidí jen vedoucí |
 
 Po přihlášení se rovnou otevře **Zpracování**. Stejně tak se tam vrátíte
 klepnutím na logo vlevo nahoře.
@@ -101,6 +101,11 @@ Stroje jsou nepovinné — pokud se žádný nepoužil, nechte řádky prázdné
 
 Přehled strojů a jejich **celkových motohodin**. Číslo se navyšuje automaticky
 pokaždé, když někdo ve **Zpracování** vyplní hodiny stroje.
+
+Vedle motohodin se zobrazují dvě sazby stroje: **Sazba (Kč/hod)** a
+**Cena (Kč/t)** za tunu zpracovaného materiálu. Obě jsou pouze orientační —
+nic se z nich nepočítá a v aplikaci se nezadávají, nastavuje je správce.
+Nevyplněná sazba se zobrazí jako pomlčka (—).
 
 Klepnutím na název stroje zobrazíte jeho historii použití. Tu lze filtrovat
 podle stroje, data a — u vedoucích — podle pracovníka.
