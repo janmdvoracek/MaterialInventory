@@ -1,9 +1,19 @@
 {% extends "base.html" %}
-{% block title %}Aktuální stav strojů{% endblock %}
+{% block title %}Stroje{% endblock %}
 {% block content %}
-<h1>Aktuální stav strojů</h1>
-{% if machines %}
+<h1>Stroje</h1>
+{% if form.is_bound and not form.is_valid %}
+    <p class="messages error">Filtr je neplatný, proto se nezobrazují žádné výsledky. Opravte prosím zvýrazněná pole.</p>
+{% endif %}
 <div class="card">
+    {% include "workorders/_date_presets.html" %}
+    <form method="get">
+        {{ form.as_p }}
+        <button type="submit">Filtrovat</button>
+    </form>
+</div>
+<div class="card">
+    <h2>Stav strojů</h2>
     <div class="table-scroll">
     <table>
         <thead>
@@ -12,21 +22,48 @@
         <tbody>
         {% for machine in machines %}
             <tr>
-                <td>
-                    <a href="{% url 'machine_usage_history' %}?machine={{ machine.id }}">{{ machine.name }}</a>
-                </td>
-                <td>{{ machine.approved_hours|default:"0"|floatformat:1 }} h</td>
-                <td>{{ machine.approved_tons|floatformat:2|default:"—" }}</td>
+                <td>{{ machine.name }}</td>
+                <td>{{ machine.filtered_hours|default:"0"|floatformat:1 }} h</td>
+                <td>{{ machine.filtered_tons|floatformat:2|default:"—" }}</td>
                 <td>{{ machine.hourly_rate|floatformat:2|default:"—" }}</td>
                 <td>{{ machine.rate_per_ton|floatformat:2|default:"—" }}</td>
             </tr>
+        {% empty %}
+            <tr><td colspan="5">Žádné stroje neodpovídají zadaným filtrům.</td></tr>
         {% endfor %}
         </tbody>
     </table>
     </div>
 </div>
-{% else %}
-<p>Zatím nejsou evidovány žádné aktivní stroje.</p>
+<div class="card">
+    <h2>Detail používání strojů</h2>
+    <div class="table-scroll">
+    <table>
+        <thead>
+            <tr><th>Datum</th><th>Stroj</th><th>Hodiny</th><th>Tuny</th><th>Zakázka</th><th>Kým</th></tr>
+        </thead>
+        <tbody>
+        {% for usage in page_obj %}
+            <tr>
+                <td>{{ usage.created_at|date:"Y-m-d H:i" }}</td>
+                <td>{{ usage.machine.name }}</td>
+                <td>{{ usage.hours|floatformat:1 }} h</td>
+                <td>{{ usage.tons|floatformat:2|default:"—" }}</td>
+                <td>{{ usage.work_order.description|default:"—" }}</td>
+                <td>{{ usage.work_order.created_by.username }}</td>
+            </tr>
+        {% empty %}
+            <tr><td colspan="6">Žádné záznamy neodpovídají zadaným filtrům.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+{% if page_obj.has_other_pages %}
+<p>
+    {% if page_obj.has_previous %}<a href="?{{ querystring }}&page={{ page_obj.previous_page_number }}">Předchozí</a>{% endif %}
+    Stránka {{ page_obj.number }} z {{ page_obj.paginator.num_pages }}
+    {% if page_obj.has_next %}<a href="?{{ querystring }}&page={{ page_obj.next_page_number }}">Další</a>{% endif %}
+</p>
 {% endif %}
-<p><a href="{% url 'machine_usage_history' %}">Zobrazit celou historii →</a></p>
 {% endblock %}

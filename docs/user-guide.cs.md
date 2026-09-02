@@ -161,8 +161,20 @@ Vedle motohodin se zobrazují dvě sazby stroje: **Sazba (Kč/hod)** a
 nic se z nich nepočítá a v aplikaci se nezadávají, nastavuje je správce.
 Nevyplněná sazba se zobrazí jako pomlčka (—).
 
-Klepnutím na název stroje zobrazíte jeho historii použití. Tu lze filtrovat
-podle stroje, data a — u vedoucích — podle pracovníka.
+Stránka má stejnou stavbu jako **Hodiny**: nahoře **filtr**, pod ním tabulka
+**Stav strojů** a úplně dole **Detail používání strojů** — jednotlivé záznamy
+(datum, stroj, hodiny, tuny, zakázka a kdo ji zapsal), ze kterých se čísla
+nahoře skládají. Filtr platí pro obě tabulky najednou, takže si můžete číslo
+přečíst a hned pod ním vidět, z čeho vzniklo.
+
+Filtrovat lze podle stroje, data a — u vedoucích — podle pracovníka. **Bez
+filtru vidíte všechny stroje.** Když vyberete konkrétní stroj, zůstane
+v tabulce jen on; když omezíte datum, stroje zůstanou všechny a čísla se
+přepočítají za dané období — stroj s **0 h** tedy znamená, že v tom období
+neběžel.
+
+Běžný pracovník vidí v detailu pouze záznamy ze zakázek, které sám zapsal nebo
+na kterých je uvedený; tabulka Stav strojů je počítaná ze stejných řádků.
 
 > **Rychlé období.** Nad každým filtrem v aplikaci jsou čtyři tlačítka —
 > **Vše**, **Posledních 7 dní**, **Posledních 30 dní** a **Minulý měsíc**.

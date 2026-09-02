@@ -173,7 +173,10 @@ class TimeWorkedFilterForm(forms.Form):
         return cleaned_data
 
 
-class MachineHistoryFilterForm(forms.Form):
+class MachineFilterForm(forms.Form):
+    """Filters the whole Stroje page — both the per-machine totals and the usage
+    rows underneath them, which are two views of the same set of rows."""
+
     machine = forms.ModelChoiceField(
         queryset=Machine.objects.all().order_by('name'),
         required=False,
@@ -192,8 +195,8 @@ class MachineHistoryFilterForm(forms.Form):
     def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
         if user is not None and not user.is_manager_or_admin:
-            # Same restriction as the stock movement history: workers only ever
-            # see their own machine usage, so this filter would be a dead end.
+            # Workers only ever see their own machine usage, so this filter
+            # would be a dead end.
             del self.fields['created_by']
 
     def clean(self):

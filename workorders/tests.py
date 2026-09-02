@@ -666,24 +666,51 @@ class MachineDashboardTests(TestCase):
         self.worker = User.objects.create_user(username='worker', password='pw', role=User.Role.WORKER)
         self.machine_active = Machine.objects.create(name='Crusher A')
         self.machine_retired = Machine.objects.create(name='Old Excavator', total_hours=Decimal('99'), is_active=False)
+        self.client.force_login(self.worker)
 
     def _usage(self, hours, tons=None, status=WorkOrder.Status.APPROVED):
         work_order = WorkOrder.objects.create(created_by=self.worker, description='job', status=status)
         return MachineUsage.objects.create(work_order=work_order, machine=self.machine_active, hours=hours, tons=tons)
 
-    def test_dashboard_requires_login(self):
-        response = self.client.get(reverse('machine_dashboard'))
-        self.assertEqual(response.status_code, 302)
-        self.assertIn('/login/', response.url)
-
     def test_dashboard_lists_only_active_machines(self):
-        self.client.force_login(self.worker)
         response = self.client.get(reverse('machine_dashboard'))
         self.assertEqual(list(response.context['machines']), [self.machine_active])
 
+    def test_dashboard_lists_every_machine_when_nothing_is_filtered(self):
+        # An idle machine is still part of the fleet; it reads 0 h rather than
+        # dropping off the table.
+        response = self.client.get(reverse('machine_dashboard'))
+        self.assertEqual(list(response.context['machines']), [self.machine_active])
+        self.assertContains(response, '0,0 h')
+
+    def test_totals_follow_the_date_filter(self):
+        old = self._usage(Decimal('4'), tons=Decimal('10'))
+        # queryset.update() only because this touches created_at: `hours` is
+        # what MachineUsage.save() keeps Machine.total_hours in step with, and
+        # that is not being changed here.
+        MachineUsage.objects.filter(pk=old.pk).update(created_at=timezone.now() - timedelta(days=40))
+        self._usage(Decimal('1.5'), tons=Decimal('6'))
+        response = self.client.get(
+            reverse('machine_dashboard'), {'date_from': (date.today() - timedelta(days=7)).isoformat()}
+        )
+        machine = response.context['machines'][0]
+        self.assertEqual(machine.filtered_hours, Decimal('1.50'))
+        self.assertEqual(machine.filtered_tons, Decimal('6.00'))
+
+    def test_naming_a_machine_narrows_the_table_to_it(self):
+        other = Machine.objects.create(name='Excavator B')
+        response = self.client.get(reverse('machine_dashboard'), {'machine': other.pk})
+        self.assertEqual(list(response.context['machines']), [other])
+
+    def test_an_invalid_filter_shows_no_machines(self):
+        # A fleet of zeros under a "these are your filtered results" heading
+        # would read as an answer; it is not one.
+        self._usage(Decimal('3'))
+        response = self.client.get(reverse('machine_dashboard'), {'date_from': 'not-a-date'})
+        self.assertEqual(list(response.context['machines']), [])
+
     def test_dashboard_shows_approved_hours(self):
         self._usage(Decimal('12.5'))
-        self.client.force_login(self.worker)
         response = self.client.get(reverse('machine_dashboard'))
         # Comma decimal separator: template output is localised under cs.
         self.assertContains(response, '12,5 h')
@@ -691,25 +718,22 @@ class MachineDashboardTests(TestCase):
     def test_dashboard_shows_approved_tons(self):
         self._usage(Decimal('3'), tons=Decimal('12.5'))
         self._usage(Decimal('2'), tons=Decimal('8'))
-        self.client.force_login(self.worker)
         response = self.client.get(reverse('machine_dashboard'))
-        self.assertEqual(response.context['machines'][0].approved_tons, Decimal('20.50'))
+        self.assertEqual(response.context['machines'][0].filtered_tons, Decimal('20.50'))
         self.assertContains(response, '20,50')
 
     def test_dashboard_ignores_tons_from_unapproved_jobs(self):
         self._usage(Decimal('3'), tons=Decimal('12.5'), status=WorkOrder.Status.PENDING)
-        self.client.force_login(self.worker)
         response = self.client.get(reverse('machine_dashboard'))
-        self.assertIsNone(response.context['machines'][0].approved_tons)
+        self.assertIsNone(response.context['machines'][0].filtered_tons)
 
     def test_dashboard_shows_a_dash_when_no_tonnage_was_recorded(self):
         # `tons` is nullable because rows predating the column have no answer —
         # unknown, not zero. Sum skips them, and the page must not read that
         # back as a machine that processed nothing.
         self._usage(Decimal('3'))
-        self.client.force_login(self.worker)
         response = self.client.get(reverse('machine_dashboard'))
-        self.assertIsNone(response.context['machines'][0].approved_tons)
+        self.assertIsNone(response.context['machines'][0].filtered_tons)
         self.assertContains(response, '3,0 h')
 
     def test_dashboard_ignores_hours_from_unapproved_jobs(self):
@@ -717,14 +741,12 @@ class MachineDashboardTests(TestCase):
         # page cannot read it: a job nobody has signed off must not move the
         # number a manager reads off this screen.
         self._usage(Decimal('4'), status=WorkOrder.Status.PENDING)
-        self.client.force_login(self.worker)
         response = self.client.get(reverse('machine_dashboard'))
         self.assertContains(response, '0,0 h')
         self.machine_active.refresh_from_db()
         self.assertEqual(self.machine_active.total_hours, Decimal('4'))
 
     def test_dashboard_shows_zero_for_machine_without_usage(self):
-        self.client.force_login(self.worker)
         response = self.client.get(reverse('machine_dashboard'))
         self.assertContains(response, '0,0 h')
 
@@ -732,7 +754,6 @@ class MachineDashboardTests(TestCase):
         self.machine_active.hourly_rate = Decimal('83')
         self.machine_active.rate_per_ton = Decimal('35.50')
         self.machine_active.save()
-        self.client.force_login(self.worker)
         response = self.client.get(reverse('machine_dashboard'))
         self.assertContains(response, '83,00')
         self.assertContains(response, '35,50')
@@ -740,12 +761,17 @@ class MachineDashboardTests(TestCase):
     def test_dashboard_shows_dash_for_unset_rates(self):
         # Both rates are optional, so an unpriced machine must still render a
         # row. Three dashes, not two: an unused machine has no tonnage either.
-        self.client.force_login(self.worker)
         response = self.client.get(reverse('machine_dashboard'))
         self.assertContains(response, '—', count=3)
 
 
-class MachineUsageHistoryTests(TestCase):
+class MachineUsageDetailTests(TestCase):
+    """The usage rows at the bottom of Stroje — worker scoping and filtering.
+
+    Same page as the totals above them (`machine_dashboard`); these tests are
+    about the rows.
+    """
+
     def setUp(self):
         self.worker = User.objects.create_user(username='worker', password='pw', role=User.Role.WORKER)
         self.manager = User.objects.create_user(username='manager', password='pw', role=User.Role.MANAGER)
@@ -753,7 +779,7 @@ class MachineUsageHistoryTests(TestCase):
         self.other_machine = Machine.objects.create(name='Excavator B')
 
     def _usage(self, user, machine=None, hours=Decimal('1'), tons=None, status=WorkOrder.Status.APPROVED):
-        # Approved by default: the history reports signed-off jobs only, so an
+        # Approved by default: the page reports signed-off jobs only, so an
         # unapproved fixture would be invisible for reasons unrelated to the
         # scoping these tests are about.
         work_order = WorkOrder.objects.create(created_by=user, description='job', status=status)
@@ -761,8 +787,8 @@ class MachineUsageHistoryTests(TestCase):
             work_order=work_order, machine=machine or self.machine, hours=hours, tons=tons
         )
 
-    def test_history_requires_login(self):
-        response = self.client.get(reverse('machine_usage_history'))
+    def test_page_requires_login(self):
+        response = self.client.get(reverse('machine_dashboard'))
         self.assertEqual(response.status_code, 302)
         self.assertIn('/login/', response.url)
 
@@ -770,7 +796,7 @@ class MachineUsageHistoryTests(TestCase):
         own = self._usage(self.worker)
         self._usage(self.manager)
         self.client.force_login(self.worker)
-        response = self.client.get(reverse('machine_usage_history'))
+        response = self.client.get(reverse('machine_dashboard'))
         usages = response.context['page_obj'].object_list
         self.assertEqual(list(usages), [own])
 
@@ -778,7 +804,7 @@ class MachineUsageHistoryTests(TestCase):
         self._usage(self.worker)
         other = self._usage(self.manager)
         self.client.force_login(self.worker)
-        response = self.client.get(reverse('machine_usage_history'), {'created_by': self.manager.pk})
+        response = self.client.get(reverse('machine_dashboard'), {'created_by': self.manager.pk})
         usages = response.context['page_obj'].object_list
         self.assertNotIn(other, usages)
 
@@ -789,54 +815,54 @@ class MachineUsageHistoryTests(TestCase):
         work_order.collaborators.add(self.worker)
         shared = MachineUsage.objects.create(work_order=work_order, machine=self.machine, hours=Decimal('2'))
         self.client.force_login(self.worker)
-        response = self.client.get(reverse('machine_usage_history'))
+        response = self.client.get(reverse('machine_dashboard'))
         usages = response.context['page_obj'].object_list
         self.assertIn(shared, usages)
 
-    def test_history_shows_tons(self):
+    def test_detail_shows_tons(self):
         self._usage(self.worker, tons=Decimal('12.5'))
         self.client.force_login(self.worker)
-        response = self.client.get(reverse('machine_usage_history'))
+        response = self.client.get(reverse('machine_dashboard'))
         # Comma decimal separator: template output is localised under cs.
         self.assertContains(response, '12,50')
 
-    def test_history_shows_dash_for_row_without_tons(self):
+    def test_detail_shows_dash_for_row_without_tons(self):
         # Rows written before the column existed have no tonnage; the table
         # must still render them.
         self._usage(self.worker)
         self.client.force_login(self.worker)
-        response = self.client.get(reverse('machine_usage_history'))
+        response = self.client.get(reverse('machine_dashboard'))
         self.assertContains(response, '—')
 
     def test_created_by_filter_hidden_from_worker(self):
         self.client.force_login(self.worker)
-        response = self.client.get(reverse('machine_usage_history'))
+        response = self.client.get(reverse('machine_dashboard'))
         self.assertNotIn('created_by', response.context['form'].fields)
 
     def test_created_by_filter_available_to_manager(self):
         self.client.force_login(self.manager)
-        response = self.client.get(reverse('machine_usage_history'))
+        response = self.client.get(reverse('machine_dashboard'))
         self.assertIn('created_by', response.context['form'].fields)
 
     def test_manager_sees_usage_from_all_users(self):
         self._usage(self.worker)
         self._usage(self.manager)
         self.client.force_login(self.manager)
-        response = self.client.get(reverse('machine_usage_history'))
+        response = self.client.get(reverse('machine_dashboard'))
         self.assertEqual(len(response.context['page_obj'].object_list), 2)
 
-    def test_history_filters_by_machine(self):
+    def test_detail_filters_by_machine(self):
         matching = self._usage(self.worker, machine=self.machine)
         self._usage(self.worker, machine=self.other_machine)
         self.client.force_login(self.worker)
-        response = self.client.get(reverse('machine_usage_history'), {'machine': self.machine.pk})
+        response = self.client.get(reverse('machine_dashboard'), {'machine': self.machine.pk})
         usages = response.context['page_obj'].object_list
         self.assertEqual(list(usages), [matching])
 
-    def test_history_shows_no_rows_when_filter_is_invalid(self):
+    def test_detail_shows_no_rows_when_filter_is_invalid(self):
         self._usage(self.worker)
         self.client.force_login(self.worker)
-        response = self.client.get(reverse('machine_usage_history'), {'date_from': 'not-a-date'})
+        response = self.client.get(reverse('machine_dashboard'), {'date_from': 'not-a-date'})
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.context['form'].is_valid())
         self.assertEqual(len(response.context['page_obj'].object_list), 0)
@@ -1035,7 +1061,7 @@ class EmptyLabelTests(TestCase):
 
     def test_pages_have_no_english_placeholder(self):
         self.client.force_login(self.manager)
-        for name in ('transform_create', 'machine_usage_history', 'time_worked', 'job_dashboard'):
+        for name in ('transform_create', 'machine_dashboard', 'time_worked', 'job_dashboard'):
             with self.subTest(view=name):
                 self.assertNotContains(self.client.get(reverse(name)), self.DJANGO_DEFAULT)
 
@@ -1048,7 +1074,7 @@ class EmptyLabelTests(TestCase):
 
     def test_filter_forms_offer_all_in_czech(self):
         self.client.force_login(self.manager)
-        self.assertContains(self.client.get(reverse('machine_usage_history')), 'Všechny stroje')
+        self.assertContains(self.client.get(reverse('machine_dashboard')), 'Všechny stroje')
         self.assertContains(self.client.get(reverse('time_worked')), 'Všichni pracovníci')
         response = self.client.get(reverse('job_dashboard'))
         self.assertContains(response, 'Všichni uživatelé')
@@ -1168,7 +1194,7 @@ class JobReviewTests(ReviewFixtureMixin, TestCase):
     def test_pending_job_is_absent_from_machine_history(self):
         self.submit_job(self.worker, machine_rows=[{'machine': self.machine_a, 'hours': '2'}])
         self.client.force_login(self.manager)
-        response = self.client.get(reverse('machine_usage_history'))
+        response = self.client.get(reverse('machine_dashboard'))
         self.assertEqual(len(response.context['page_obj'].object_list), 0)
 
     def test_approval_lets_the_job_into_the_reports(self):
@@ -1178,7 +1204,7 @@ class JobReviewTests(ReviewFixtureMixin, TestCase):
 
         response = self.client.get(reverse('time_worked'))
         self.assertEqual([row['user'] for row in response.context['summary']], [self.worker])
-        response = self.client.get(reverse('machine_usage_history'))
+        response = self.client.get(reverse('machine_dashboard'))
         self.assertEqual(len(response.context['page_obj'].object_list), 1)
         response = self.client.get(reverse('machine_dashboard'))
         self.assertContains(response, '2,0 h')
@@ -1332,7 +1358,7 @@ class DatePresetTests(ReviewFixtureMixin, TestCase):
     """
 
     LABELS = ('Vše', 'Posledních 7 dní', 'Posledních 30 dní', 'Minulý měsíc')
-    PAGES = ('machine_usage_history', 'time_worked', 'job_dashboard')
+    PAGES = ('machine_dashboard', 'time_worked', 'job_dashboard')
 
     def preset(self, response, key):
         return next(row for row in response.context['date_presets'] if row['key'] == key)

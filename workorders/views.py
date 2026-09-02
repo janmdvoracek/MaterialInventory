@@ -20,7 +20,7 @@ from materials.models import Machine
 from .forms import (
     ConsumedFormSet,
     JobFilterForm,
-    MachineHistoryFilterForm,
+    MachineFilterForm,
     MachineUsageFormSet,
     ProducedFormSet,
     TimeWorkedFilterForm,
@@ -220,28 +220,65 @@ def transform_create(request):
 
 @login_required
 def machine_dashboard(request):
-    # Summed from the approved usage rows rather than read off
-    # `Machine.total_hours`: that counter is bumped the moment a row is written,
-    # so it also holds hours from jobs still waiting for approval. The counter
-    # stays as it is (the admin shows it, and MachineUsage keeps it correct);
-    # this page just reports the same scope as Hodiny and the machine history.
-    # `tons` is nullable — rows written before the column existed have no
-    # answer, unknown rather than zero — and Sum skips those, so a machine whose
-    # usage all predates it sums to None and renders as a dash, not 0 t.
-    approved = Q(usages__work_order__status=WorkOrder.Status.APPROVED)
-    machines = (
-        Machine.objects.filter(is_active=True)
-        .annotate(
-            approved_hours=Sum('usages__hours', filter=approved),
-            approved_tons=Sum('usages__tons', filter=approved),
-        )
-        .order_by('name')
+    """Stroje: the filter, per-machine totals under it, the usage rows below.
+
+    Laid out like Hodiny, and for the same reason — the totals and the rows are
+    the same data at two zoom levels, so one filter drives both and you can read
+    a number and then see what it is made of without changing page.
+    """
+    form, usages = _filtered_machine_usages(request)
+    machines = _machine_summary(usages, form)
+    page_obj = Paginator(usages, HISTORY_PAGE_SIZE).get_page(request.GET.get('page'))
+    querystring = request.GET.copy()
+    querystring.pop('page', None)
+    return render(
+        request,
+        'workorders/machine_dashboard.html',
+        {
+            'form': form,
+            'machines': machines,
+            'page_obj': page_obj,
+            'querystring': querystring.urlencode(),
+            'date_presets': _date_preset_links(request),
+        },
     )
-    return render(request, 'workorders/machine_dashboard.html', {'machines': machines})
+
+
+def _machine_summary(usages, form):
+    """Hours and tonnage per machine over `usages`.
+
+    Totalled from the usage rows rather than read off `Machine.total_hours`:
+    that counter is bumped the moment a row is written, so it also holds hours
+    from jobs still waiting for approval, and it knows nothing about the filter.
+    The counter stays as it is — the admin shows it, and `MachineUsage` keeps it
+    correct — so the two legitimately differ while a job is pending.
+
+    Every active machine is listed, not just the ones with rows in range: with
+    no filter that is the full fleet, and under a date filter a machine sitting
+    at 0 h is the answer to "what ran last week". Naming a machine in the filter
+    narrows the list to it, since the rest would be a column of zeros nobody
+    asked for.
+
+    `tons` is nullable — rows written before the column existed mean *unknown*,
+    not zero — and `Sum` skips NULLs, so a machine with no recorded tonnage sums
+    to `None` and renders as a dash. `0 t` would claim it processed nothing.
+    """
+    if form.is_bound and not form.is_valid():
+        # Same rule as the rows below: an unusable filter shows nothing, rather
+        # than a fleet of zeros under a "these are your filtered results" head.
+        return Machine.objects.none()
+    machines = Machine.objects.filter(is_active=True)
+    if form.is_bound and form.cleaned_data.get('machine'):
+        machines = machines.filter(pk=form.cleaned_data['machine'].pk)
+    in_scope = Q(usages__in=usages.values('pk'))
+    return machines.annotate(
+        filtered_hours=Sum('usages__hours', filter=in_scope),
+        filtered_tons=Sum('usages__tons', filter=in_scope),
+    ).order_by('name')
 
 
 def _filtered_machine_usages(request):
-    form = MachineHistoryFilterForm(request.GET or None, user=request.user)
+    form = MachineFilterForm(request.GET or None, user=request.user)
     # Unapproved jobs are proposals, not evidence — they stay out of the ledger
     # until a manager signs them off.
     usages = MachineUsage.objects.filter(work_order__status=WorkOrder.Status.APPROVED).select_related(
@@ -273,24 +310,6 @@ def _filtered_machine_usages(request):
     if data.get('date_to'):
         usages = usages.filter(created_at__date__lte=data['date_to'])
     return form, usages
-
-
-@login_required
-def machine_usage_history(request):
-    form, usages = _filtered_machine_usages(request)
-    page_obj = Paginator(usages, HISTORY_PAGE_SIZE).get_page(request.GET.get('page'))
-    querystring = request.GET.copy()
-    querystring.pop('page', None)
-    return render(
-        request,
-        'workorders/machine_usage_history.html',
-        {
-            'form': form,
-            'page_obj': page_obj,
-            'querystring': querystring.urlencode(),
-            'date_presets': _date_preset_links(request),
-        },
-    )
 
 
 def _date_preset_links(request):

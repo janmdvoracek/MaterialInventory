@@ -233,6 +233,30 @@ source. `tons` is nullable (rows predating the column mean *unknown*, not zero)
 and `Sum` skips NULLs, so a machine with no recorded tonnage sums to `None` and
 renders as a dash; `0 t` would claim it processed nothing.
 
+### Stroje is one page, laid out like Hodiny
+
+`machine_dashboard` is a filter, a per-machine summary, and the usage rows the
+summary is made of — the same three-part shape as `time_worked`, for the same
+reason: those are one dataset at two zoom levels, so a reader can see a number
+and then what it consists of without changing page and re-entering the filter.
+The old `/machines/history/` page was exactly the bottom third of it and is
+gone.
+
+`_machine_summary(usages, form)` totals the *filtered* rows
+(`usages__in=usages.values('pk')`), so the two tables can never disagree. Two
+rules that differ from the summary on Hodiny, where a person with no hours in
+range simply drops out:
+
+- **Every active machine is listed**, even at zero. With no filter that is the
+  whole fleet; under a date filter, a machine sitting at `0 h` is the answer to
+  "what ran last week".
+- **Naming a machine in the filter narrows the table to it**, since the rest
+  would be a column of zeros nobody asked for.
+
+An invalid filter returns `Machine.objects.none()` — the same rule the rows
+follow, and for the same reason: a fleet of zeros under a "these are your
+filtered results" heading reads as an answer.
+
 ## Pages and URLs
 
 All in `workorders`, all mounted at the **root** by `config/urls.py` —
@@ -242,8 +266,7 @@ All in `workorders`, all mounted at the **root** by `config/urls.py` —
 |---|---|---|
 | `/` | `transform_create` | Zpracování — the form, and the landing page |
 | `/hours/` | `time_worked` | Hodiny |
-| `/machines/` | `machine_dashboard` | Stroje |
-| `/machines/history/` | `machine_usage_history` | Machine usage log |
+| `/machines/` | `machine_dashboard` | Stroje — filter, per-machine totals, usage rows |
 | `/jobs/` | `job_dashboard` | Přehled — every job, review state highlighted |
 | `/jobs/<pk>/` | `job_detail` | One job in full, with the review actions |
 | `/jobs/<pk>/upravit/` | `job_edit` | Correct a recorded job |
@@ -277,7 +300,7 @@ Two gates:
 
 **The `/jobs/` review views all use `role_required`** — a worker who types one of
 those URLs gets a 403, not a page. `machine_dashboard` and
-`machine_usage_history` still do not: they are hidden from a worker's nav but
+`machine_dashboard` still does not: it is hidden from a worker's nav but
 reachable by typing the URL. Hiding a link is not access control.
 
 **Superusers bypass both gates.** `createsuperuser` never sets a `role`, so a
