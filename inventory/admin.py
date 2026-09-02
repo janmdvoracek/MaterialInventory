@@ -1,12 +1,8 @@
-from django.contrib import admin
-
-from .models import StockMovement
-
-
-@admin.register(StockMovement)
-class StockMovementAdmin(admin.ModelAdmin):
-    list_display = ('created_at', 'movement_type', 'material', 'quantity', 'created_by', 'work_order')
-    list_filter = ('movement_type', 'material')
-    search_fields = ('material__name', 'material__sku', 'notes')
-    date_hierarchy = 'created_at'
-    readonly_fields = ('created_at',)
+# StockMovement is deliberately NOT registered here.
+#
+# A line item never exists apart from the job it belongs to, and WorkOrderAdmin
+# already edits them as an inline — registering it as well put a second
+# top-level section in the admin index ("Zpracování", the app's own label) that
+# held one model reachable from the job anyway, and that read like the worker
+# form of the same name. Everything about a job is now edited in one place,
+# under Zakázky.

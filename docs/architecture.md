@@ -45,6 +45,21 @@ that used to set it (*„Jiné datum a čas než teď"*) lived on the Příjem a
 forms and went with them, so in practice `created_at` always equals
 `recorded_at` right now.
 
+### Not in the admin
+
+`StockMovement` is deliberately **not registered** with the Django admin. A line
+item never exists apart from the job it belongs to, and `WorkOrderAdmin` already
+edits the rows as an inline, so registering it as well only added a second
+top-level section to the admin index — labelled *Zpracování*, the same word as
+the worker-facing form, and holding one model already reachable from *Zakázky*.
+Everything about a job is edited in one place.
+
+That leaves `inventory` with no admin at all. Its `AppConfig.verbose_name` is
+kept for whenever something is registered again, but nothing renders it today.
+The `date_hierarchy` that used to live on the movement list moved to
+`WorkOrderAdmin`, which is now the only admin that has one — and the only place
+the Czech date-hierarchy string from `locale/cs` is exercised.
+
 ### What this means for new code
 
 There is no available-quantity helper, no `select_for_update()`, and no check to

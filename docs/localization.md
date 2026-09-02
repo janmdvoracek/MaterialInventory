@@ -121,8 +121,9 @@ The Django admin is Czech as well, and it takes three mechanisms to get there.
 A new model or ModelAdmin needs all three, or it will show English in one spot.
 
 **1. App labels.** Each `AppConfig` carries a `verbose_name` — `Katalog`,
-`Zpracování`, `Zakázky`, `Uživatelé`. Without it the admin index groups models under
-the Python package name.
+`Zakázky`, `Uživatelé`. Without it the admin index groups models under the
+Python package name. (`inventory` carries `Zpracování` too, but registers no
+model, so the index never shows it.)
 
 **2. Model and field names.** Every `Meta` sets `verbose_name` and
 `verbose_name_plural`, and every field sets a lowercase `verbose_name` (Django

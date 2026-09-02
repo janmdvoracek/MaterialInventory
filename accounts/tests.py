@@ -1,9 +1,10 @@
 from django.core.exceptions import PermissionDenied
 from django.http import HttpResponse
 from django.test import RequestFactory, TestCase
-from django.urls import reverse
+from django.urls import NoReverseMatch, reverse
 
 from materials.models import Material
+from workorders.models import WorkOrder
 
 from .decorators import role_required
 from .models import User
@@ -133,9 +134,17 @@ class AdminCzechTests(TestCase):
 
     def test_index_lists_apps_and_models_in_czech(self):
         html = self.client.get(reverse('admin:index')).content.decode()
-        for label in ('Katalog', 'Zpracování', 'Zakázky', 'Uživatelé', 'Materiály', 'Položky zpracování'):
+        for label in ('Katalog', 'Zakázky', 'Uživatelé', 'Materiály', 'Stroje'):
             with self.subTest(label=label):
                 self.assertIn(label, html)
+
+    def test_line_items_have_no_section_of_their_own(self):
+        # They are edited as an inline on the job; a second top-level section
+        # for them would duplicate what Zakázky already shows.
+        html = self.client.get(reverse('admin:index')).content.decode()
+        self.assertNotIn('Položky zpracování', html)
+        with self.assertRaises(NoReverseMatch):
+            reverse('admin:inventory_stockmovement_changelist')
 
     def test_change_form_labels_are_czech(self):
         response = self.client.get(reverse('admin:materials_material_change', args=[self.material.pk]))
@@ -155,7 +164,8 @@ class AdminCzechTests(TestCase):
         self.assertNotContains(response, 'Are you sure you want to delete')
 
     def test_date_hierarchy_label_is_czech(self):
-        response = self.client.get(reverse('admin:inventory_stockmovement_changelist'))
+        WorkOrder.objects.create(created_by=self.admin_user)
+        response = self.client.get(reverse('admin:workorders_workorder_changelist'))
         self.assertContains(response, 'Filtrovat podle:')
         self.assertNotContains(response, 'Filter by')
 

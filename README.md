@@ -101,7 +101,7 @@ Full column reference: [docs/development.md](docs/development.md#seeding-data).
 ## Common commands
 
 ```bash
-python manage.py test                  # full suite (182 tests, needs Postgres)
+python manage.py test                  # full suite (183 tests, needs Postgres)
 python manage.py test workorders       # one app
 ruff check . && ruff format .          # lint and format
 docker compose up --build              # full stack
@@ -130,7 +130,7 @@ gated, so a worker who types that URL still gets in.
 config/       Django project — settings, root URLconf, WSGI/ASGI
 accounts/     Custom User model, roles, role_required decorator, Czech auth forms
 materials/    Material / Machine catalog + the seed_data command
-inventory/    StockMovement — the material line items of a job. Model + admin only.
+inventory/    StockMovement — the material line items of a job. Model only; edited as an inline on the job.
 workorders/   Transform form, job review dashboard, machine dashboard/history, time-worked reporting, all URLs
 templates/    All HTML; base.html holds the site CSS and bottom nav
 static/       Source static assets (tracked; NOT the collectstatic output)
