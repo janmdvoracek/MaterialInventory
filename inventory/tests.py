@@ -4,7 +4,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from accounts.models import User
-from materials.models import Location, Material
+from materials.models import Material
 from workorders.models import WorkOrder
 
 from .models import StockMovement
@@ -13,13 +13,11 @@ from .models import StockMovement
 class StockMovementTestCase(TestCase):
     def setUp(self):
         self.material = Material.objects.create(sku='SKU1', name='Steel Bar', unit_of_measure='pcs')
-        self.location = Location.objects.create(name='Main Depot')
         self.worker = User.objects.create_user(username='worker', password='pw', role=User.Role.WORKER)
 
     def _line_item(self, quantity, movement_type=StockMovement.MovementType.TRANSFORM_PRODUCE, **kwargs):
         return StockMovement.objects.create(
             material=self.material,
-            location=self.location,
             quantity=quantity,
             movement_type=movement_type,
             created_by=self.worker,

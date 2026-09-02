@@ -120,7 +120,6 @@ def _write_job_rows(work_order, author, own_hours, consumed_rows, produced_rows,
     for row in consumed_rows:
         StockMovement.objects.create(
             material=row['material'],
-            location=row['location'],
             quantity=-row['quantity'],
             movement_type=StockMovement.MovementType.TRANSFORM_CONSUME,
             work_order=work_order,
@@ -129,7 +128,6 @@ def _write_job_rows(work_order, author, own_hours, consumed_rows, produced_rows,
     for row in produced_rows:
         StockMovement.objects.create(
             material=row['material'],
-            location=row['location'],
             quantity=row['quantity'],
             movement_type=StockMovement.MovementType.TRANSFORM_PRODUCE,
             work_order=work_order,
@@ -498,7 +496,7 @@ def job_dashboard(request):
 def _job_line_items(work_order):
     """The job's consumed and produced rows, quantities as they were typed."""
     consumed, produced = [], []
-    for movement in work_order.movements.select_related('material', 'location'):
+    for movement in work_order.movements.select_related('material'):
         # Consumed quantities are stored negative; the form asked for a
         # positive number and that is what the reviewer should see.
         movement.typed_quantity = abs(movement.quantity)
@@ -583,7 +581,6 @@ def job_edit(request, pk):
             initial=[
                 {
                     'material': movement.material_id,
-                    'location': movement.location_id,
                     'quantity': _trim(movement.typed_quantity),
                 }
                 for movement in consumed
@@ -594,7 +591,6 @@ def job_edit(request, pk):
             initial=[
                 {
                     'material': movement.material_id,
-                    'location': movement.location_id,
                     'quantity': _trim(movement.typed_quantity),
                 }
                 for movement in produced

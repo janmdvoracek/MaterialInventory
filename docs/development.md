@@ -60,7 +60,7 @@ python manage.py test materials.tests.MaterialModelTests           # one class
 python manage.py test materials.tests.MaterialModelTests.test_material_str
 ```
 
-185 tests, roughly a minute and a half. Postgres must be reachable.
+182 tests, roughly a minute and a half. Postgres must be reachable.
 
 ### How the tests are written
 
@@ -125,7 +125,6 @@ fixing it. Run `ruff format .` before pushing.
 
 ```bash
 cp seed_data/materials.example.csv seed_data/materials.csv
-cp seed_data/locations.example.csv seed_data/locations.csv
 cp seed_data/machines.example.csv seed_data/machines.csv
 cp seed_data/users.example.csv seed_data/users.csv
 # edit, then:
@@ -141,7 +140,6 @@ are committed. Each file path can be overridden, e.g.
 | File | Columns |
 |---|---|
 | `materials.csv` | `sku`, `name`, `unit_of_measure`, `category` |
-| `locations.csv` | `name` |
 | `machines.csv` | `name`, `hourly_rate` *(optional)*, `rate_per_ton` *(optional)* |
 | `users.csv` | `username`, `first_name`, `last_name`, `email`, `role` |
 

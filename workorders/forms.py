@@ -3,7 +3,7 @@ from decimal import Decimal
 from django import forms
 
 from accounts.models import User
-from materials.models import Location, Machine, Material
+from materials.models import Machine, Material
 
 from .models import WorkOrder
 
@@ -47,12 +47,6 @@ class MovementItemForm(forms.Form):
         label='Materiál',
         empty_label='Materiál',
     )
-    location = forms.ModelChoiceField(
-        queryset=Location.objects.filter(is_active=True),
-        required=False,
-        label='Lokalita',
-        empty_label='Lokalita',
-    )
     quantity = forms.DecimalField(
         min_value=Decimal('0.01'),
         max_digits=7,
@@ -64,9 +58,9 @@ class MovementItemForm(forms.Form):
 
     def clean(self):
         cleaned_data = super().clean()
-        filled = [cleaned_data.get('material'), cleaned_data.get('location'), cleaned_data.get('quantity')]
+        filled = [cleaned_data.get('material'), cleaned_data.get('quantity')]
         if any(filled) and not all(filled):
-            raise forms.ValidationError('Vyplňte materiál, lokalitu a množství, nebo řádek nechte prázdný.')
+            raise forms.ValidationError('Vyplňte materiál i množství, nebo řádek nechte prázdný.')
         return cleaned_data
 
 

@@ -94,7 +94,7 @@ The wording depends on what a blank choice *means*:
 
 | Form type | Blank means | Wording |
 |---|---|---|
-| Transform formset rows | it *is* the label | `Materiál`, `Lokalita`, `Stroj`, `Pracovník` |
+| Transform formset rows | it *is* the label | `Materiál`, `Stroj`, `Pracovník` |
 | Filter (hours, machine usage) | "don't filter by this" | `Všechny stroje`, `Všichni pracovníci`, `Všichni uživatelé` |
 
 The transform rows use the bare noun rather than a `Vyberte ...` prompt because

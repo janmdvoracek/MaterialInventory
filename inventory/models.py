@@ -22,9 +22,6 @@ class StockMovement(models.Model):
     material = models.ForeignKey(
         'materials.Material', on_delete=models.PROTECT, related_name='movements', verbose_name='materiál'
     )
-    location = models.ForeignKey(
-        'materials.Location', on_delete=models.PROTECT, related_name='movements', verbose_name='lokalita'
-    )
     movement_type = models.CharField(max_length=20, choices=MovementType.choices, verbose_name='typ pohybu')
     quantity = models.DecimalField(
         max_digits=12,
@@ -54,10 +51,10 @@ class StockMovement(models.Model):
     class Meta:
         ordering = ['-created_at']
         indexes = [
-            models.Index(fields=['material', 'location']),
+            models.Index(fields=['material']),
         ]
         verbose_name = 'položka zpracování'
         verbose_name_plural = 'položky zpracování'
 
     def __str__(self):
-        return f'{self.movement_type}: {self.quantity} {self.material.unit_of_measure} of {self.material} @ {self.location}'
+        return f'{self.movement_type}: {self.quantity} {self.material.unit_of_measure} of {self.material}'

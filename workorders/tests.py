@@ -7,7 +7,7 @@ from django.utils import timezone
 
 from accounts.models import User
 from inventory.models import StockMovement
-from materials.models import Location, Machine, Material
+from materials.models import Machine, Material
 
 from .models import MachineUsage, WorkerHours, WorkOrder
 from .views import MY_JOBS_LIMIT, _last_month
@@ -20,7 +20,6 @@ class TransformCreateTests(TestCase):
         # real catalog, which is Zdroj/Frakce in `t` throughout.
         self.material_raw = Material.objects.create(sku='RAW', name='Štěrk', unit_of_measure='t')
         self.material_finished = Material.objects.create(sku='FIN', name='Frakce 8/16', unit_of_measure='t')
-        self.location = Location.objects.create(name='Main Depot')
         self.worker = User.objects.create_user(username='worker', password='pw')
         self.other_worker = User.objects.create_user(username='other_worker', password='pw')
         self.machine_a = Machine.objects.create(name='Crusher A')
@@ -62,11 +61,9 @@ class TransformCreateTests(TestCase):
             data[f'workers-{i}-hours'] = str(row['hours'])
         for i, row in enumerate(consumed_rows):
             data[f'consumed-{i}-material'] = row['material'].pk
-            data[f'consumed-{i}-location'] = row['location'].pk
             data[f'consumed-{i}-quantity'] = str(row['quantity'])
         for i, row in enumerate(produced_rows):
             data[f'produced-{i}-material'] = row['material'].pk
-            data[f'produced-{i}-location'] = row['location'].pk
             data[f'produced-{i}-quantity'] = str(row['quantity'])
         for i, row in enumerate(machine_rows):
             data[f'machines-{i}-machine'] = row['machine'].pk
@@ -83,25 +80,21 @@ class TransformCreateTests(TestCase):
     def test_produce_only_is_rejected(self):
         # A job with no consumed side cannot balance, so it is refused outright
         # rather than compared against a zero total.
-        response = self._post(
-            [], [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('3')}]
-        )
+        response = self._post([], [{'material': self.material_finished, 'quantity': Decimal('3')}])
         self.assertEqual(response.status_code, 200)
         self.assertFalse(WorkOrder.objects.exists())
         self.assertFalse(StockMovement.objects.exists())
 
     def test_consume_only_is_rejected(self):
-        response = self._post(
-            [{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('3')}], []
-        )
+        response = self._post([{'material': self.material_raw, 'quantity': Decimal('3')}], [])
         self.assertEqual(response.status_code, 200)
         self.assertFalse(WorkOrder.objects.exists())
         self.assertFalse(StockMovement.objects.exists())
 
     def test_transform_consume_records_a_negative_line_item(self):
         response = self._post(
-            [{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('5')}],
-            [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('5')}],
+            [{'material': self.material_raw, 'quantity': Decimal('5')}],
+            [{'material': self.material_finished, 'quantity': Decimal('5')}],
         )
         self.assertRedirects(response, reverse('transform_create'))
         consumed = StockMovement.objects.get(movement_type=StockMovement.MovementType.TRANSFORM_CONSUME)
@@ -111,8 +104,8 @@ class TransformCreateTests(TestCase):
         # There are no stock balances any more: a job records what was actually
         # processed, however much that is, with nothing to check it against.
         response = self._post(
-            [{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('9999')}],
-            [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('9999')}],
+            [{'material': self.material_raw, 'quantity': Decimal('9999')}],
+            [{'material': self.material_finished, 'quantity': Decimal('9999')}],
         )
         self.assertRedirects(response, reverse('transform_create'))
         consumed = StockMovement.objects.get(movement_type=StockMovement.MovementType.TRANSFORM_CONSUME)
@@ -123,10 +116,10 @@ class TransformCreateTests(TestCase):
         # check left, each row is written as typed.
         response = self._post(
             [
-                {'material': self.material_raw, 'location': self.location, 'quantity': Decimal('6')},
-                {'material': self.material_raw, 'location': self.location, 'quantity': Decimal('6')},
+                {'material': self.material_raw, 'quantity': Decimal('6')},
+                {'material': self.material_raw, 'quantity': Decimal('6')},
             ],
-            [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('12')}],
+            [{'material': self.material_finished, 'quantity': Decimal('12')}],
         )
         self.assertRedirects(response, reverse('transform_create'))
         consumed = StockMovement.objects.filter(movement_type=StockMovement.MovementType.TRANSFORM_CONSUME)
@@ -135,8 +128,8 @@ class TransformCreateTests(TestCase):
 
     def test_transform_with_single_machine_increments_total_hours(self):
         response = self._post(
-            [{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('3')}],
-            [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('3')}],
+            [{'material': self.material_raw, 'quantity': Decimal('3')}],
+            [{'material': self.material_finished, 'quantity': Decimal('3')}],
             machine_rows=[{'machine': self.machine_a, 'hours': Decimal('2.5'), 'tons': Decimal('8')}],
         )
         self.assertRedirects(response, reverse('transform_create'))
@@ -152,8 +145,8 @@ class TransformCreateTests(TestCase):
         # both machines put the same 3 t through, so these do not sum to the
         # consumed or produced total and are not checked against it.
         response = self._post(
-            [{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('3')}],
-            [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('3')}],
+            [{'material': self.material_raw, 'quantity': Decimal('3')}],
+            [{'material': self.material_finished, 'quantity': Decimal('3')}],
             machine_rows=[
                 {'machine': self.machine_a, 'hours': Decimal('2'), 'tons': Decimal('3')},
                 {'machine': self.machine_b, 'hours': Decimal('1.5'), 'tons': Decimal('3')},
@@ -175,14 +168,12 @@ class TransformCreateTests(TestCase):
             # Balances the produced row below, so this POST is rejected for the
             # reason under test and not by the mass-balance check.
             'consumed-0-material': self.material_raw.pk,
-            'consumed-0-location': self.location.pk,
             'consumed-0-quantity': '3',
             'produced-TOTAL_FORMS': '1',
             'produced-INITIAL_FORMS': '0',
             'produced-MIN_NUM_FORMS': '0',
             'produced-MAX_NUM_FORMS': '1000',
             'produced-0-material': self.material_finished.pk,
-            'produced-0-location': self.location.pk,
             'produced-0-quantity': '3',
             'machines-TOTAL_FORMS': '1',
             'machines-INITIAL_FORMS': '0',
@@ -206,8 +197,8 @@ class TransformCreateTests(TestCase):
 
     def test_transform_with_chained_machines_each_increment_independently(self):
         response = self._post(
-            [{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('3')}],
-            [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('3')}],
+            [{'material': self.material_raw, 'quantity': Decimal('3')}],
+            [{'material': self.material_finished, 'quantity': Decimal('3')}],
             machine_rows=[
                 {'machine': self.machine_a, 'hours': Decimal('2'), 'tons': Decimal('8')},
                 {'machine': self.machine_b, 'hours': Decimal('1.5'), 'tons': Decimal('8')},
@@ -223,8 +214,8 @@ class TransformCreateTests(TestCase):
 
     def test_transform_same_machine_used_twice_accumulates(self):
         response = self._post(
-            [{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('3')}],
-            [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('3')}],
+            [{'material': self.material_raw, 'quantity': Decimal('3')}],
+            [{'material': self.material_finished, 'quantity': Decimal('3')}],
             machine_rows=[
                 {'machine': self.machine_a, 'hours': Decimal('1')},
                 {'machine': self.machine_a, 'hours': Decimal('1')},
@@ -237,8 +228,8 @@ class TransformCreateTests(TestCase):
 
     def test_empty_machine_formset_is_optional(self):
         response = self._post(
-            [{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('3')}],
-            [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('3')}],
+            [{'material': self.material_raw, 'quantity': Decimal('3')}],
+            [{'material': self.material_finished, 'quantity': Decimal('3')}],
         )
         self.assertRedirects(response, reverse('transform_create'))
         self.assertFalse(MachineUsage.objects.exists())
@@ -257,14 +248,12 @@ class TransformCreateTests(TestCase):
             # Balances the produced row below, so this POST is rejected for the
             # reason under test and not by the mass-balance check.
             'consumed-0-material': self.material_raw.pk,
-            'consumed-0-location': self.location.pk,
             'consumed-0-quantity': '3',
             'produced-TOTAL_FORMS': '1',
             'produced-INITIAL_FORMS': '0',
             'produced-MIN_NUM_FORMS': '0',
             'produced-MAX_NUM_FORMS': '1000',
             'produced-0-material': self.material_finished.pk,
-            'produced-0-location': self.location.pk,
             'produced-0-quantity': '3',
             'machines-TOTAL_FORMS': '1',
             'machines-INITIAL_FORMS': '0',
@@ -297,14 +286,12 @@ class TransformCreateTests(TestCase):
             # Balances the produced row below, so this POST is rejected for the
             # reason under test and not by the mass-balance check.
             'consumed-0-material': self.material_raw.pk,
-            'consumed-0-location': self.location.pk,
             'consumed-0-quantity': '3',
             'produced-TOTAL_FORMS': '1',
             'produced-INITIAL_FORMS': '0',
             'produced-MIN_NUM_FORMS': '0',
             'produced-MAX_NUM_FORMS': '1000',
             'produced-0-material': self.material_finished.pk,
-            'produced-0-location': self.location.pk,
             'produced-0-quantity': '3',
             'machines-TOTAL_FORMS': '1',
             'machines-INITIAL_FORMS': '0',
@@ -325,8 +312,8 @@ class TransformCreateTests(TestCase):
 
     def test_transform_records_own_hours(self):
         response = self._post(
-            [{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('3')}],
-            [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('3')}],
+            [{'material': self.material_raw, 'quantity': Decimal('3')}],
+            [{'material': self.material_finished, 'quantity': Decimal('3')}],
             hours='6.5',
         )
         self.assertRedirects(response, reverse('transform_create'))
@@ -337,8 +324,8 @@ class TransformCreateTests(TestCase):
 
     def test_transform_requires_own_hours(self):
         response = self._post(
-            [{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('3')}],
-            [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('3')}],
+            [{'material': self.material_raw, 'quantity': Decimal('3')}],
+            [{'material': self.material_finished, 'quantity': Decimal('3')}],
             hours='',
         )
         self.assertEqual(response.status_code, 200)
@@ -348,8 +335,8 @@ class TransformCreateTests(TestCase):
     def test_worker_row_records_that_persons_own_hours(self):
         # The collaborator's hours are their own, not a copy of the creator's.
         response = self._post(
-            [{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('3')}],
-            [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('3')}],
+            [{'material': self.material_raw, 'quantity': Decimal('3')}],
+            [{'material': self.material_finished, 'quantity': Decimal('3')}],
             hours='6.5',
             worker_rows=[{'user': self.other_worker, 'hours': Decimal('4')}],
         )
@@ -361,8 +348,8 @@ class TransformCreateTests(TestCase):
         # Naming someone in an hours row is the only way to collaborate now,
         # so this is what puts the job in their history.
         response = self._post(
-            [{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('3')}],
-            [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('3')}],
+            [{'material': self.material_raw, 'quantity': Decimal('3')}],
+            [{'material': self.material_finished, 'quantity': Decimal('3')}],
             worker_rows=[{'user': self.other_worker, 'hours': Decimal('4')}],
         )
         self.assertRedirects(response, reverse('transform_create'))
@@ -371,8 +358,8 @@ class TransformCreateTests(TestCase):
 
     def test_transform_without_worker_rows_leaves_collaborators_empty(self):
         response = self._post(
-            [{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('3')}],
-            [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('3')}],
+            [{'material': self.material_raw, 'quantity': Decimal('3')}],
+            [{'material': self.material_finished, 'quantity': Decimal('3')}],
         )
         self.assertRedirects(response, reverse('transform_create'))
         work_order = WorkOrder.objects.get()
@@ -383,8 +370,8 @@ class TransformCreateTests(TestCase):
         # Same rule as the consumed rows — combine rather than fail, which the
         # unique constraint on (work_order, user) would otherwise do.
         response = self._post(
-            [{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('3')}],
-            [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('3')}],
+            [{'material': self.material_raw, 'quantity': Decimal('3')}],
+            [{'material': self.material_finished, 'quantity': Decimal('3')}],
             worker_rows=[
                 {'user': self.other_worker, 'hours': Decimal('3')},
                 {'user': self.other_worker, 'hours': Decimal('1.5')},
@@ -395,8 +382,8 @@ class TransformCreateTests(TestCase):
 
     def test_worker_row_missing_hours_rejected(self):
         response = self._post(
-            [{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('3')}],
-            [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('3')}],
+            [{'material': self.material_raw, 'quantity': Decimal('3')}],
+            [{'material': self.material_finished, 'quantity': Decimal('3')}],
             worker_rows=[{'user': self.other_worker, 'hours': ''}],
         )
         self.assertEqual(response.status_code, 200)
@@ -415,14 +402,12 @@ class TransformCreateTests(TestCase):
             # Balances the produced row below, so this POST is rejected for the
             # reason under test and not by the mass-balance check.
             'consumed-0-material': self.material_raw.pk,
-            'consumed-0-location': self.location.pk,
             'consumed-0-quantity': '3',
             'produced-TOTAL_FORMS': '1',
             'produced-INITIAL_FORMS': '0',
             'produced-MIN_NUM_FORMS': '0',
             'produced-MAX_NUM_FORMS': '1000',
             'produced-0-material': self.material_finished.pk,
-            'produced-0-location': self.location.pk,
             'produced-0-quantity': '3',
             'machines-TOTAL_FORMS': '1',
             'machines-INITIAL_FORMS': '0',
@@ -471,8 +456,8 @@ class TransformCreateTests(TestCase):
         # just a rendered dropdown.
         manager = User.objects.create_user(username='manager', password='pw', role=User.Role.MANAGER)
         response = self._post(
-            [{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('3')}],
-            [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('3')}],
+            [{'material': self.material_raw, 'quantity': Decimal('3')}],
+            [{'material': self.material_finished, 'quantity': Decimal('3')}],
             worker_rows=[{'user': manager, 'hours': Decimal('4')}],
         )
         self.assertEqual(response.status_code, 200)
@@ -483,8 +468,8 @@ class TransformCreateTests(TestCase):
         # The three record types are one job and share a transaction, even
         # though no stock check can fail inside it any more.
         response = self._post(
-            [{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('5')}],
-            [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('5')}],
+            [{'material': self.material_raw, 'quantity': Decimal('5')}],
+            [{'material': self.material_finished, 'quantity': Decimal('5')}],
             machine_rows=[{'machine': self.machine_a, 'hours': Decimal('2')}],
             hours='6',
             worker_rows=[{'user': self.other_worker, 'hours': Decimal('4')}],
@@ -499,8 +484,8 @@ class TransformCreateTests(TestCase):
 
     def test_unbalanced_totals_are_rejected(self):
         response = self._post(
-            [{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('10')}],
-            [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('9.5')}],
+            [{'material': self.material_raw, 'quantity': Decimal('10')}],
+            [{'material': self.material_finished, 'quantity': Decimal('9.5')}],
         )
         self.assertEqual(response.status_code, 200)
         self.assertFalse(WorkOrder.objects.exists())
@@ -510,8 +495,8 @@ class TransformCreateTests(TestCase):
         # The balance check gates the whole submission, not just the material
         # rows — hours and machine runtime are part of the same job record.
         response = self._post(
-            [{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('10')}],
-            [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('9.5')}],
+            [{'material': self.material_raw, 'quantity': Decimal('10')}],
+            [{'material': self.material_finished, 'quantity': Decimal('9.5')}],
             machine_rows=[{'machine': self.machine_a, 'hours': Decimal('2')}],
             worker_rows=[{'user': self.other_worker, 'hours': Decimal('4')}],
         )
@@ -524,10 +509,10 @@ class TransformCreateTests(TestCase):
     def test_balance_compares_totals_not_individual_rows(self):
         # The normal case: one input crushed into several output fractions.
         response = self._post(
-            [{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('10')}],
+            [{'material': self.material_raw, 'quantity': Decimal('10')}],
             [
-                {'material': self.material_finished, 'location': self.location, 'quantity': Decimal('4')},
-                {'material': self.material_finished, 'location': self.location, 'quantity': Decimal('6')},
+                {'material': self.material_finished, 'quantity': Decimal('4')},
+                {'material': self.material_finished, 'quantity': Decimal('6')},
             ],
         )
         self.assertRedirects(response, reverse('transform_create'))
@@ -538,12 +523,12 @@ class TransformCreateTests(TestCase):
     def test_balance_holds_across_many_rows_on_both_sides(self):
         response = self._post(
             [
-                {'material': self.material_raw, 'location': self.location, 'quantity': Decimal('2.5')},
-                {'material': self.material_raw, 'location': self.location, 'quantity': Decimal('7.5')},
+                {'material': self.material_raw, 'quantity': Decimal('2.5')},
+                {'material': self.material_raw, 'quantity': Decimal('7.5')},
             ],
             [
-                {'material': self.material_finished, 'location': self.location, 'quantity': Decimal('3.25')},
-                {'material': self.material_finished, 'location': self.location, 'quantity': Decimal('6.75')},
+                {'material': self.material_finished, 'quantity': Decimal('3.25')},
+                {'material': self.material_finished, 'quantity': Decimal('6.75')},
             ],
         )
         self.assertRedirects(response, reverse('transform_create'))
@@ -552,8 +537,8 @@ class TransformCreateTests(TestCase):
     def test_trailing_zeros_do_not_break_the_balance(self):
         # Decimal compares numerically, so 5.00 and 5 are equal here.
         response = self._post(
-            [{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('5.00')}],
-            [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('5')}],
+            [{'material': self.material_raw, 'quantity': Decimal('5.00')}],
+            [{'material': self.material_finished, 'quantity': Decimal('5')}],
         )
         self.assertRedirects(response, reverse('transform_create'))
 
@@ -561,8 +546,8 @@ class TransformCreateTests(TestCase):
         # The form accepts 2 decimal places, so this is the tightest mismatch it
         # can express. Exact equality means it must not slip through.
         response = self._post(
-            [{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('5.01')}],
-            [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('5')}],
+            [{'material': self.material_raw, 'quantity': Decimal('5.01')}],
+            [{'material': self.material_finished, 'quantity': Decimal('5')}],
         )
         self.assertEqual(response.status_code, 200)
         self.assertFalse(WorkOrder.objects.exists())
@@ -571,8 +556,8 @@ class TransformCreateTests(TestCase):
         # The totals are formatted in Python, so they need `localize` to match
         # the comma the templates print everywhere else.
         response = self._post(
-            [{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('10.25')}],
-            [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('9.5')}],
+            [{'material': self.material_raw, 'quantity': Decimal('10.25')}],
+            [{'material': self.material_finished, 'quantity': Decimal('9.5')}],
         )
         self.assertContains(response, 'spotřeba 10,25')
         self.assertContains(response, 'výroba 9,5')
@@ -623,7 +608,6 @@ class MachineUsageModelTests(TestCase):
 class WorkOrderAdminTests(TestCase):
     def setUp(self):
         self.material = Material.objects.create(sku='ADM1', name='Steel', unit_of_measure='kg')
-        self.location = Location.objects.create(name='Depot')
         self.machine = Machine.objects.create(name='Warrior')
         self.admin_user = User.objects.create_superuser(username='admin', password='pw')
 
@@ -637,7 +621,6 @@ class WorkOrderAdminTests(TestCase):
             'movements-MIN_NUM_FORMS': '0',
             'movements-MAX_NUM_FORMS': '1000',
             'movements-0-material': self.material.pk,
-            'movements-0-location': self.location.pk,
             'movements-0-movement_type': StockMovement.MovementType.TRANSFORM_PRODUCE,
             'movements-0-quantity': '25',
             'movements-0-notes': '',
@@ -663,7 +646,6 @@ class WorkOrderAdminTests(TestCase):
 
         movement = StockMovement.objects.get(work_order=work_order)
         self.assertEqual(movement.material, self.material)
-        self.assertEqual(movement.location, self.location)
         self.assertEqual(movement.quantity, Decimal('25'))
         self.assertEqual(movement.created_by, self.admin_user)
 
@@ -1024,7 +1006,6 @@ class EmptyLabelTests(TestCase):
     def setUp(self):
         self.manager = User.objects.create_user(username='manager', password='pw', role=User.Role.MANAGER)
         Material.objects.create(sku='SKU1', name='Steel Bar', unit_of_measure='pcs')
-        Location.objects.create(name='Main Depot')
         Machine.objects.create(name='Crusher A')
 
     def test_pages_have_no_english_placeholder(self):
@@ -1037,7 +1018,6 @@ class EmptyLabelTests(TestCase):
         self.client.force_login(self.manager)
         response = self.client.get(reverse('transform_create'))
         self.assertContains(response, 'Materiál')
-        self.assertContains(response, 'Lokalita')
         self.assertContains(response, 'Stroj')
         self.assertContains(response, 'Pracovník')
 
@@ -1079,11 +1059,9 @@ def job_payload(consumed_rows, produced_rows, machine_rows=None, worker_rows=Non
         data[f'workers-{i}-hours'] = str(row['hours'])
     for i, row in enumerate(consumed_rows):
         data[f'consumed-{i}-material'] = row['material'].pk
-        data[f'consumed-{i}-location'] = row['location'].pk
         data[f'consumed-{i}-quantity'] = str(row['quantity'])
     for i, row in enumerate(produced_rows):
         data[f'produced-{i}-material'] = row['material'].pk
-        data[f'produced-{i}-location'] = row['location'].pk
         data[f'produced-{i}-quantity'] = str(row['quantity'])
     for i, row in enumerate(machine_rows):
         data[f'machines-{i}-machine'] = row['machine'].pk
@@ -1098,7 +1076,6 @@ class ReviewFixtureMixin:
     def setUp(self):
         self.material_raw = Material.objects.create(sku='RAW', name='Štěrk', unit_of_measure='t')
         self.material_finished = Material.objects.create(sku='FIN', name='Frakce 8/16', unit_of_measure='t')
-        self.location = Location.objects.create(name='Main Depot')
         self.worker = User.objects.create_user(username='worker', password='pw', role=User.Role.WORKER)
         self.other_worker = User.objects.create_user(username='other', password='pw', role=User.Role.WORKER)
         self.manager = User.objects.create_user(username='manager', password='pw', role=User.Role.MANAGER)
@@ -1111,8 +1088,8 @@ class ReviewFixtureMixin:
         response = self.client.post(
             reverse('transform_create'),
             job_payload(
-                [{'material': self.material_raw, 'location': self.location, 'quantity': quantity}],
-                [{'material': self.material_finished, 'location': self.location, 'quantity': quantity}],
+                [{'material': self.material_raw, 'quantity': quantity}],
+                [{'material': self.material_finished, 'quantity': quantity}],
                 machine_rows=machine_rows,
                 worker_rows=worker_rows,
                 hours=hours,
@@ -1150,8 +1127,8 @@ class JobReviewTests(ReviewFixtureMixin, TestCase):
         response = self.client.post(
             reverse('transform_create'),
             job_payload(
-                [{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('5')}],
-                [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('5')}],
+                [{'material': self.material_raw, 'quantity': Decimal('5')}],
+                [{'material': self.material_finished, 'quantity': Decimal('5')}],
             ),
             follow=True,
         )
@@ -1477,7 +1454,7 @@ class JobEditTests(ReviewFixtureMixin, TestCase):
         self.assertEqual(response.context['order_form'].initial['hours'], Decimal('3'))
         self.assertEqual(
             response.context['consumed_formset'].initial,
-            [{'material': self.material_raw.pk, 'location': self.location.pk, 'quantity': Decimal('5')}],
+            [{'material': self.material_raw.pk, 'quantity': Decimal('5')}],
         )
         self.assertEqual(response.context['machine_formset'].initial[0]['hours'], Decimal('2'))
 
@@ -1490,8 +1467,8 @@ class JobEditTests(ReviewFixtureMixin, TestCase):
         self.client.force_login(self.manager)
         response = self.client.get(reverse('job_edit', args=[work_order.pk]))
         data = job_payload(
-            [{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('5')}],
-            [{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('5')}],
+            [{'material': self.material_raw, 'quantity': Decimal('5')}],
+            [{'material': self.material_finished, 'quantity': Decimal('5')}],
             machine_rows=[{'machine': self.machine_a, 'hours': '2'}],
             hours=str(response.context['order_form'].initial['hours']),
         )
@@ -1502,8 +1479,8 @@ class JobEditTests(ReviewFixtureMixin, TestCase):
         work_order = self.submit_job(self.worker, quantity=Decimal('5'))
         response = self._edit(
             work_order,
-            consumed_rows=[{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('8')}],
-            produced_rows=[{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('8')}],
+            consumed_rows=[{'material': self.material_raw, 'quantity': Decimal('8')}],
+            produced_rows=[{'material': self.material_finished, 'quantity': Decimal('8')}],
             description='Opraveno',
         )
         self.assertRedirects(response, reverse('job_detail', args=[work_order.pk]))
@@ -1519,8 +1496,8 @@ class JobEditTests(ReviewFixtureMixin, TestCase):
         work_order = self.submit_job(self.worker)
         self._edit(
             work_order,
-            consumed_rows=[{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('5')}],
-            produced_rows=[{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('5')}],
+            consumed_rows=[{'material': self.material_raw, 'quantity': Decimal('5')}],
+            produced_rows=[{'material': self.material_finished, 'quantity': Decimal('5')}],
         )
         work_order.refresh_from_db()
         self.assertEqual(work_order.status, WorkOrder.Status.PENDING)
@@ -1529,8 +1506,8 @@ class JobEditTests(ReviewFixtureMixin, TestCase):
         work_order = self.submit_job(self.worker, quantity=Decimal('5'))
         response = self._edit(
             work_order,
-            consumed_rows=[{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('8')}],
-            produced_rows=[{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('5')}],
+            consumed_rows=[{'material': self.material_raw, 'quantity': Decimal('8')}],
+            produced_rows=[{'material': self.material_finished, 'quantity': Decimal('5')}],
         )
         self.assertEqual(response.status_code, 200)
         consumed = work_order.movements.get(movement_type=StockMovement.MovementType.TRANSFORM_CONSUME)
@@ -1540,8 +1517,8 @@ class JobEditTests(ReviewFixtureMixin, TestCase):
         work_order = self.submit_job(self.worker, hours='3', worker_rows=[{'user': self.other_worker, 'hours': '2'}])
         self._edit(
             work_order,
-            consumed_rows=[{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('5')}],
-            produced_rows=[{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('5')}],
+            consumed_rows=[{'material': self.material_raw, 'quantity': Decimal('5')}],
+            produced_rows=[{'material': self.material_finished, 'quantity': Decimal('5')}],
             hours='4',
         )
         self.assertEqual(
@@ -1557,8 +1534,8 @@ class JobEditTests(ReviewFixtureMixin, TestCase):
         self.assertEqual(self.machine_a.total_hours, Decimal('3'))
         self._edit(
             work_order,
-            consumed_rows=[{'material': self.material_raw, 'location': self.location, 'quantity': Decimal('5')}],
-            produced_rows=[{'material': self.material_finished, 'location': self.location, 'quantity': Decimal('5')}],
+            consumed_rows=[{'material': self.material_raw, 'quantity': Decimal('5')}],
+            produced_rows=[{'material': self.material_finished, 'quantity': Decimal('5')}],
             machine_rows=[{'machine': self.machine_b, 'hours': '5'}],
         )
         self.machine_a.refresh_from_db()

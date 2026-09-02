@@ -9,7 +9,7 @@ from django.test import TestCase
 
 from accounts.models import User
 
-from .models import Location, Machine, Material
+from .models import Machine, Material
 
 
 class MaterialModelTests(TestCase):
@@ -21,17 +21,6 @@ class MaterialModelTests(TestCase):
         Material.objects.create(sku='SKU1', name='Steel Bar', unit_of_measure='pcs')
         with self.assertRaises(IntegrityError), transaction.atomic():
             Material.objects.create(sku='SKU1', name='Other', unit_of_measure='pcs')
-
-
-class LocationModelTests(TestCase):
-    def test_location_str(self):
-        location = Location.objects.create(name='Main Depot')
-        self.assertEqual(str(location), 'Main Depot')
-
-    def test_location_name_unique(self):
-        Location.objects.create(name='Main Depot')
-        with self.assertRaises(IntegrityError), transaction.atomic():
-            Location.objects.create(name='Main Depot')
 
 
 class MachineModelTests(TestCase):
@@ -68,11 +57,10 @@ class SeedDataCommandTests(TestCase):
         path.write_text(text)
         return str(path)
 
-    def _run(self, materials='', locations='', machines='', users=''):
+    def _run(self, materials='', machines='', users=''):
         call_command(
             'seed_data',
             materials_file=self._write_csv('materials.csv', materials),
-            locations_file=self._write_csv('locations.csv', locations),
             machines_file=self._write_csv('machines.csv', machines),
             users_file=self._write_csv('users.csv', users),
         )
@@ -86,11 +74,6 @@ class SeedDataCommandTests(TestCase):
         self.assertEqual(Material.objects.count(), 1)
         material.refresh_from_db()
         self.assertEqual(material.name, 'Steel Bar Renamed')
-
-    def test_seed_locations_dedupes_on_rerun(self):
-        self._run(locations='name\nMain Depot\n')
-        self._run(locations='name\nMain Depot\n')
-        self.assertEqual(Location.objects.filter(name='Main Depot').count(), 1)
 
     def test_seed_machines_dedupes_on_rerun(self):
         self._run(machines='name\nCrusher A\n')
@@ -190,11 +173,9 @@ class SeedDataCommandTests(TestCase):
         call_command(
             'seed_data',
             materials_file=str(self.tmp_path / 'does-not-exist-materials.csv'),
-            locations_file=str(self.tmp_path / 'does-not-exist-locations.csv'),
             machines_file=str(self.tmp_path / 'does-not-exist-machines.csv'),
             users_file=str(self.tmp_path / 'does-not-exist-users.csv'),
         )
         self.assertEqual(Material.objects.count(), 0)
-        self.assertEqual(Location.objects.count(), 0)
         self.assertEqual(Machine.objects.count(), 0)
         self.assertEqual(User.objects.count(), 0)

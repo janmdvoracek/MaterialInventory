@@ -10,19 +10,6 @@ RETIRE_HELP_TEXT = (
 )
 
 
-class Location(models.Model):
-    name = models.CharField(max_length=100, unique=True, verbose_name='název')
-    is_active = models.BooleanField(default=True, help_text=RETIRE_HELP_TEXT, verbose_name='aktivní')
-
-    class Meta:
-        ordering = ['name']
-        verbose_name = 'lokalita'
-        verbose_name_plural = 'lokality'
-
-    def __str__(self):
-        return self.name
-
-
 class Material(models.Model):
     sku = models.CharField(max_length=50, unique=True, verbose_name='kód (SKU)')
     name = models.CharField(max_length=200, verbose_name='název')

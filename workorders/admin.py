@@ -8,7 +8,7 @@ from .models import MachineUsage, WorkerHours, WorkOrder
 class MovementInline(admin.TabularInline):
     model = StockMovement
     extra = 1
-    fields = ('material', 'location', 'movement_type', 'quantity', 'notes', 'created_at')
+    fields = ('material', 'movement_type', 'quantity', 'notes', 'created_at')
     readonly_fields = ('created_at',)
 
 

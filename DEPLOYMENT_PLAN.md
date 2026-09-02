@@ -61,7 +61,7 @@ Ordered, copy-pasteable steps to run on the server itself:
 4. `cp .env.production.example .env.production`, generate a real secret with `python3 -c "import secrets; print(secrets.token_urlsafe(50))"`, fill in `SECRET_KEY`, `ALLOWED_HOSTS` (the server's reserved LAN IP), strong DB credentials, and `APP_PORT` if 8080 turns out to be taken.
 5. `docker compose -f docker-compose.prod.yml up -d --build`
 6. `docker compose -f docker-compose.prod.yml exec web python manage.py migrate`
-7. Create real `seed_data/materials.csv`, `locations.csv`, `machines.csv` on the server (copy from the now-committed `.example.csv` versions, which already hold the real Petrokámen catalog) and run `python manage.py seed_data`.
+7. Create real `seed_data/materials.csv`, `machines.csv` on the server (copy from the now-committed `.example.csv` versions, which already hold the real Petrokámen catalog) and run `python manage.py seed_data`.
 8. `docker compose -f docker-compose.prod.yml exec web python manage.py createsuperuser` for the first real admin account.
 9. Verify from a phone/laptop on the same LAN: `http://<server-ip>:<APP_PORT>`.
 10. Set up the daily backup cron entry calling `scripts/backup_db.sh`.

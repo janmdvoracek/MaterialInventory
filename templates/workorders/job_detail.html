@@ -38,16 +38,15 @@
     <h2>Spotřebováno</h2>
     <div class="table-scroll">
     <table>
-        <thead><tr><th>Materiál</th><th>Lokalita</th><th>Množství</th></tr></thead>
+        <thead><tr><th>Materiál</th><th>Množství</th></tr></thead>
         <tbody>
         {% for item in consumed %}
             <tr>
                 <td>{{ item.material.name }}</td>
-                <td>{{ item.location.name }}</td>
                 <td>{{ item.typed_quantity|floatformat:2 }} {{ item.material.unit_of_measure }}</td>
             </tr>
         {% empty %}
-            <tr><td colspan="3">Žádné položky.</td></tr>
+            <tr><td colspan="2">Žádné položky.</td></tr>
         {% endfor %}
         </tbody>
     </table>
@@ -58,16 +57,15 @@
     <h2>Vyrobeno</h2>
     <div class="table-scroll">
     <table>
-        <thead><tr><th>Materiál</th><th>Lokalita</th><th>Množství</th></tr></thead>
+        <thead><tr><th>Materiál</th><th>Množství</th></tr></thead>
         <tbody>
         {% for item in produced %}
             <tr>
                 <td>{{ item.material.name }}</td>
-                <td>{{ item.location.name }}</td>
                 <td>{{ item.typed_quantity|floatformat:2 }} {{ item.material.unit_of_measure }}</td>
             </tr>
         {% empty %}
-            <tr><td colspan="3">Žádné položky.</td></tr>
+            <tr><td colspan="2">Žádné položky.</td></tr>
         {% endfor %}
         </tbody>
     </table>

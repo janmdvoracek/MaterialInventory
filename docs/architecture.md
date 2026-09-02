@@ -26,7 +26,7 @@ consumed or what it produced.
 
 | Field | Meaning |
 |---|---|
-| `material`, `location` | What, and where. |
+| `material` | What was processed. |
 | `quantity` | **Signed.** Negative for consumed, positive for produced. |
 | `movement_type` | `TRANSFORM_CONSUME` or `TRANSFORM_PRODUCE`. Nothing else. |
 | `work_order` | The job this line belongs to. Nullable only because pre-removal rows had no job. |
@@ -91,9 +91,9 @@ transaction stays: the line items, the hours and the machine usage are one job
 and must not land half-written.
 
 Formset rows are written **exactly as typed**. The view used to combine consumed
-rows for the same material and location so it could test them as a single
-quantity; with no such check left, two rows of 6 t are simply two line items
-that contribute 12 t to the consumed total.
+rows for the same material so it could test them as a single quantity; with no
+such check left, two rows of 6 t are simply two line items that contribute 12 t
+to the consumed total.
 
 ### Approval
 

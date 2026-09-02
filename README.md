@@ -83,14 +83,13 @@ python manage.py runserver
 
 ### Load real data
 
-The catalog, locations, machines, and staff accounts are seeded from CSV:
+The catalog, machines, and staff accounts are seeded from CSV:
 
 ```bash
 cp seed_data/materials.example.csv seed_data/materials.csv
-cp seed_data/locations.example.csv seed_data/locations.csv
 cp seed_data/machines.example.csv seed_data/machines.csv
 cp seed_data/users.example.csv seed_data/users.csv
-# edit those four with real data, then:
+# edit those three with real data, then:
 python manage.py seed_data
 ```
 
@@ -102,7 +101,7 @@ Full column reference: [docs/development.md](docs/development.md#seeding-data).
 ## Common commands
 
 ```bash
-python manage.py test                  # full suite (185 tests, needs Postgres)
+python manage.py test                  # full suite (182 tests, needs Postgres)
 python manage.py test workorders       # one app
 ruff check . && ruff format .          # lint and format
 docker compose up --build              # full stack
@@ -130,7 +129,7 @@ gated, so a worker who types that URL still gets in.
 ```
 config/       Django project — settings, root URLconf, WSGI/ASGI
 accounts/     Custom User model, roles, role_required decorator, Czech auth forms
-materials/    Material / Location / Machine catalog + the seed_data command
+materials/    Material / Machine catalog + the seed_data command
 inventory/    StockMovement — the material line items of a job. Model + admin only.
 workorders/   Transform form, job review dashboard, machine dashboard/history, time-worked reporting, all URLs
 templates/    All HTML; base.html holds the site CSS and bottom nav
