@@ -139,7 +139,7 @@ are committed. Each file path can be overridden, e.g.
 
 | File | Columns |
 |---|---|
-| `materials.csv` | `sku`, `name`, `unit_of_measure`, `category` |
+| `materials.csv` | `sku`, `name` |
 | `machines.csv` | `name`, `hourly_rate` *(optional)*, `rate_per_ton` *(optional)* |
 | `users.csv` | `username`, `first_name`, `last_name`, `email`, `role` |
 

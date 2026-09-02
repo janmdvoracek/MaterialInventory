@@ -27,7 +27,7 @@ consumed or what it produced.
 | Field | Meaning |
 |---|---|
 | `material` | What was processed. |
-| `quantity` | **Signed.** Negative for consumed, positive for produced. |
+| `quantity` | **Signed.** Negative for consumed, positive for produced. Always tonnes — a material has no unit field, so the `t` shown in the form prompt and the job detail is hardcoded. |
 | `movement_type` | `TRANSFORM_CONSUME` or `TRANSFORM_PRODUCE`. Nothing else. |
 | `work_order` | The job this line belongs to. Nullable only because pre-removal rows had no job. |
 | `created_at` | Defaults to now. Overridable, but nothing overrides it today. |

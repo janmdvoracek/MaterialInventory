@@ -42,11 +42,7 @@ class Command(BaseCommand):
             sku = row['sku'].strip()
             if not sku:
                 continue
-            defaults = {
-                'name': row['name'].strip(),
-                'unit_of_measure': row['unit_of_measure'].strip(),
-                'category': row.get('category', '').strip(),
-            }
+            defaults = {'name': row['name'].strip()}
             _, was_created = Material.objects.update_or_create(sku=sku, defaults=defaults)
             created += was_created
             updated += not was_created

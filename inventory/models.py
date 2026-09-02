@@ -57,4 +57,4 @@ class StockMovement(models.Model):
         verbose_name_plural = 'položky zpracování'
 
     def __str__(self):
-        return f'{self.movement_type}: {self.quantity} {self.material.unit_of_measure} of {self.material}'
+        return f'{self.movement_type}: {self.quantity} t of {self.material}'

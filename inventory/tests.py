@@ -12,7 +12,7 @@ from .models import StockMovement
 
 class StockMovementTestCase(TestCase):
     def setUp(self):
-        self.material = Material.objects.create(sku='SKU1', name='Steel Bar', unit_of_measure='pcs')
+        self.material = Material.objects.create(sku='SKU1', name='Steel Bar')
         self.worker = User.objects.create_user(username='worker', password='pw', role=User.Role.WORKER)
 
     def _line_item(self, quantity, movement_type=StockMovement.MovementType.TRANSFORM_PRODUCE, **kwargs):

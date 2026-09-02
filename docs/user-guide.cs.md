@@ -75,6 +75,7 @@ on. Kdo je tu uvedený, uvidí zakázku ve své historii a hodiny se mu započí
 **3. Spotřeba a výroba**
 
 - Do **spotřeby** zapište, co se spotřebovalo (materiál a množství).
+- **Množství se všude zadává v tunách** — jiná jednotka v aplikaci není.
 - Do **výroby** zapište, co vzniklo.
 - Řádků je připraveno několik. Nepoužité nechte prázdné.
 - Vyplnit musíte buď celý řádek, nebo žádný — samotné množství bez materiálu

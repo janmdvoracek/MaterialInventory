@@ -13,8 +13,6 @@ RETIRE_HELP_TEXT = (
 class Material(models.Model):
     sku = models.CharField(max_length=50, unique=True, verbose_name='kód (SKU)')
     name = models.CharField(max_length=200, verbose_name='název')
-    unit_of_measure = models.CharField(max_length=20, help_text='např. kg, m, ks, t', verbose_name='měrná jednotka')
-    category = models.CharField(max_length=100, blank=True, verbose_name='kategorie')
     is_active = models.BooleanField(default=True, help_text=RETIRE_HELP_TEXT, verbose_name='aktivní')
 
     class Meta:

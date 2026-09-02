@@ -52,8 +52,10 @@ class MovementItemForm(forms.Form):
         max_digits=7,
         decimal_places=2,
         required=False,
-        label='Množství',
-        widget=forms.NumberInput(attrs={'placeholder': 'Množství'}),
+        # The app records tonnes and nothing else, so the unit is part of
+        # the prompt rather than a column on the material.
+        label='Množství (t)',
+        widget=forms.NumberInput(attrs={'placeholder': 'Množství (t)'}),
     )
 
     def clean(self):

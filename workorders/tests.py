@@ -18,8 +18,8 @@ class TransformCreateTests(TestCase):
         # Both materials are tonnes: the balance check sums the two sides
         # together, so a mixed-unit fixture would not mean anything. Matches the
         # real catalog, which is Zdroj/Frakce in `t` throughout.
-        self.material_raw = Material.objects.create(sku='RAW', name='Štěrk', unit_of_measure='t')
-        self.material_finished = Material.objects.create(sku='FIN', name='Frakce 8/16', unit_of_measure='t')
+        self.material_raw = Material.objects.create(sku='RAW', name='Štěrk')
+        self.material_finished = Material.objects.create(sku='FIN', name='Frakce 8/16')
         self.worker = User.objects.create_user(username='worker', password='pw')
         self.other_worker = User.objects.create_user(username='other_worker', password='pw')
         self.machine_a = Machine.objects.create(name='Crusher A')
@@ -607,7 +607,7 @@ class MachineUsageModelTests(TestCase):
 
 class WorkOrderAdminTests(TestCase):
     def setUp(self):
-        self.material = Material.objects.create(sku='ADM1', name='Steel', unit_of_measure='kg')
+        self.material = Material.objects.create(sku='ADM1', name='Steel')
         self.machine = Machine.objects.create(name='Warrior')
         self.admin_user = User.objects.create_superuser(username='admin', password='pw')
 
@@ -1005,7 +1005,7 @@ class EmptyLabelTests(TestCase):
 
     def setUp(self):
         self.manager = User.objects.create_user(username='manager', password='pw', role=User.Role.MANAGER)
-        Material.objects.create(sku='SKU1', name='Steel Bar', unit_of_measure='pcs')
+        Material.objects.create(sku='SKU1', name='Steel Bar')
         Machine.objects.create(name='Crusher A')
 
     def test_pages_have_no_english_placeholder(self):
@@ -1074,8 +1074,8 @@ class ReviewFixtureMixin:
     """Catalog, people and a helper that records a job the way the app does."""
 
     def setUp(self):
-        self.material_raw = Material.objects.create(sku='RAW', name='Štěrk', unit_of_measure='t')
-        self.material_finished = Material.objects.create(sku='FIN', name='Frakce 8/16', unit_of_measure='t')
+        self.material_raw = Material.objects.create(sku='RAW', name='Štěrk')
+        self.material_finished = Material.objects.create(sku='FIN', name='Frakce 8/16')
         self.worker = User.objects.create_user(username='worker', password='pw', role=User.Role.WORKER)
         self.other_worker = User.objects.create_user(username='other', password='pw', role=User.Role.WORKER)
         self.manager = User.objects.create_user(username='manager', password='pw', role=User.Role.MANAGER)

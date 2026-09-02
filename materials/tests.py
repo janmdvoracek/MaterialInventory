@@ -14,13 +14,13 @@ from .models import Machine, Material
 
 class MaterialModelTests(TestCase):
     def test_material_str(self):
-        material = Material.objects.create(sku='SKU1', name='Steel Bar', unit_of_measure='pcs')
+        material = Material.objects.create(sku='SKU1', name='Steel Bar')
         self.assertEqual(str(material), 'Steel Bar (SKU1)')
 
     def test_material_sku_unique(self):
-        Material.objects.create(sku='SKU1', name='Steel Bar', unit_of_measure='pcs')
+        Material.objects.create(sku='SKU1', name='Steel Bar')
         with self.assertRaises(IntegrityError), transaction.atomic():
-            Material.objects.create(sku='SKU1', name='Other', unit_of_measure='pcs')
+            Material.objects.create(sku='SKU1', name='Other')
 
 
 class MachineModelTests(TestCase):
@@ -66,11 +66,11 @@ class SeedDataCommandTests(TestCase):
         )
 
     def test_seed_materials_creates_and_updates(self):
-        self._run(materials='sku,name,unit_of_measure,category\nSKU1,Steel Bar,pcs,Raw\n')
+        self._run(materials='sku,name\nSKU1,Steel Bar\n')
         material = Material.objects.get(sku='SKU1')
         self.assertEqual(material.name, 'Steel Bar')
 
-        self._run(materials='sku,name,unit_of_measure,category\nSKU1,Steel Bar Renamed,pcs,Raw\n')
+        self._run(materials='sku,name\nSKU1,Steel Bar Renamed\n')
         self.assertEqual(Material.objects.count(), 1)
         material.refresh_from_db()
         self.assertEqual(material.name, 'Steel Bar Renamed')

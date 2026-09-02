@@ -129,7 +129,7 @@ class AdminCzechTests(TestCase):
     def setUp(self):
         self.admin_user = User.objects.create_superuser(username='admin', password='pw', role=User.Role.ADMIN)
         self.client.force_login(self.admin_user)
-        self.material = Material.objects.create(sku='SKU1', name='Kamenivo', unit_of_measure='t')
+        self.material = Material.objects.create(sku='SKU1', name='Kamenivo')
 
     def test_index_lists_apps_and_models_in_czech(self):
         html = self.client.get(reverse('admin:index')).content.decode()
@@ -139,8 +139,8 @@ class AdminCzechTests(TestCase):
 
     def test_change_form_labels_are_czech(self):
         response = self.client.get(reverse('admin:materials_material_change', args=[self.material.pk]))
-        self.assertContains(response, 'Měrná jednotka')
         self.assertContains(response, 'Kód (SKU)')
+        self.assertContains(response, 'Aktivní')
 
     def test_no_english_blank_option_anywhere_in_the_admin(self):
         # Django 6's `- Select an option -`, translated by the local catalog.
