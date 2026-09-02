@@ -88,13 +88,11 @@ Běžný pracovník tento výběr nemá a zapisuje vždy sám za sebe.
 
 **2b. Datum provedení**
 
-Zakázka se normálně zapíše na **dnešek**. Když zapisujete práci zpětně,
-zaškrtněte **Jiné datum než dnes** a do pole **Datum provedení** vyberte den,
-kdy se práce skutečně dělala.
+V poli **Datum provedení** je předvyplněný **dnešek**. Když zapisujete práci
+zpětně, přepište ho na den, kdy se práce skutečně dělala.
 
-- Rozhoduje zaškrtnutí. Když políčko nezaškrtnete, datum v poli se **nepoužije**
-  a uloží se dnešek.
-- Zaškrtnuté políčko bez data aplikace odmítne, stejně jako datum v budoucnosti.
+- Datum musí být vyplněné — prázdné pole aplikace odmítne, stejně jako datum
+  v budoucnosti.
 - Zadává se jen **den**, ne čas.
 - Opravit datum může později vedoucí v úpravě zakázky.
 

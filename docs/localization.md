@@ -55,13 +55,26 @@ entirely from phones. The current asymmetry is the better trade.
 
 Czech `DATE_INPUT_FORMATS` is `%d.%m.%Y`-first and does not list ISO. Django
 appends `%Y-%m-%d` to every locale's list anyway, so the `<input type="date">`
-widgets on the history and time-worked filters parse normally. Bound forms
-re-render the raw submitted string, so filters survive pagination.
+widgets on the filter forms parse normally. Bound forms re-render the raw
+submitted string, so filters survive pagination.
 
 The one trap: an **unbound** date field with a Python `date` as `initial`
 renders as `14.08.2026`, which `<input type="date">` rejects as invalid and
-displays blank. No form does this today. If you add one, pass the initial value
-as an ISO string.
+displays blank — the pre-fill is lost with no error anywhere.
+
+One form does exactly this. `WorkOrderForm.performed_on` on the Transform form
+is pre-filled with today, and on `job_edit` with the job's own date, so its
+widget carries an explicit format:
+
+```python
+performed_on = forms.DateField(
+    initial=timezone.localdate,
+    widget=forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
+)
+```
+
+Any new pre-filled date field needs the same, and two tests in
+`PerformedOnTests` assert the rendered `value=` to catch it going missing.
 
 ## The clock in native pickers is the device's, not ours
 

@@ -39,6 +39,8 @@ class TransformCreateTests(TestCase):
         data = {
             'description': description,
             'hours': hours,
+            # Pre-filled on the real form, so every browser posts it.
+            'performed_on': timezone.localdate().isoformat(),
             'consumed-TOTAL_FORMS': str(max(len(consumed_rows), 1)),
             'consumed-INITIAL_FORMS': '0',
             'consumed-MIN_NUM_FORMS': '0',
@@ -160,6 +162,7 @@ class TransformCreateTests(TestCase):
         self.client.force_login(self.worker)
         data = {
             'description': 'Test job',
+            'performed_on': timezone.localdate().isoformat(),
             'hours': '2',
             'consumed-TOTAL_FORMS': '1',
             'consumed-INITIAL_FORMS': '0',
@@ -238,6 +241,7 @@ class TransformCreateTests(TestCase):
         self.client.force_login(self.worker)
         data = {
             'description': 'Test job',
+            'performed_on': timezone.localdate().isoformat(),
             # Own hours are required, so they must be valid here or the form
             # would fail for that reason instead of the one under test.
             'hours': '2',
@@ -276,6 +280,7 @@ class TransformCreateTests(TestCase):
         self.client.force_login(self.worker)
         data = {
             'description': 'Test job',
+            'performed_on': timezone.localdate().isoformat(),
             # Own hours are required, so they must be valid here or the form
             # would fail for that reason instead of the one under test.
             'hours': '2',
@@ -394,6 +399,7 @@ class TransformCreateTests(TestCase):
         self.client.force_login(self.worker)
         data = {
             'description': 'Test job',
+            'performed_on': timezone.localdate().isoformat(),
             'hours': '2',
             'consumed-TOTAL_FORMS': '1',
             'consumed-INITIAL_FORMS': '0',
@@ -691,30 +697,36 @@ class PerformedOnTests(TestCase):
         self.client.force_login(self.manager)
         self.client.post(reverse('job_approve', args=[work_order.pk]))
 
-    def test_defaults_to_today(self):
+    def test_the_field_arrives_pre_filled_with_today(self):
+        # A field-level `initial` callable, so it resolves through the bound
+        # field rather than sitting in `form.initial`.
+        response = self.client.get(reverse('transform_create'))
+        self.assertEqual(response.context['order_form']['performed_on'].initial, timezone.localdate())
+
+    def test_the_pre_filled_value_is_iso_so_the_widget_accepts_it(self):
+        # `<input type="date">` only reads YYYY-MM-DD. Without an explicit
+        # widget format the cs DATE_INPUT_FORMATS would render 02.09.2026, which
+        # the browser rejects and shows as an empty box.
+        response = self.client.get(reverse('transform_create'))
+        self.assertContains(response, f'value="{timezone.localdate().isoformat()}"')
+
+    def test_todays_date_is_stored(self):
         self._submit()
         self.assertEqual(WorkOrder.objects.get().performed_on, timezone.localdate())
 
-    def test_a_ticked_box_stores_the_date_given(self):
+    def test_an_edited_date_is_stored(self):
         yesterday = timezone.localdate() - timedelta(days=1)
-        self._submit(use_custom_date='on', performed_on=yesterday.isoformat())
+        self._submit(performed_on=yesterday.isoformat())
         self.assertEqual(WorkOrder.objects.get().performed_on, yesterday)
 
-    def test_an_unticked_box_ignores_the_date_field(self):
-        # The input cannot hide itself without JS, so a date left in it must not
-        # count for anything.
-        self._submit(performed_on=(timezone.localdate() - timedelta(days=30)).isoformat())
-        self.assertEqual(WorkOrder.objects.get().performed_on, timezone.localdate())
-
-    def test_ticking_the_box_without_a_date_is_rejected(self):
-        response = self._submit(use_custom_date='on')
+    def test_an_emptied_date_is_rejected(self):
+        response = self._submit(performed_on='')
         self.assertEqual(response.status_code, 200)
         self.assertFalse(WorkOrder.objects.exists())
-        self.assertContains(response, 'Zadejte datum provedení')
 
     def test_a_future_date_is_rejected(self):
         tomorrow = timezone.localdate() + timedelta(days=1)
-        response = self._submit(use_custom_date='on', performed_on=tomorrow.isoformat())
+        response = self._submit(performed_on=tomorrow.isoformat())
         self.assertEqual(response.status_code, 200)
         self.assertFalse(WorkOrder.objects.exists())
         self.assertContains(response, 'nemůže být v budoucnosti')
@@ -722,13 +734,13 @@ class PerformedOnTests(TestCase):
     def test_the_whole_job_is_refused_when_the_date_is_bad(self):
         # Same all-or-nothing rule as the mass balance: no hours, no machines,
         # no line items land while any part of the form is unusable.
-        self._submit(use_custom_date='on', performed_on='')
+        self._submit(performed_on='')
         self.assertFalse(WorkerHours.objects.exists())
         self.assertFalse(StockMovement.objects.exists())
 
     def test_the_detail_page_shows_it(self):
         yesterday = timezone.localdate() - timedelta(days=1)
-        self._submit(use_custom_date='on', performed_on=yesterday.isoformat())
+        self._submit(performed_on=yesterday.isoformat())
         work_order = WorkOrder.objects.get()
         self.client.force_login(self.manager)
         response = self.client.get(reverse('job_detail', args=[work_order.pk]))
@@ -743,30 +755,22 @@ class PerformedOnTests(TestCase):
             [{'material': self.material_raw, 'quantity': Decimal('5')}],
             [{'material': self.material_finished, 'quantity': Decimal('5')}],
         )
-        payload.update(use_custom_date='on', performed_on=corrected.isoformat())
+        payload.update(performed_on=corrected.isoformat())
         self.client.force_login(self.manager)
         self.client.post(reverse('job_edit', args=[work_order.pk]), payload)
         work_order.refresh_from_db()
         self.assertEqual(work_order.performed_on, corrected)
 
-    def test_the_edit_form_arrives_ticked_for_a_back_dated_job(self):
-        # Otherwise a correction that touches nothing else would quietly reset
-        # the date to today.
+    def test_the_edit_form_shows_the_jobs_own_date_not_today(self):
+        # A correction that touches nothing else must not move the date, and the
+        # box has to actually render it — see the ISO note above.
         yesterday = timezone.localdate() - timedelta(days=1)
-        self._submit(use_custom_date='on', performed_on=yesterday.isoformat())
+        self._submit(performed_on=yesterday.isoformat())
         work_order = WorkOrder.objects.get()
         self.client.force_login(self.manager)
         response = self.client.get(reverse('job_edit', args=[work_order.pk]))
-        initial = response.context['order_form'].initial
-        self.assertTrue(initial['use_custom_date'])
-        self.assertEqual(initial['performed_on'], yesterday)
-
-    def test_the_edit_form_arrives_unticked_for_a_job_done_the_day_it_was_typed(self):
-        self._submit()
-        work_order = WorkOrder.objects.get()
-        self.client.force_login(self.manager)
-        response = self.client.get(reverse('job_edit', args=[work_order.pk]))
-        self.assertFalse(response.context['order_form'].initial['use_custom_date'])
+        self.assertEqual(response.context['order_form'].initial['performed_on'], yesterday)
+        self.assertContains(response, f'value="{yesterday.isoformat()}"')
 
 
 class RecordingForSomeoneElseTests(TestCase):
@@ -912,7 +916,7 @@ class ReportsUsePerformedOnTests(TestCase):
                 machine_rows=[{'machine': self.machine, 'hours': Decimal('3'), 'tons': '7'}],
                 hours='4',
             )
-            | {'use_custom_date': 'on', 'performed_on': self.long_ago.isoformat()},
+            | {'performed_on': self.long_ago.isoformat()},
         )
         work_order = WorkOrder.objects.get()
         # A manager's own submission is approved on the spot, so it is already
@@ -1415,6 +1419,8 @@ def job_payload(consumed_rows, produced_rows, machine_rows=None, worker_rows=Non
     data = {
         'description': description,
         'hours': hours,
+        # Pre-filled on the real form, so every browser posts it.
+        'performed_on': timezone.localdate().isoformat(),
         'consumed-TOTAL_FORMS': str(max(len(consumed_rows), 1)),
         'consumed-INITIAL_FORMS': '0',
         'consumed-MIN_NUM_FORMS': '0',

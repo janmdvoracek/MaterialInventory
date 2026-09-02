@@ -116,20 +116,24 @@ to the consumed total.
 somebody typed it in. They differ only when the submitter ticks *„Jiné datum než
 dnes"* on the Transform form and picks a date.
 
-The checkbox, not the date input, is what decides. With no JS the input cannot
-hide itself, so `WorkOrderForm.clean()` overwrites whatever is in it with
-today's date whenever the box is unticked — otherwise a value left over from a
-previous attempt could back-date a job nobody meant to back-date. Ticked with an
-empty date, or with a date in the future, is a form error, and the all-or-nothing
-rule applies: no hours, no machines and no line items are written.
+The field is **required and pre-filled with today**
+(`initial=timezone.localdate`), so the ordinary case needs no thought and
+back-dating is just editing the box. An empty date, or one in the future, is a
+form error, and the all-or-nothing rule applies: no hours, no machines and no
+line items are written.
 
 Day only, no time. An `<input type="date">` renders identically everywhere,
 whereas the `datetime-local` widget the removed Příjem/Výdej forms used let an
 English-configured phone show AM/PM regardless of the page's `lang="cs"`.
 
-`job_edit` can correct the date, and its form arrives with the box already
-ticked when `performed_on` differs from the recording date — otherwise a
-correction that touched nothing else would quietly reset the job to today.
+**The widget needs `format='%Y-%m-%d'`.** This is the app's only unbound date
+field holding a python `date`, and Django would otherwise render it through the
+Czech `DATE_INPUT_FORMATS` as `02.09.2026` — which `<input type="date">` refuses
+and displays as an empty box, silently losing the pre-fill. Two tests assert the
+rendered `value=`.
+
+`job_edit` can correct the date, and its form shows the job's own date rather
+than today, so a correction that touches nothing else does not move it.
 
 Migration `0010` added the column with a `timezone.localdate` default and then
 back-filled every existing row from `created_at`: before the field existed there

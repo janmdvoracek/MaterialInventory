@@ -626,9 +626,8 @@ def job_edit(request, pk):
             initial={
                 'description': work_order.description,
                 'hours': _trim(own_hours.hours) if own_hours else None,
-                # Pre-ticked whenever the job was not done the day it was typed
-                # in, so a correction does not quietly reset the date to today.
-                'use_custom_date': work_order.performed_on != timezone.localtime(work_order.created_at).date(),
+                # The job's own date, not today: a correction that touches
+                # nothing else must not move it.
                 'performed_on': work_order.performed_on,
             }
         )
