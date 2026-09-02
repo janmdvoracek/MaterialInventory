@@ -226,6 +226,13 @@ approved jobs, so all three read-only pages report the same scope. The counter
 stays as it is — the admin shows it, and it is still what `MachineUsage` keeps
 correct — so the two numbers legitimately differ while a job is pending.
 
+The same annotation also sums **`usages__tons`**, so each row carries the
+machine's motohodiny and its tonnage side by side. There is no counter field
+behind the tonnage — nothing like `total_hours` — so the annotation is the only
+source. `tons` is nullable (rows predating the column mean *unknown*, not zero)
+and `Sum` skips NULLs, so a machine with no recorded tonnage sums to `None` and
+renders as a dash; `0 t` would claim it processed nothing.
+
 ## Pages and URLs
 
 All in `workorders`, all mounted at the **root** by `config/urls.py` —
@@ -258,7 +265,7 @@ wired in `config/urls.py` with Czech form subclasses from `accounts/forms.py`;
 | Role | `is_staff` / `is_superuser` | App access |
 |---|---|---|
 | `WORKER` | no | Zpracování, Hodiny; own records only; submissions await approval |
-| `MANAGER` | no | + Přehled (approve/edit/return/delete), + Stroje in the nav, + everyone's records |
+| `MANAGER` | no | + Přehled (approve/edit/delete), + Stroje in the nav, + everyone's records |
 | `ADMIN` | **yes / yes** | + Django admin |
 
 Two gates:

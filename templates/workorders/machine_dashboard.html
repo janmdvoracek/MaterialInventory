@@ -7,7 +7,7 @@
     <div class="table-scroll">
     <table>
         <thead>
-            <tr><th>Stroj</th><th>Celkem hodin</th><th>Sazba (Kč/hod)</th><th>Cena (Kč/t)</th></tr>
+            <tr><th>Stroj</th><th>Celkem hodin</th><th>Celkem tun</th><th>Sazba (Kč/hod)</th><th>Cena (Kč/t)</th></tr>
         </thead>
         <tbody>
         {% for machine in machines %}
@@ -16,6 +16,7 @@
                     <a href="{% url 'machine_usage_history' %}?machine={{ machine.id }}">{{ machine.name }}</a>
                 </td>
                 <td>{{ machine.approved_hours|default:"0"|floatformat:1 }} h</td>
+                <td>{{ machine.approved_tons|floatformat:2|default:"—" }}</td>
                 <td>{{ machine.hourly_rate|floatformat:2|default:"—" }}</td>
                 <td>{{ machine.rate_per_ton|floatformat:2|default:"—" }}</td>
             </tr>

@@ -667,9 +667,9 @@ class MachineDashboardTests(TestCase):
         self.machine_active = Machine.objects.create(name='Crusher A')
         self.machine_retired = Machine.objects.create(name='Old Excavator', total_hours=Decimal('99'), is_active=False)
 
-    def _usage(self, hours, status=WorkOrder.Status.APPROVED):
+    def _usage(self, hours, tons=None, status=WorkOrder.Status.APPROVED):
         work_order = WorkOrder.objects.create(created_by=self.worker, description='job', status=status)
-        return MachineUsage.objects.create(work_order=work_order, machine=self.machine_active, hours=hours)
+        return MachineUsage.objects.create(work_order=work_order, machine=self.machine_active, hours=hours, tons=tons)
 
     def test_dashboard_requires_login(self):
         response = self.client.get(reverse('machine_dashboard'))
@@ -687,6 +687,30 @@ class MachineDashboardTests(TestCase):
         response = self.client.get(reverse('machine_dashboard'))
         # Comma decimal separator: template output is localised under cs.
         self.assertContains(response, '12,5 h')
+
+    def test_dashboard_shows_approved_tons(self):
+        self._usage(Decimal('3'), tons=Decimal('12.5'))
+        self._usage(Decimal('2'), tons=Decimal('8'))
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('machine_dashboard'))
+        self.assertEqual(response.context['machines'][0].approved_tons, Decimal('20.50'))
+        self.assertContains(response, '20,50')
+
+    def test_dashboard_ignores_tons_from_unapproved_jobs(self):
+        self._usage(Decimal('3'), tons=Decimal('12.5'), status=WorkOrder.Status.PENDING)
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('machine_dashboard'))
+        self.assertIsNone(response.context['machines'][0].approved_tons)
+
+    def test_dashboard_shows_a_dash_when_no_tonnage_was_recorded(self):
+        # `tons` is nullable because rows predating the column have no answer —
+        # unknown, not zero. Sum skips them, and the page must not read that
+        # back as a machine that processed nothing.
+        self._usage(Decimal('3'))
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('machine_dashboard'))
+        self.assertIsNone(response.context['machines'][0].approved_tons)
+        self.assertContains(response, '3,0 h')
 
     def test_dashboard_ignores_hours_from_unapproved_jobs(self):
         # Machine.total_hours is bumped the moment the row is written, so the
@@ -714,10 +738,11 @@ class MachineDashboardTests(TestCase):
         self.assertContains(response, '35,50')
 
     def test_dashboard_shows_dash_for_unset_rates(self):
-        # Both rates are optional, so an unpriced machine must still render a row.
+        # Both rates are optional, so an unpriced machine must still render a
+        # row. Three dashes, not two: an unused machine has no tonnage either.
         self.client.force_login(self.worker)
         response = self.client.get(reverse('machine_dashboard'))
-        self.assertContains(response, '—', count=2)
+        self.assertContains(response, '—', count=3)
 
 
 class MachineUsageHistoryTests(TestCase):

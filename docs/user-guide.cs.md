@@ -42,7 +42,7 @@ Ve spodní části obrazovky je menu, ze kterého se dostanete všude:
 | **Zpracování** | Z jednoho materiálu vznikl jiný — hlavní formulář |
 | **Hodiny** | Odpracované hodiny lidí |
 | **Přehled** | Všechna zapsaná zpracování ke schválení — vidí jen vedoucí |
-| **Stroje** | Celkové motohodiny a sazby strojů — vidí jen vedoucí |
+| **Stroje** | Celkové motohodiny, tuny a sazby strojů — vidí jen vedoucí |
 
 Po přihlášení se rovnou otevře **Zpracování**. Stejně tak se tam vrátíte
 klepnutím na logo vlevo nahoře.
@@ -147,9 +147,14 @@ ne vám.
 
 ## Stroje
 
-Přehled strojů a jejich **celkových motohodin**. Číslo se navyšuje pokaždé, když
-někdo ve **Zpracování** vyplní hodiny stroje a vedoucí zakázku **schválí** —
-neschválené zakázky se do něj nepočítají.
+Přehled strojů, jejich **celkových motohodin** a **celkového počtu zpracovaných
+tun**. Obě čísla se navyšují pokaždé, když někdo ve **Zpracování** vyplní hodiny
+a tuny stroje a vedoucí zakázku **schválí** — neschválené zakázky se do nich
+nepočítají.
+
+U starších záznamů, které vznikly ještě předtím, než se tuny zapisovaly, není
+tonáž známá. Takové stroje mají ve sloupci **Celkem tun** pomlčku (—) — neplést
+s nulou, ta by znamenala, že stroj nic nezpracoval.
 
 Vedle motohodin se zobrazují dvě sazby stroje: **Sazba (Kč/hod)** a
 **Cena (Kč/t)** za tunu zpracovaného materiálu. Obě jsou pouze orientační —

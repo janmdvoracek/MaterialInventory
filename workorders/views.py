@@ -225,9 +225,16 @@ def machine_dashboard(request):
     # so it also holds hours from jobs still waiting for approval. The counter
     # stays as it is (the admin shows it, and MachineUsage keeps it correct);
     # this page just reports the same scope as Hodiny and the machine history.
+    # `tons` is nullable — rows written before the column existed have no
+    # answer, unknown rather than zero — and Sum skips those, so a machine whose
+    # usage all predates it sums to None and renders as a dash, not 0 t.
+    approved = Q(usages__work_order__status=WorkOrder.Status.APPROVED)
     machines = (
         Machine.objects.filter(is_active=True)
-        .annotate(approved_hours=Sum('usages__hours', filter=Q(usages__work_order__status=WorkOrder.Status.APPROVED)))
+        .annotate(
+            approved_hours=Sum('usages__hours', filter=approved),
+            approved_tons=Sum('usages__tons', filter=approved),
+        )
         .order_by('name')
     )
     return render(request, 'workorders/machine_dashboard.html', {'machines': machines})
