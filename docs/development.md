@@ -60,7 +60,7 @@ python manage.py test materials.tests.MaterialModelTests           # one class
 python manage.py test materials.tests.MaterialModelTests.test_material_str
 ```
 
-220 tests, roughly a minute and a half. Postgres must be reachable.
+211 tests, roughly a minute and a half. Postgres must be reachable.
 
 ### How the tests are written
 
@@ -84,10 +84,13 @@ drive, so everything that exercised a request path went with the stock pages.
 forgets its `empty_label`. See
 [localization.md](localization.md#every-modelchoicefield-needs-an-empty_label).
 
-The suite no longer has a `TransactionTestCase`. `StockLockConcurrencyTests` was
-the only one, and it went with `select_for_update()`. If you add a concurrent
-write path, it needs one again — a plain `TestCase` wraps each test in a single
-transaction and hides the interleaving that such a test exists to exercise.
+The suite has no `TransactionTestCase`, and nothing needs one: there is no
+concurrent write path left. `StockLockConcurrencyTests` went with stock
+tracking, and the last `select_for_update()` went with `Machine.total_hours`.
+Every write is now an ordinary insert or delete whose result does not depend on
+what another request is doing. If you add a counter or any other read-modify-write,
+it needs a `TransactionTestCase` again — a plain `TestCase` wraps each test in a
+single transaction and hides the interleaving such a test exists to exercise.
 
 **`AdminCzechTests`** (in `accounts/tests.py`) fails if the admin drifts back
 to English — including if `locale/cs/LC_MESSAGES/django.mo` is stale. See
@@ -153,8 +156,8 @@ the admin. New records fall back to the model default (`hourly_rate=NULL`,
 `rate_per_ton=NULL`).
 Clearing a value back to empty is an admin action, not a CSV one.
 
-`Machine.total_hours` is **never** set by seeding. It only accumulates from
-transformations that log usage.
+A machine has no stored hours to seed. Its motohodiny and tonnage on Stroje are
+summed from the approved usage rows every time the page is rendered.
 
 ### Users
 

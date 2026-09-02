@@ -168,7 +168,7 @@ Dole jsou akce:
 |---|---|
 | **Schválit** | Zakázka se započítá do Hodin i Strojů. |
 | **Upravit** | Otevře stejný formulář jako Zpracování, předvyplněný. Uložením se řádky přepíšou. **Schválení tím nevzniká** — po opravě je ještě potřeba schválit. |
-| **Smazat** | Nevratně smaže celou zakázku i její řádky; motohodiny se strojům odečtou. |
+| **Smazat** | Nevratně smaže celou zakázku i její řádky. Její hodiny i tuny tím ze Strojů a Hodin zmizí. |
 
 Při úpravě platí stejná pravidla jako při zápisu — hlavně že se **součty
 spotřeby a výroby musí rovnat**. Pole *hodiny* patří tomu, kdo zakázku zapsal,

@@ -1,9 +1,6 @@
 from django.conf import settings
-from django.db import models, transaction
-from django.db.models import F
+from django.db import models
 from django.utils import timezone
-
-from materials.models import Machine
 
 
 class WorkOrder(models.Model):
@@ -83,7 +80,6 @@ class WorkerHours(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='worked_hours', verbose_name='pracovník'
     )
     hours = models.DecimalField(max_digits=12, decimal_places=2, verbose_name='hodiny')
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name='vytvořeno')
 
     class Meta:
         ordering = ['user__username']
@@ -111,34 +107,13 @@ class MachineUsage(models.Model):
     # answer — unknown, not zero. The Transform form requires it on every row
     # it writes, alongside the machine and its hours.
     tons = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, verbose_name='odpracované tuny')
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name='vytvořeno')
 
     class Meta:
-        ordering = ['-created_at']
+        # Newest first, and within a job the reverse of the order typed. The row
+        # has no timestamp of its own; its date is the job's `performed_on`.
+        ordering = ['-id']
         verbose_name = 'využití stroje'
         verbose_name_plural = 'využití strojů'
 
     def __str__(self):
         return f'{self.machine} - {self.hours}h (WorkOrder #{self.work_order_id})'
-
-    def save(self, *args, **kwargs):
-        """Keep Machine.total_hours in sync no matter how this row is written —
-        the Transform form and direct admin edits both have to go through here."""
-        is_new = self._state.adding
-        with transaction.atomic():
-            old = None if is_new else MachineUsage.objects.select_for_update().get(pk=self.pk)
-            super().save(*args, **kwargs)
-            if is_new:
-                Machine.objects.filter(pk=self.machine_id).update(total_hours=F('total_hours') + self.hours)
-            elif old.machine_id == self.machine_id:
-                delta = self.hours - old.hours
-                if delta:
-                    Machine.objects.filter(pk=self.machine_id).update(total_hours=F('total_hours') + delta)
-            else:
-                Machine.objects.filter(pk=old.machine_id).update(total_hours=F('total_hours') - old.hours)
-                Machine.objects.filter(pk=self.machine_id).update(total_hours=F('total_hours') + self.hours)
-
-    def delete(self, *args, **kwargs):
-        with transaction.atomic():
-            Machine.objects.filter(pk=self.machine_id).update(total_hours=F('total_hours') - self.hours)
-            super().delete(*args, **kwargs)

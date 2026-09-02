@@ -1,5 +1,3 @@
-from decimal import Decimal
-
 from django.db import models
 
 RETIRE_HELP_TEXT = (
@@ -27,9 +25,6 @@ class Material(models.Model):
 class Machine(models.Model):
     name = models.CharField(max_length=100, unique=True, verbose_name='název')
     is_active = models.BooleanField(default=True, help_text=RETIRE_HELP_TEXT, verbose_name='aktivní')
-    total_hours = models.DecimalField(
-        max_digits=12, decimal_places=2, default=Decimal('0'), verbose_name='motohodiny celkem'
-    )
     hourly_rate = models.DecimalField(
         max_digits=10,
         decimal_places=2,

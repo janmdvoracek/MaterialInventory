@@ -28,10 +28,6 @@ class MachineModelTests(TestCase):
         machine = Machine.objects.create(name='Crusher A')
         self.assertEqual(str(machine), 'Crusher A')
 
-    def test_machine_total_hours_defaults_to_zero(self):
-        machine = Machine.objects.create(name='Crusher A')
-        self.assertEqual(machine.total_hours, Decimal('0'))
-
     def test_machine_hourly_rate_defaults_to_none(self):
         machine = Machine.objects.create(name='Crusher A')
         self.assertIsNone(machine.hourly_rate)
@@ -79,12 +75,6 @@ class SeedDataCommandTests(TestCase):
         self._run(machines='name\nCrusher A\n')
         self._run(machines='name\nCrusher A\n')
         self.assertEqual(Machine.objects.filter(name='Crusher A').count(), 1)
-
-    def test_seed_machines_does_not_touch_total_hours(self):
-        machine = Machine.objects.create(name='Crusher A', total_hours=Decimal('12.5'))
-        self._run(machines='name\nCrusher A\n')
-        machine.refresh_from_db()
-        self.assertEqual(machine.total_hours, Decimal('12.5'))
 
     def test_seed_machines_hourly_rate_column(self):
         self._run(machines='name,hourly_rate\nWarrior,83\nKladivo,\n')

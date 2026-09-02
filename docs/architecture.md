@@ -29,21 +29,19 @@ consumed or what it produced.
 | `material` | What was processed. |
 | `quantity` | **Signed.** Negative for consumed, positive for produced. Always tonnes — a material has no unit field, so the `t` shown in the form prompt and the job detail is hardcoded. |
 | `movement_type` | `TRANSFORM_CONSUME` or `TRANSFORM_PRODUCE`. Nothing else. |
-| `work_order` | The job this line belongs to. Nullable only because pre-removal rows had no job. |
-| `created_at` | Defaults to now. Overridable, but nothing overrides it today. |
-| `recorded_at` | When the row was written. `auto_now_add`, so it cannot be set. |
-| `notes`, `created_by` | Audit trail. |
+| `work_order` | The job this line belongs to. **Required.** |
+| `created_by` | Who recorded it. |
 
-Rows written before the removal may still carry raw `RECEIPT`, `SHIPMENT` or
-`ADJUSTMENT` values. Those are no longer members of `MovementType`, so
-`get_movement_type_display()` returns the bare string for them. They were left in
-the database on purpose — deleting them was not part of the change.
+**A line item has no timestamp of its own.** Its date is its job's
+`performed_on`, and `Meta.ordering = ['id']` puts the rows of a job in the order
+they were typed. It used to carry both a `created_at` and a `recorded_at`, plus
+a `notes` field no form ever wrote; migration `0007` dropped all three because
+nothing read them.
 
-`created_at` stays `default=timezone.now` rather than `auto_now_add` so that a
-job could be back-dated later without a schema change. The back-dating checkbox
-that used to set it (*„Jiné datum a čas než teď"*) lived on the Příjem and Výdej
-forms and went with them, so in practice `created_at` always equals
-`recorded_at` right now.
+The same migration deleted the last two rows carrying the retired `RECEIPT` /
+`SHIPMENT` values, which were also the only movements without a job — so
+`work_order` stopped being nullable. `MovementType` now describes every row in
+the table.
 
 ### Not in the admin
 
@@ -251,9 +249,6 @@ things it has to get right, and both have a test:
   and the editing manager (so it excludes the author, not the manager, and the
   manager's privilege decides its width), and rewritten `StockMovement` rows
   keep `created_by = author`.
-- `_write_job_rows` and `job_delete` delete `MachineUsage` **one instance at a
-  time**. See `Machine.total_hours` below — a cascade or a queryset delete would
-  leave a machine carrying the hours of a job that no longer exists.
 
 ### `WorkerHours` vs `MachineUsage`
 
@@ -267,7 +262,7 @@ Two unrelated numbers. Do not derive one from the other.
 - **`MachineUsage.hours`** is motohodiny — machine runtime.
 
 The Hodiny report totals `WorkerHours` only, so it has no fixed relationship to
-`Machine.total_hours`. That is not a reconciliation bug.
+the motohodiny on Stroje. That is not a reconciliation bug.
 
 `MachineUsage.tons` is a third independent number: how much material that one
 machine put through on that job. **It is not part of the mass balance.** Chained
@@ -294,33 +289,24 @@ the `collaborators` multi-select and the `WorkerHours` inline as independent
 widgets, so an admin edit can leave a collaborator with no hours row, or a
 person with hours who is not a collaborator.
 
-### `Machine.total_hours`
+### Machine totals are derived, never stored
 
-A plain running counter, not derived from `MachineUsage` rows. It is maintained
-by `MachineUsage.save()` and `.delete()` via `F()` expressions, which handle
-creation, an hours delta on edit, and reassignment to a different machine.
+`Machine` carries no running counter. Both figures on Stroje are annotations
+over the `MachineUsage` rows the page's filter allows:
+`Sum('usages__hours')` and `Sum('usages__tons')`.
 
-That logic lives on the **model**, not in the view, so that Django admin inline
-edits keep the counter correct too.
+There used to be a `Machine.total_hours` column, maintained by
+`MachineUsage.save()`/`.delete()` with `F()` expressions and a `select_for_update()`
+on the old row. It came with a standing rule — never `bulk_create`,
+`queryset.update()` or `queryset.delete()` a usage row, and never let a
+`WorkOrder` cascade onto one — because any of those silently desynchronised it.
+It also counted jobs that were still waiting for approval, so it never agreed
+with the page anyway. **No page read it**, so migration `materials.0011` dropped
+the column and the model methods with it. `MachineUsage` is now an ordinary
+model, and `_write_job_rows` and `job_delete` just bulk-delete their rows.
 
-> **Therefore: never write `MachineUsage` through `bulk_create()`,
-> `queryset.update()`, or `queryset.delete()`.** They bypass the model methods
-> and silently desynchronise the counter, with no error. A **cascading delete
-> counts as one of those**: deleting a `WorkOrder` does not call
-> `MachineUsage.delete()`, which is why `job_delete` walks the rows itself.
-
-**The Stroje page does not read this counter.** The counter is bumped the moment
-a row is written, so it includes jobs still waiting for approval;
-`machine_dashboard` instead annotates `Sum('usages__hours')` filtered to
-approved jobs, so all three read-only pages report the same scope. The counter
-stays as it is — the admin shows it, and it is still what `MachineUsage` keeps
-correct — so the two numbers legitimately differ while a job is pending.
-
-The same annotation also sums **`usages__tons`**, so each row carries the
-machine's motohodiny and its tonnage side by side. There is no counter field
-behind the tonnage — nothing like `total_hours` — so the annotation is the only
-source. `tons` is nullable (rows predating the column mean *unknown*, not zero)
-and `Sum` skips NULLs, so a machine with no recorded tonnage sums to `None` and
+`tons` is nullable (rows predating the column mean *unknown*, not zero) and
+`Sum` skips NULLs, so a machine with no recorded tonnage sums to `None` and
 renders as a dash; `0 t` would claim it processed nothing.
 
 ### Stroje is one page, laid out like Hodiny

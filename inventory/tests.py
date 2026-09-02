@@ -1,7 +1,6 @@
 from decimal import Decimal
 
 from django.test import TestCase
-from django.utils import timezone
 
 from accounts.models import User
 from materials.models import Material
@@ -14,8 +13,12 @@ class StockMovementTestCase(TestCase):
     def setUp(self):
         self.material = Material.objects.create(sku='SKU1', name='Steel Bar')
         self.worker = User.objects.create_user(username='worker', password='pw', role=User.Role.WORKER)
+        # Every line item belongs to a job — the column stopped being nullable
+        # when the last job-less rows were deleted in inventory migration 0007.
+        self.work_order = WorkOrder.objects.create(created_by=self.worker, description='job')
 
     def _line_item(self, quantity, movement_type=StockMovement.MovementType.TRANSFORM_PRODUCE, **kwargs):
+        kwargs.setdefault('work_order', self.work_order)
         return StockMovement.objects.create(
             material=self.material,
             quantity=quantity,
@@ -46,30 +49,24 @@ class StockMovementModelTests(StockMovementTestCase):
         self.assertEqual(produced.get_movement_type_display(), 'Zpracování – výroba')
 
     def test_only_the_two_transform_types_remain(self):
-        # Receipt, shipment and adjustment went with stock tracking. Existing
-        # rows may still carry those raw values, but nothing writes new ones.
+        # Receipt, shipment and adjustment went with stock tracking, and the
+        # last rows carrying those raw values went with migration 0007.
         self.assertEqual(
             [value for value, _ in StockMovement.MovementType.choices],
             ['TRANSFORM_CONSUME', 'TRANSFORM_PRODUCE'],
         )
 
-    def test_created_at_defaults_to_now(self):
-        before = timezone.now()
-        movement = self._line_item(Decimal('1'))
-        self.assertGreaterEqual(movement.created_at, before)
-        self.assertLessEqual(movement.created_at, timezone.now())
+    def test_a_line_item_has_no_timestamp_of_its_own(self):
+        # Its date is the job's `performed_on`. The two timestamps it used to
+        # carry were never read.
+        field_names = {f.name for f in StockMovement._meta.get_fields()}
+        self.assertNotIn('created_at', field_names)
+        self.assertNotIn('recorded_at', field_names)
 
-    def test_created_at_is_overridable_unlike_recorded_at(self):
-        backdated = timezone.now() - timezone.timedelta(days=3)
-        movement = self._line_item(Decimal('1'), created_at=backdated)
-        self.assertEqual(movement.created_at, backdated)
-        # recorded_at is auto_now_add, so it keeps a truthful entry timestamp.
-        self.assertGreater(movement.recorded_at, backdated)
-
-    def test_ordering_is_newest_first(self):
-        older = self._line_item(Decimal('1'), created_at=timezone.now() - timezone.timedelta(hours=2))
-        newer = self._line_item(Decimal('1'))
-        self.assertEqual(list(StockMovement.objects.all()), [newer, older])
+    def test_ordering_is_the_order_the_rows_were_typed(self):
+        first = self._line_item(Decimal('1'))
+        second = self._line_item(Decimal('1'))
+        self.assertEqual(list(StockMovement.objects.all()), [first, second])
 
 
 class StockMovementWorkOrderTests(StockMovementTestCase):
@@ -79,7 +76,7 @@ class StockMovementWorkOrderTests(StockMovementTestCase):
         self._line_item(Decimal('3'), work_order=work_order)
         self.assertEqual(work_order.movements.count(), 2)
 
-    def test_work_order_is_nullable_for_rows_predating_stock_removal(self):
-        # Receipts and shipments had no work order, and those rows still exist.
-        movement = self._line_item(Decimal('1'))
-        self.assertIsNone(movement.work_order)
+    def test_a_line_item_cannot_exist_without_a_job(self):
+        # It was nullable only for the receipt/shipment rows that predated the
+        # stock removal; migration 0007 deleted the last of them.
+        self.assertFalse(StockMovement._meta.get_field('work_order').null)

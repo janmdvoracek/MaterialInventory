@@ -128,15 +128,13 @@ class TransformCreateTests(TestCase):
         self.assertEqual(consumed.count(), 2)
         self.assertEqual(sum((m.quantity for m in consumed), Decimal('0')), Decimal('-12'))
 
-    def test_transform_with_single_machine_increments_total_hours(self):
+    def test_transform_records_a_machine_row(self):
         response = self._post(
             [{'material': self.material_raw, 'quantity': Decimal('3')}],
             [{'material': self.material_finished, 'quantity': Decimal('3')}],
             machine_rows=[{'machine': self.machine_a, 'hours': Decimal('2.5'), 'tons': Decimal('8')}],
         )
         self.assertRedirects(response, reverse('transform_create'))
-        self.machine_a.refresh_from_db()
-        self.assertEqual(self.machine_a.total_hours, Decimal('2.5'))
         usage = MachineUsage.objects.get()
         self.assertEqual(usage.machine, self.machine_a)
         self.assertEqual(usage.hours, Decimal('2.5'))
@@ -194,11 +192,8 @@ class TransformCreateTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(WorkOrder.objects.exists())
         self.assertFalse(MachineUsage.objects.exists())
-        # A rejected row must not have moved the counter either.
-        self.machine_a.refresh_from_db()
-        self.assertEqual(self.machine_a.total_hours, Decimal('0'))
 
-    def test_transform_with_chained_machines_each_increment_independently(self):
+    def test_transform_with_chained_machines_are_recorded_separately(self):
         response = self._post(
             [{'material': self.material_raw, 'quantity': Decimal('3')}],
             [{'material': self.material_finished, 'quantity': Decimal('3')}],
@@ -208,14 +203,13 @@ class TransformCreateTests(TestCase):
             ],
         )
         self.assertRedirects(response, reverse('transform_create'))
-        self.machine_a.refresh_from_db()
-        self.machine_b.refresh_from_db()
-        self.assertEqual(self.machine_a.total_hours, Decimal('2'))
-        self.assertEqual(self.machine_b.total_hours, Decimal('1.5'))
         work_order = WorkOrder.objects.get()
-        self.assertEqual(MachineUsage.objects.filter(work_order=work_order).count(), 2)
+        self.assertEqual(
+            [(u.machine, u.hours) for u in MachineUsage.objects.filter(work_order=work_order).order_by('id')],
+            [(self.machine_a, Decimal('2.00')), (self.machine_b, Decimal('1.50'))],
+        )
 
-    def test_transform_same_machine_used_twice_accumulates(self):
+    def test_transform_same_machine_used_twice_writes_two_rows(self):
         response = self._post(
             [{'material': self.material_raw, 'quantity': Decimal('3')}],
             [{'material': self.material_finished, 'quantity': Decimal('3')}],
@@ -225,8 +219,6 @@ class TransformCreateTests(TestCase):
             ],
         )
         self.assertRedirects(response, reverse('transform_create'))
-        self.machine_a.refresh_from_db()
-        self.assertEqual(self.machine_a.total_hours, Decimal('2'))
         self.assertEqual(MachineUsage.objects.filter(machine=self.machine_a).count(), 2)
 
     def test_empty_machine_formset_is_optional(self):
@@ -485,8 +477,6 @@ class TransformCreateTests(TestCase):
         self.assertEqual(work_order.movements.count(), 2)
         self.assertEqual(work_order.machine_usages.count(), 1)
         self.assertEqual(work_order.worker_hours.count(), 2)
-        self.machine_a.refresh_from_db()
-        self.assertEqual(self.machine_a.total_hours, Decimal('2'))
 
     def test_unbalanced_totals_are_rejected(self):
         response = self._post(
@@ -509,8 +499,6 @@ class TransformCreateTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(WorkerHours.objects.exists())
         self.assertFalse(MachineUsage.objects.exists())
-        self.machine_a.refresh_from_db()
-        self.assertEqual(self.machine_a.total_hours, Decimal('0'))
 
     def test_balance_compares_totals_not_individual_rows(self):
         # The normal case: one input crushed into several output fractions.
@@ -569,48 +557,6 @@ class TransformCreateTests(TestCase):
         self.assertContains(response, 'výroba 9,5')
 
 
-class MachineUsageModelTests(TestCase):
-    def setUp(self):
-        self.user = User.objects.create_user(username='worker', password='pw')
-        self.work_order = WorkOrder.objects.create(created_by=self.user, description='job')
-        self.machine_a = Machine.objects.create(name='A')
-        self.machine_b = Machine.objects.create(name='B')
-
-    def test_create_increments_total_hours(self):
-        MachineUsage.objects.create(work_order=self.work_order, machine=self.machine_a, hours=Decimal('2'))
-        self.machine_a.refresh_from_db()
-        self.assertEqual(self.machine_a.total_hours, Decimal('2'))
-
-    def test_increasing_hours_adjusts_by_delta(self):
-        usage = MachineUsage.objects.create(work_order=self.work_order, machine=self.machine_a, hours=Decimal('2'))
-        usage.hours = Decimal('5')
-        usage.save()
-        self.machine_a.refresh_from_db()
-        self.assertEqual(self.machine_a.total_hours, Decimal('5'))
-
-    def test_decreasing_hours_adjusts_by_delta(self):
-        usage = MachineUsage.objects.create(work_order=self.work_order, machine=self.machine_a, hours=Decimal('5'))
-        usage.hours = Decimal('2')
-        usage.save()
-        self.machine_a.refresh_from_db()
-        self.assertEqual(self.machine_a.total_hours, Decimal('2'))
-
-    def test_reassigning_machine_moves_hours_between_machines(self):
-        usage = MachineUsage.objects.create(work_order=self.work_order, machine=self.machine_a, hours=Decimal('4'))
-        usage.machine = self.machine_b
-        usage.save()
-        self.machine_a.refresh_from_db()
-        self.machine_b.refresh_from_db()
-        self.assertEqual(self.machine_a.total_hours, Decimal('0'))
-        self.assertEqual(self.machine_b.total_hours, Decimal('4'))
-
-    def test_delete_decrements_total_hours(self):
-        usage = MachineUsage.objects.create(work_order=self.work_order, machine=self.machine_a, hours=Decimal('4'))
-        usage.delete()
-        self.machine_a.refresh_from_db()
-        self.assertEqual(self.machine_a.total_hours, Decimal('0'))
-
-
 class WorkOrderAdminTests(TestCase):
     def setUp(self):
         self.material = Material.objects.create(sku='ADM1', name='Steel')
@@ -659,8 +605,6 @@ class WorkOrderAdminTests(TestCase):
         usage = MachineUsage.objects.get(work_order=work_order)
         self.assertEqual(usage.machine, self.machine)
         self.assertEqual(usage.hours, Decimal('3'))
-        self.machine.refresh_from_db()
-        self.assertEqual(self.machine.total_hours, Decimal('3'))
 
         # Labour hours are correctable from the admin as well as the form.
         entry = WorkerHours.objects.get(work_order=work_order)
@@ -995,7 +939,7 @@ class MachineDashboardTests(TestCase):
     def setUp(self):
         self.worker = User.objects.create_user(username='worker', password='pw', role=User.Role.WORKER)
         self.machine_active = Machine.objects.create(name='Crusher A')
-        self.machine_retired = Machine.objects.create(name='Old Excavator', total_hours=Decimal('99'), is_active=False)
+        self.machine_retired = Machine.objects.create(name='Old Excavator', is_active=False)
         self.client.force_login(self.worker)
 
     def _usage(self, hours, tons=None, status=WorkOrder.Status.APPROVED):
@@ -1066,14 +1010,11 @@ class MachineDashboardTests(TestCase):
         self.assertContains(response, '3,0 h')
 
     def test_dashboard_ignores_hours_from_unapproved_jobs(self):
-        # Machine.total_hours is bumped the moment the row is written, so the
-        # page cannot read it: a job nobody has signed off must not move the
-        # number a manager reads off this screen.
+        # A job nobody has signed off must not move the number a manager reads
+        # off this screen.
         self._usage(Decimal('4'), status=WorkOrder.Status.PENDING)
         response = self.client.get(reverse('machine_dashboard'))
         self.assertContains(response, '0,0 h')
-        self.machine_active.refresh_from_db()
-        self.assertEqual(self.machine_active.total_hours, Decimal('4'))
 
     def test_dashboard_shows_zero_for_machine_without_usage(self):
         response = self.client.get(reverse('machine_dashboard'))
@@ -1912,23 +1853,18 @@ class JobEditTests(ReviewFixtureMixin, TestCase):
         # Collaborators stay derived from the hours rows.
         self.assertEqual(list(work_order.collaborators.all()), [])
 
-    def test_edit_keeps_machine_total_hours_correct(self):
+    def test_edit_replaces_the_machine_rows(self):
         work_order = self.submit_job(self.worker, machine_rows=[{'machine': self.machine_a, 'hours': '3'}])
-        self.machine_a.refresh_from_db()
-        self.assertEqual(self.machine_a.total_hours, Decimal('3'))
         self._edit(
             work_order,
             consumed_rows=[{'material': self.material_raw, 'quantity': Decimal('5')}],
             produced_rows=[{'material': self.material_finished, 'quantity': Decimal('5')}],
             machine_rows=[{'machine': self.machine_b, 'hours': '5'}],
         )
-        self.machine_a.refresh_from_db()
-        self.machine_b.refresh_from_db()
-        # Replacing a machine row has to give the hours back to the old machine:
-        # a queryset delete here would skip MachineUsage.delete() and leave
-        # Crusher A carrying hours it never ran.
-        self.assertEqual(self.machine_a.total_hours, Decimal('0'))
-        self.assertEqual(self.machine_b.total_hours, Decimal('5'))
+        self.assertEqual(
+            [(u.machine, u.hours) for u in work_order.machine_usages.all()],
+            [(self.machine_b, Decimal('5.00'))],
+        )
 
     def test_collaborator_choices_exclude_the_author_not_the_reviewer(self):
         work_order = self.submit_job(self.worker)
@@ -1957,14 +1893,3 @@ class JobDeleteTests(ReviewFixtureMixin, TestCase):
         self.assertFalse(StockMovement.objects.exists())
         self.assertFalse(WorkerHours.objects.exists())
         self.assertFalse(MachineUsage.objects.exists())
-
-    def test_delete_gives_the_hours_back_to_the_machine(self):
-        # A cascading delete would skip MachineUsage.delete() and leave the
-        # counter carrying a job that no longer exists.
-        work_order = self.submit_job(self.worker, machine_rows=[{'machine': self.machine_a, 'hours': '3'}])
-        self.machine_a.refresh_from_db()
-        self.assertEqual(self.machine_a.total_hours, Decimal('3'))
-        self.client.force_login(self.manager)
-        self.client.post(reverse('job_delete', args=[work_order.pk]))
-        self.machine_a.refresh_from_db()
-        self.assertEqual(self.machine_a.total_hours, Decimal('0'))

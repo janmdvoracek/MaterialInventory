@@ -1,6 +1,5 @@
 from django.conf import settings
 from django.db import models
-from django.utils import timezone
 
 
 class StockMovement(models.Model):
@@ -10,9 +9,9 @@ class StockMovement(models.Model):
     these into an on-hand quantity and nothing checks sufficiency before
     writing one; the app tracks jobs, hours and machines, not inventory levels.
 
-    Rows written before stock tracking was removed may still carry the retired
-    RECEIPT / SHIPMENT / ADJUSTMENT values, which are no longer in `MovementType`
-    and no longer render a Czech label. They are left in place deliberately.
+    A row has no timestamp of its own. Its date is the job's `performed_on`, and
+    its position within the job is the order it was typed — which is what `id`
+    ordering below gives.
     """
 
     class MovementType(models.TextChoices):
@@ -33,23 +32,15 @@ class StockMovement(models.Model):
         'workorders.WorkOrder',
         on_delete=models.PROTECT,
         related_name='movements',
-        null=True,
-        blank=True,
         verbose_name='zakázka',
     )
-    notes = models.CharField(max_length=255, blank=True, verbose_name='poznámka')
-    # Left as default=timezone.now rather than auto_now_add: the back-dating
-    # checkbox that used to override it lived on the removed Příjem/Výdej forms,
-    # so nothing writes a value here today and this always equals recorded_at.
-    # Kept overridable so a job can be back-dated later without a schema change.
-    created_at = models.DateTimeField(default=timezone.now, verbose_name='datum a čas pohybu')
-    recorded_at = models.DateTimeField(auto_now_add=True, verbose_name='zaznamenáno')
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='stock_movements', verbose_name='vytvořil'
     )
 
     class Meta:
-        ordering = ['-created_at']
+        # By insertion, which within a job is the order the rows were typed.
+        ordering = ['id']
         indexes = [
             models.Index(fields=['material']),
         ]

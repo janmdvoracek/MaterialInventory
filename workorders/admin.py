@@ -8,22 +8,19 @@ from .models import MachineUsage, WorkerHours, WorkOrder
 class MovementInline(admin.TabularInline):
     model = StockMovement
     extra = 1
-    fields = ('material', 'movement_type', 'quantity', 'notes', 'created_at')
-    readonly_fields = ('created_at',)
+    fields = ('material', 'movement_type', 'quantity')
 
 
 class MachineUsageInline(admin.TabularInline):
     model = MachineUsage
     extra = 1
-    fields = ('machine', 'hours', 'tons', 'created_at')
-    readonly_fields = ('created_at',)
+    fields = ('machine', 'hours', 'tons')
 
 
 class WorkerHoursInline(admin.TabularInline):
     model = WorkerHours
     extra = 1
-    fields = ('user', 'hours', 'created_at')
-    readonly_fields = ('created_at',)
+    fields = ('user', 'hours')
 
 
 @admin.register(WorkOrder)

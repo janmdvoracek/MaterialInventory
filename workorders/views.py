@@ -134,12 +134,8 @@ def _write_job_rows(work_order, author, own_hours, consumed_rows, produced_rows,
             created_by=author,
         )
 
-    # One instance at a time, never queryset.delete(): MachineUsage.delete() is
-    # what keeps Machine.total_hours in sync, and a bulk delete skips it.
-    for usage in work_order.machine_usages.all():
-        usage.delete()
+    work_order.machine_usages.all().delete()
     for row in machine_rows:
-        # MachineUsage.save() keeps Machine.total_hours in sync.
         MachineUsage.objects.create(
             work_order=work_order,
             machine=row['machine'],
@@ -294,13 +290,12 @@ def _filtered_machine_usages(request):
     form = MachineFilterForm(request.GET or None, user=request.user)
     # Unapproved jobs are proposals, not evidence — they stay out of the ledger
     # until a manager signs them off.
-    # Dated by the job, not by the row: `MachineUsage.created_at` is when the
-    # row was written, and `job_edit` rewrites every row, so a corrected job
-    # would otherwise drift to the day it was corrected.
+    # A usage row has no date of its own — the job's `performed_on` is its date,
+    # and `-id` only breaks ties within a day.
     usages = (
         MachineUsage.objects.filter(work_order__status=WorkOrder.Status.APPROVED)
         .select_related('machine', 'work_order', 'work_order__created_by')
-        .order_by('-work_order__performed_on', '-created_at')
+        .order_by('-work_order__performed_on', '-id')
     )
     if not request.user.is_manager_or_admin:
         # Workers only ever see their own machine usage, plus usage from
@@ -700,15 +695,11 @@ def job_delete(request, pk):
     work_order = get_object_or_404(WorkOrder.objects.select_related('created_by'), pk=pk)
     if request.method == 'POST':
         with transaction.atomic():
-            # Machine usage one row at a time, and before the cascade could get
-            # to it: a cascading delete does not call MachineUsage.delete(), so
-            # Machine.total_hours would keep the hours of a job that no longer
-            # exists. The line items have to go first as well — their FK to the
-            # job is PROTECT, so the job cannot be deleted while they point at
-            # it.
-            for usage in work_order.machine_usages.all():
-                usage.delete()
+            # The line items have to go first: their FK to the job is PROTECT,
+            # so the job cannot be deleted while they point at it. The rest
+            # would cascade, but deleting them here keeps the order explicit.
             work_order.movements.all().delete()
+            work_order.machine_usages.all().delete()
             work_order.worker_hours.all().delete()
             work_order.collaborators.clear()
             work_order.delete()
