@@ -27,6 +27,7 @@
 </div>
 {% endif %}
 <div class="card">
+    {% include "workorders/_date_presets.html" %}
     <form method="get">
         {{ form.as_p }}
         <button type="submit">Filtrovat</button>

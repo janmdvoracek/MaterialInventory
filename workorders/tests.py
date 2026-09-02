@@ -10,7 +10,7 @@ from inventory.models import StockMovement
 from materials.models import Location, Machine, Material
 
 from .models import MachineUsage, WorkerHours, WorkOrder
-from .views import MY_JOBS_LIMIT
+from .views import MY_JOBS_LIMIT, _last_month
 
 
 class TransformCreateTests(TestCase):
@@ -1319,6 +1319,84 @@ class MyJobsTests(ReviewFixtureMixin, TestCase):
         my_jobs = list(response.context['my_jobs'])
         self.assertEqual(len(my_jobs), MY_JOBS_LIMIT)
         self.assertEqual(my_jobs[0], newest)
+
+
+class DatePresetTests(ReviewFixtureMixin, TestCase):
+    """The quick date ranges above every filter form.
+
+    They are links, not a form field, so what they have to get right is the
+    querystring: the dates themselves, everything else the user already picked,
+    and dropping `page`.
+    """
+
+    LABELS = ('Vše', 'Posledních 7 dní', 'Posledních 30 dní', 'Minulý měsíc')
+    PAGES = ('machine_usage_history', 'time_worked', 'job_dashboard')
+
+    def preset(self, response, key):
+        return next(row for row in response.context['date_presets'] if row['key'] == key)
+
+    def test_every_filtered_page_offers_the_same_ranges(self):
+        # The manager sees all three; a worker only reaches two of them, and
+        # those are covered by the scoping tests elsewhere.
+        self.client.force_login(self.manager)
+        for name in self.PAGES:
+            with self.subTest(page=name):
+                response = self.client.get(reverse(name))
+                self.assertEqual([row['label'] for row in response.context['date_presets']], list(self.LABELS))
+                for label in self.LABELS:
+                    self.assertContains(response, label)
+
+    def test_the_ranges_end_today_and_include_it(self):
+        today = timezone.localdate()
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('job_dashboard'))
+        for key, days in (('7d', 6), ('30d', 29)):
+            with self.subTest(preset=key):
+                querystring = self.preset(response, key)['querystring']
+                self.assertIn(f'date_from={today - timedelta(days=days)}', querystring)
+                self.assertIn(f'date_to={today}', querystring)
+
+    def test_last_month_is_the_whole_previous_calendar_month(self):
+        self.assertEqual(_last_month(date(2026, 3, 15)), (date(2026, 2, 1), date(2026, 2, 28)))
+        # Across a year boundary, and onto a 31-day month.
+        self.assertEqual(_last_month(date(2026, 1, 1)), (date(2025, 12, 1), date(2025, 12, 31)))
+
+    def test_a_range_actually_filters(self):
+        recent = self.submit_job(self.worker)
+        old = self.submit_job(self.worker)
+        WorkOrder.objects.filter(pk=old.pk).update(created_at=timezone.now() - timedelta(days=45))
+        self.client.force_login(self.manager)
+        querystring = self.preset(self.client.get(reverse('job_dashboard')), '30d')['querystring']
+        response = self.client.get(f'{reverse("job_dashboard")}?{querystring}')
+        self.assertEqual(list(response.context['page_obj'].object_list), [recent])
+
+    def test_vse_clears_the_range(self):
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('job_dashboard'), {'date_from': '2026-01-01', 'date_to': '2026-01-31'})
+        self.assertEqual(self.preset(response, 'all')['querystring'], '')
+
+    def test_the_range_in_effect_is_the_active_one(self):
+        today = timezone.localdate()
+        self.client.force_login(self.manager)
+        response = self.client.get(
+            reverse('job_dashboard'),
+            {'date_from': (today - timedelta(days=6)).isoformat(), 'date_to': today.isoformat()},
+        )
+        self.assertEqual([row['key'] for row in response.context['date_presets'] if row['active']], ['7d'])
+
+    def test_nothing_is_active_until_a_range_is_picked(self):
+        # "Vše" is: no dates at all, which is where an unfiltered page starts.
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('job_dashboard'))
+        self.assertEqual([row['key'] for row in response.context['date_presets'] if row['active']], ['all'])
+
+    def test_the_other_filters_survive_the_tap(self):
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('job_dashboard'), {'created_by': self.worker.pk, 'page': '2'})
+        querystring = self.preset(response, '7d')['querystring']
+        self.assertIn(f'created_by={self.worker.pk}', querystring)
+        # A new range starts at page one.
+        self.assertNotIn('page=', querystring)
 
 
 class JobDashboardTests(ReviewFixtureMixin, TestCase):

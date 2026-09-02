@@ -320,6 +320,31 @@ plain page load.
 `JobFilterForm` has no worker variant: the page it filters is manager/admin only
 in the view, so there is no field to hide and no scoping to double up on.
 
+### Quick date ranges
+
+Every filter card opens with a row of quick ranges — **Vše**, *posledních 7 dní*,
+*posledních 30 dní*, *minulý měsíc* — from `DATE_PRESETS` and
+`_date_preset_links(request)` in `workorders/views.py`, rendered by
+`templates/workorders/_date_presets.html`.
+
+They are plain links that set `date_from`/`date_to` in the querystring rather
+than a field on the form: one tap on a phone, no JS, and since the form is bound
+afterwards the range stays visible in the two date inputs. Each link carries the
+rest of `request.GET` over, so picking a range does not drop the machine or
+worker already chosen, and drops `page`, because a new range starts at page one.
+The link whose range is currently in effect renders as the solid button, which
+makes the row a read-out as well as a control.
+
+Dates go in as ISO. Czech `DATE_INPUT_FORMATS` is `%d.%m.%Y`-first and does not
+list ISO, but Django appends `%Y-%m-%d` to every locale's list, so they parse —
+and `<input type="date">` accepts nothing else anyway. The spans include today,
+so „posledních 7 dní" is today plus the six before it; „Vše" removes both
+parameters, which is the way back out of a range without emptying a date input
+by hand.
+
+Adding a filtered page means both halves: `'date_presets':
+_date_preset_links(request)` in the context *and* the include in the template.
+
 ## Time-worked reporting
 
 `workorders/views.py::_time_worked_summary` sums `WorkerHours.hours` per person

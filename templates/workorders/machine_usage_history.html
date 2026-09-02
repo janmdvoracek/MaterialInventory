@@ -6,6 +6,7 @@
     <p class="messages error">Filtr je neplatný, proto se nezobrazují žádné výsledky. Opravte prosím zvýrazněná pole.</p>
 {% endif %}
 <div class="card">
+    {% include "workorders/_date_presets.html" %}
     <form method="get">
         {{ form.as_p }}
         <button type="submit">Filtrovat</button>

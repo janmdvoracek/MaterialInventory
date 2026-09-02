@@ -1,4 +1,5 @@
 from collections import defaultdict
+from datetime import timedelta
 from decimal import Decimal
 
 from django.contrib import messages
@@ -36,6 +37,25 @@ MY_JOBS_LIMIT = 5
 # Reviewing a job is a manager/admin job. Gated on the view, not just by hiding
 # the nav entry — a hidden link is not access control.
 REVIEWER_ROLES = (User.Role.MANAGER, User.Role.ADMIN)
+
+
+def _last_month(today):
+    """The previous calendar month, first day to last."""
+    last_day = today.replace(day=1) - timedelta(days=1)
+    return last_day.replace(day=1), last_day
+
+
+# Quick ranges offered above every filter form. Each entry maps today's date to
+# the (from, to) pair the links should set — `None` clears that end of the
+# range, which is what makes "Vše" the way back out of a range on a phone, where
+# emptying a date input by hand is fiddly. The spans include today, so
+# "posledních 7 dní" is today plus the six before it.
+DATE_PRESETS = (
+    ('all', 'Vše', lambda today: (None, None)),
+    ('7d', 'Posledních 7 dní', lambda today: (today - timedelta(days=6), today)),
+    ('30d', 'Posledních 30 dní', lambda today: (today - timedelta(days=29), today)),
+    ('last_month', 'Minulý měsíc', _last_month),
+)
 
 
 def _collect_rows(consumed_formset, produced_formset, machine_formset, worker_formset):
@@ -259,8 +279,52 @@ def machine_usage_history(request):
     return render(
         request,
         'workorders/machine_usage_history.html',
-        {'form': form, 'page_obj': page_obj, 'querystring': querystring.urlencode()},
+        {
+            'form': form,
+            'page_obj': page_obj,
+            'querystring': querystring.urlencode(),
+            'date_presets': _date_preset_links(request),
+        },
     )
+
+
+def _date_preset_links(request):
+    """The quick-range links for a filter form, one per `DATE_PRESETS` entry.
+
+    Plain links rather than a form field: one tap on a phone, no JS, and the
+    range they set stays visible in the two date inputs afterwards because a
+    bound form re-renders whatever the querystring holds. Dates go in as
+    ISO — Django appends `%Y-%m-%d` to every locale's `DATE_INPUT_FORMATS`, so
+    `cs` parses them, and `<input type="date">` only accepts that shape anyway.
+
+    Every other filter value is carried over, so picking a range does not drop
+    the machine or worker already chosen; `page` is dropped, because a new range
+    starts at page one. `active` marks the link whose range is the one currently
+    in effect, which makes the row a read-out as well as a control.
+    """
+    today = timezone.localdate()
+    current = (request.GET.get('date_from', ''), request.GET.get('date_to', ''))
+    links = []
+    for key, label, span in DATE_PRESETS:
+        params = request.GET.copy()
+        params.pop('page', None)
+        value = []
+        for field, day in zip(('date_from', 'date_to'), span(today)):
+            if day is None:
+                params.pop(field, None)
+                value.append('')
+            else:
+                params[field] = day.isoformat()
+                value.append(day.isoformat())
+        links.append(
+            {
+                'key': key,
+                'label': label,
+                'querystring': params.urlencode(),
+                'active': current == tuple(value),
+            }
+        )
+    return links
 
 
 def _participation_filter(user):
@@ -343,6 +407,7 @@ def time_worked(request):
             'total_hours': sum((row['hours'] for row in summary), Decimal('0')),
             'page_obj': page_obj,
             'querystring': querystring.urlencode(),
+            'date_presets': _date_preset_links(request),
             'my_jobs': _my_recent_jobs(request.user),
         },
     )
@@ -424,6 +489,7 @@ def job_dashboard(request):
             'form': form,
             'page_obj': page_obj,
             'querystring': querystring.urlencode(),
+            'date_presets': _date_preset_links(request),
             'pending_count': WorkOrder.objects.filter(status=WorkOrder.Status.PENDING).count(),
         },
     )

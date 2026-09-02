@@ -1,0 +1,13 @@
+{% comment %}
+Quick date ranges for a filter form. Plain links, no JS: each one carries the
+rest of the querystring so the machine/worker already picked survives the tap,
+and the range it sets shows up in the two date inputs below. The active one is
+the solid button.
+{% endcomment %}
+{% if date_presets %}
+<div class="quick-filters">
+    {% for preset in date_presets %}
+        <a class="btn{% if not preset.active %} secondary{% endif %}" href="?{{ preset.querystring }}">{{ preset.label }}</a>
+    {% endfor %}
+</div>
+{% endif %}

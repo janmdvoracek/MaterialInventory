@@ -158,6 +158,12 @@ Nevyplněná sazba se zobrazí jako pomlčka (—).
 Klepnutím na název stroje zobrazíte jeho historii použití. Tu lze filtrovat
 podle stroje, data a — u vedoucích — podle pracovníka.
 
+> **Rychlé období.** Nad každým filtrem v aplikaci jsou čtyři tlačítka —
+> **Vše**, **Posledních 7 dní**, **Posledních 30 dní** a **Minulý měsíc**.
+> Klepnutím se datumy vyplní samy, zeleně svítí období, které je právě
+> nastavené, a **Vše** filtrování podle data zase zruší. Ostatní filtry
+> (pracovník, stroj, stav) zůstanou zachované.
+
 Tuto sekci mají v menu pouze vedoucí.
 
 ## Hodiny
@@ -165,7 +171,8 @@ Tuto sekci mají v menu pouze vedoucí.
 Přehled odpracovaných hodin lidí — nahoře souhrn po pracovnících, dole seznam
 jednotlivých zakázek.
 
-Můžete filtrovat podle data (**Datum od**, **Datum do**).
+Můžete filtrovat podle data (**Datum od**, **Datum do**) nebo použít tlačítka
+rychlého období nad filtrem.
 
 > Každému se počítají **hodiny, které si sám zapsal** — vy své v poli *Moje
 > hodiny*, spolupracovníci ty své ve svých řádcích. Nejsou to hodiny strojů:
