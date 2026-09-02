@@ -769,6 +769,122 @@ class PerformedOnTests(TestCase):
         self.assertFalse(response.context['order_form'].initial['use_custom_date'])
 
 
+class RecordingForSomeoneElseTests(TestCase):
+    """A manager or admin can type a job in on a worker's behalf.
+
+    The job is then the *worker's* — their name on it, their hours, their line
+    items — while the manager stays the reviewer. Only the review status follows
+    the person at the keyboard.
+    """
+
+    def setUp(self):
+        self.material_raw = Material.objects.create(sku='RAW', name='Štěrk')
+        self.material_finished = Material.objects.create(sku='FIN', name='Frakce 8/16')
+        self.worker = User.objects.create_user(username='worker', password='pw', role=User.Role.WORKER)
+        self.other_worker = User.objects.create_user(username='other', password='pw', role=User.Role.WORKER)
+        self.manager = User.objects.create_user(username='manager', password='pw', role=User.Role.MANAGER)
+
+    def _submit(self, as_user, **extra):
+        self.client.force_login(as_user)
+        payload = job_payload(
+            [{'material': self.material_raw, 'quantity': Decimal('5')}],
+            [{'material': self.material_finished, 'quantity': Decimal('5')}],
+            hours='6',
+        )
+        payload.update(extra)
+        return self.client.post(reverse('transform_create'), payload)
+
+    def test_the_field_is_offered_to_a_manager(self):
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('transform_create'))
+        self.assertIn('author', response.context['order_form'].fields)
+
+    def test_a_worker_is_not_offered_the_field(self):
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('transform_create'))
+        self.assertNotIn('author', response.context['order_form'].fields)
+
+    def test_a_worker_cannot_record_for_somebody_else_via_the_post(self):
+        # The field is not on their form at all, so it is never cleaned.
+        self._submit(self.worker, author=self.other_worker.pk)
+        self.assertEqual(WorkOrder.objects.get().created_by, self.worker)
+
+    def test_the_job_belongs_to_the_person_it_was_recorded_for(self):
+        self._submit(self.manager, author=self.worker.pk)
+        work_order = WorkOrder.objects.get()
+        self.assertEqual(work_order.created_by, self.worker)
+
+    def test_the_hours_are_the_workers(self):
+        self._submit(self.manager, author=self.worker.pk)
+        hours = WorkerHours.objects.get()
+        self.assertEqual(hours.user, self.worker)
+        self.assertEqual(hours.hours, Decimal('6.00'))
+
+    def test_the_line_items_are_written_as_the_worker(self):
+        self._submit(self.manager, author=self.worker.pk)
+        self.assertEqual({m.created_by for m in StockMovement.objects.all()}, {self.worker})
+
+    def test_it_is_approved_on_the_spot_with_the_manager_as_reviewer(self):
+        # Approval follows the person at the keyboard, not the person the job
+        # is for: a manager just saw the work written down.
+        self._submit(self.manager, author=self.worker.pk)
+        work_order = WorkOrder.objects.get()
+        self.assertEqual(work_order.status, WorkOrder.Status.APPROVED)
+        self.assertEqual(work_order.reviewed_by, self.manager)
+        self.assertEqual(work_order.created_by, self.worker)
+
+    def test_leaving_it_blank_records_for_the_manager(self):
+        self._submit(self.manager)
+        self.assertEqual(WorkOrder.objects.get().created_by, self.manager)
+
+    def test_the_author_drops_out_of_the_collaborator_choices(self):
+        # You cannot collaborate with yourself, and here "yourself" is the
+        # person the job is being recorded for, not the manager typing it.
+        self._submit(
+            self.manager,
+            author=self.worker.pk,
+            **{'workers-0-user': str(self.other_worker.pk), 'workers-0-hours': '2'},
+        )
+        work_order = WorkOrder.objects.get()
+        self.assertEqual(set(work_order.collaborators.all()), {self.other_worker})
+        self.assertEqual(work_order.worker_hours.get(user=self.other_worker).hours, Decimal('2.00'))
+
+    def test_a_manager_can_put_themselves_on_a_workers_job(self):
+        # The workers-only rule is there to stop a worker assigning hours to a
+        # manager; it does not apply to the manager doing the recording, who may
+        # well have worked the job.
+        self._submit(
+            self.manager,
+            author=self.worker.pk,
+            **{'workers-0-user': str(self.manager.pk), 'workers-0-hours': '2'},
+        )
+        work_order = WorkOrder.objects.get()
+        self.assertEqual(set(work_order.collaborators.all()), {self.manager})
+
+    def test_a_worker_still_cannot_name_a_manager(self):
+        response = self._submit(
+            self.worker,
+            **{'workers-0-user': str(self.manager.pk), 'workers-0-hours': '2'},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(WorkOrder.objects.exists())
+
+    def test_naming_the_author_as_their_own_collaborator_is_refused(self):
+        response = self._submit(
+            self.manager,
+            author=self.worker.pk,
+            **{'workers-0-user': str(self.worker.pk), 'workers-0-hours': '2'},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(WorkOrder.objects.exists())
+
+    def test_the_worker_sees_it_among_their_own_submissions(self):
+        self._submit(self.manager, author=self.worker.pk)
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('time_worked'))
+        self.assertEqual(list(response.context['my_jobs']), [WorkOrder.objects.get()])
+
+
 class ReportsUsePerformedOnTests(TestCase):
     """Every report keys off the day the work happened, not the day it was typed.
 
@@ -1280,6 +1396,8 @@ class EmptyLabelTests(TestCase):
         self.assertContains(response, 'Materiál')
         self.assertContains(response, 'Stroj')
         self.assertContains(response, 'Pracovník')
+        # „Zapsat za" is a manager-only field, and this test is logged in as one.
+        self.assertContains(response, 'Za sebe')
 
     def test_filter_forms_offer_all_in_czech(self):
         self.client.force_login(self.manager)

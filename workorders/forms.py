@@ -9,16 +9,25 @@ from materials.models import Machine, Material
 from .models import WorkOrder
 
 
-def collaborator_queryset(user):
-    """People `user` may name as having worked a job alongside them."""
+def collaborator_queryset(user, viewer=None):
+    """People who may be named as having worked a job whose author is `user`.
+
+    `viewer` is whoever is filling the form in: the submitter, or the manager
+    recording on somebody's behalf or correcting their job. It decides how wide
+    the list is, while `user` is only ever excluded from it. The two differ only
+    when a manager acts for someone else — the role restriction below is there
+    to stop a *worker* putting hours on a manager, not to stop a manager
+    recording that a manager worked the job.
+    """
+    viewer = viewer if viewer is not None else user
     queryset = User.objects.all().order_by('username')
     if user is not None:
         # Can't collaborate with yourself — you're already the creator.
         queryset = queryset.exclude(pk=user.pk)
-        if not user.is_manager_or_admin:
-            # Plain workers only collaborate with other workers, not
-            # managers/admins.
-            queryset = queryset.filter(role=User.Role.WORKER)
+    if viewer is not None and not viewer.is_manager_or_admin:
+        # Plain workers only collaborate with other workers, not
+        # managers/admins.
+        queryset = queryset.filter(role=User.Role.WORKER)
     return queryset
 
 
@@ -47,6 +56,28 @@ class WorkOrderForm(forms.Form):
         widget=forms.DateInput(attrs={'type': 'date'}),
         label='Datum provedení',
     )
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if user is None or not user.is_manager_or_admin:
+            # Plain workers record their own work and nobody else's. The field
+            # simply is not on their form, so an `author` in the POST is not
+            # something the view has to defend against — it is never cleaned.
+            return
+        self.fields['author'] = forms.ModelChoiceField(
+            queryset=collaborator_queryset(user),
+            required=False,
+            label='Zapsat za',
+            empty_label='Za sebe',
+            help_text='Hodiny i spolupracovníci patří tomu, za koho zapisujete.',
+        )
+        # With somebody else possibly on the receiving end, „Moje hodiny" would
+        # be a lie half the time.
+        self.fields['hours'].label = 'Odpracované hodiny'
+
+    def author_or(self, submitter):
+        """Whose job this is: the person picked in „Zapsat za", else the submitter."""
+        return self.cleaned_data.get('author') or submitter
 
     def clean(self):
         cleaned_data = super().clean()
@@ -157,9 +188,9 @@ class WorkerHoursForm(forms.Form):
         widget=forms.NumberInput(attrs={'placeholder': 'Hodiny'}),
     )
 
-    def __init__(self, *args, user=None, **kwargs):
+    def __init__(self, *args, user=None, viewer=None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['user'].queryset = collaborator_queryset(user)
+        self.fields['user'].queryset = collaborator_queryset(user, viewer)
 
     def clean(self):
         cleaned_data = super().clean()

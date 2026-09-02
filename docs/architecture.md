@@ -158,6 +158,41 @@ Two consequences worth knowing:
 shown on the job detail page (*Zaznamenáno*), on the edit and delete pages, and
 in the admin.
 
+### Recording for somebody else
+
+A manager or admin sees a *„Zapsat za"* select on the Transform form (default
+*„Za sebe"*); a worker's form does not have the field at all, so an `author` in
+their POST is never cleaned and there is nothing for the view to reject.
+
+When it is set, the job is **the other person's**: `created_by=author`, and
+`_write_job_rows` writes their hours and their line items, exactly as `job_edit`
+does. The field also relabels *„Moje hodiny"* to *„Odpracované hodiny"*, which
+would otherwise be wrong half the time.
+
+**Approval follows the submitter, not the author.** A manager typing a worker's
+job in is its reviewer and has just seen the work written down, so the job is
+saved `APPROVED` with `reviewed_by` = the manager and `created_by` = the worker.
+The worker then finds it among their own submissions on Hodiny, already signed
+off.
+
+`collaborator_queryset(user, viewer=None)` takes two people for this reason:
+
+| Argument | Role |
+|---|---|
+| `user` | the job's **author** — excluded from the list, since you cannot collaborate with yourself |
+| `viewer` | whoever is **filling the form in** — decides how wide the list is |
+
+They are the same person except when a manager acts for someone else, and then
+the manager's privilege wins: the workers-only restriction is there to stop a
+*worker* assigning hours to a manager, not to stop a manager recording that a
+manager worked the job. `job_edit` passes the same pair. A worker recording
+their own job is unaffected — `viewer` defaults to `user`.
+
+Because the author is chosen on the same form that the collaborator rows live
+on, `transform_create` validates `WorkOrderForm` **before** building the
+`WorkerHoursFormSet`. An invalid form has no author; the submitter stands in,
+only so the page can be re-rendered with its errors.
+
 ### Approval
 
 A `WorkOrder` carries a `status` — `PENDING` or `APPROVED` — plus `reviewed_at`
@@ -209,7 +244,8 @@ things it has to get right, and both have a test:
 
 - The rows belong to the **author**, not to the reviewer: the *„Moje hodiny"*
   field is the author's hours, `collaborator_queryset` is built from the author
-  (so it excludes them and not the manager), and rewritten `StockMovement` rows
+  and the editing manager (so it excludes the author, not the manager, and the
+  manager's privilege decides its width), and rewritten `StockMovement` rows
   keep `created_by = author`.
 - `_write_job_rows` and `job_delete` delete `MachineUsage` **one instance at a
   time**. See `Machine.total_hours` below — a cascade or a queryset delete would
@@ -244,8 +280,10 @@ zero), and the history table renders those as a dash.
 disagree with the hours rows about who worked the job. Its functional effect is
 visibility: a collaborator sees the job in their own history and hours.
 
-`collaborator_queryset` decides who may be named — never yourself (you are
-already the creator), and a plain worker may only name other workers.
+`collaborator_queryset(user, viewer)` decides who may be named — never the
+job's author (they are already its creator), and a plain worker filling in their
+own job may only name other workers. See *Recording for somebody else* above for
+what the second argument is doing.
 
 The one place the two can drift is the Django admin: `WorkOrderAdmin` exposes
 the `collaborators` multi-select and the `WorkerHours` inline as independent

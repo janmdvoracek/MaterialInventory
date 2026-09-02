@@ -8,7 +8,13 @@
         <label for="{{ order_form.description.id_for_label }}">Popis</label>
         {{ order_form.description }}
 
-        <label for="{{ order_form.hours.id_for_label }}">Moje hodiny</label>
+        {% if order_form.author %}
+            <label for="{{ order_form.author.id_for_label }}">Zapsat za</label>
+            {{ order_form.author }}
+            <p class="muted">{{ order_form.author.help_text }}</p>
+        {% endif %}
+
+        <label for="{{ order_form.hours.id_for_label }}">{{ order_form.hours.label }}</label>
         {{ order_form.hours }}
         {% for error in order_form.hours.errors %}<p class="messages error">{{ error }}</p>{% endfor %}
 

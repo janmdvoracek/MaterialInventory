@@ -151,11 +151,19 @@ def _write_job_rows(work_order, author, own_hours, consumed_rows, produced_rows,
 @login_required
 def transform_create(request):
     if request.method == 'POST':
-        order_form = WorkOrderForm(request.POST)
+        order_form = WorkOrderForm(request.POST, user=request.user)
         consumed_formset = ConsumedFormSet(request.POST, prefix='consumed')
         produced_formset = ProducedFormSet(request.POST, prefix='produced')
         machine_formset = MachineUsageFormSet(request.POST, prefix='machines')
-        worker_formset = WorkerHoursFormSet(request.POST, prefix='workers', form_kwargs={'user': request.user})
+        # Who the job belongs to is chosen on this same form, and it decides who
+        # may be named as a collaborator — you cannot collaborate with yourself.
+        # So the author has to be settled before the hours rows are built. A
+        # form that does not validate has no author; the submitter stands in,
+        # only so the invalid page can be re-rendered.
+        author = order_form.author_or(request.user) if order_form.is_valid() else request.user
+        worker_formset = WorkerHoursFormSet(
+            request.POST, prefix='workers', form_kwargs={'user': author, 'viewer': request.user}
+        )
         if (
             order_form.is_valid()
             and consumed_formset.is_valid()
@@ -173,11 +181,13 @@ def transform_create(request):
                 # A worker's job is a proposal until a manager signs it off, so
                 # it stays out of the Hodiny/Stroje reports until then. A
                 # manager has nobody above them to approve it, so theirs counts
-                # straight away.
+                # straight away — and that goes for one they typed on a worker's
+                # behalf too: they are the reviewer, and they just saw the work
+                # written down. The *submitter* decides this, not the author.
                 approved = request.user.is_manager_or_admin
                 with transaction.atomic():
                     work_order = WorkOrder.objects.create(
-                        created_by=request.user,
+                        created_by=author,
                         description=order_form.cleaned_data['description'],
                         performed_on=order_form.cleaned_data['performed_on'],
                         status=WorkOrder.Status.APPROVED if approved else WorkOrder.Status.PENDING,
@@ -186,7 +196,7 @@ def transform_create(request):
                     )
                     _write_job_rows(
                         work_order,
-                        request.user,
+                        author,
                         order_form.cleaned_data['hours'],
                         consumed_rows,
                         produced_rows,
@@ -201,11 +211,13 @@ def transform_create(request):
                 )
                 return redirect('transform_create')
     else:
-        order_form = WorkOrderForm()
+        order_form = WorkOrderForm(user=request.user)
         consumed_formset = ConsumedFormSet(prefix='consumed')
         produced_formset = ProducedFormSet(prefix='produced')
         machine_formset = MachineUsageFormSet(prefix='machines')
-        worker_formset = WorkerHoursFormSet(prefix='workers', form_kwargs={'user': request.user})
+        worker_formset = WorkerHoursFormSet(
+            prefix='workers', form_kwargs={'user': request.user, 'viewer': request.user}
+        )
     return render(
         request,
         'workorders/transform_form.html',
@@ -575,7 +587,9 @@ def job_edit(request, pk):
         consumed_formset = ConsumedFormSet(request.POST, prefix='consumed')
         produced_formset = ProducedFormSet(request.POST, prefix='produced')
         machine_formset = MachineUsageFormSet(request.POST, prefix='machines')
-        worker_formset = WorkerHoursFormSet(request.POST, prefix='workers', form_kwargs={'user': author})
+        worker_formset = WorkerHoursFormSet(
+            request.POST, prefix='workers', form_kwargs={'user': author, 'viewer': request.user}
+        )
         if (
             order_form.is_valid()
             and consumed_formset.is_valid()
@@ -651,7 +665,7 @@ def job_edit(request, pk):
         )
         worker_formset = WorkerHoursFormSet(
             prefix='workers',
-            form_kwargs={'user': author},
+            form_kwargs={'user': author, 'viewer': request.user},
             initial=[
                 {'user': row.user_id, 'hours': _trim(row.hours)} for row in work_order.worker_hours.exclude(user=author)
             ],

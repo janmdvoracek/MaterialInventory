@@ -72,6 +72,20 @@ on. Kdo je tu uvedený, uvidí zakázku ve své historii a hodiny se mu započí
 - Když nikdo další nedělal, nechte řádky prázdné.
 - Když stejného člověka uvedete dvakrát, hodiny se mu sečtou.
 
+**2a. Zapsat za někoho jiného** *(jen vedoucí a správci)*
+
+Vedoucí má nad polem s hodinami výběr **Zapsat za**. Ve výchozím stavu je
+nastavený na **Za sebe**. Když vyberete pracovníka, zakázka bude **jeho** —
+jeho jméno u ní, jeho hodiny i jeho položky spotřeby a výroby, a uvidí ji
+v **Hodinách** mezi svými posledními zápisy. Zakázka je rovnou **schválená**,
+protože ji zapisoval vedoucí; jako posuzovatel jste u ní vedený vy.
+
+Do spolupracovníků pak nevybíráte toho, za koho zapisujete (sám se sebou
+spolupracovat nelze) — zato tam můžete uvést i sebe, pokud jste na zakázce
+dělal také.
+
+Běžný pracovník tento výběr nemá a zapisuje vždy sám za sebe.
+
 **2b. Datum provedení**
 
 Zakázka se normálně zapíše na **dnešek**. Když zapisujete práci zpětně,
