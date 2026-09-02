@@ -23,7 +23,7 @@ and code are in English.
 | **Transform** (*Zpracování*) | The main form, and the landing page. One job consumes some materials and produces others — crushing, sorting, cutting — logs the submitter's own hours, names collaborators with their hours, and records machine motohodiny and the tonnage each machine processed. |
 | **Review** (*Přehled*) | Every recorded job with everything that was typed into the form, filterable, with the ones awaiting a decision highlighted. A manager approves, corrects or deletes from here. Manager/Admin only. |
 | **Machines** (*Stroje*) | Hours per machine and its two reference rates (Kč/hod, Kč/t), plus a filterable usage log. Manager/Admin nav entry. |
-| **Hours** (*Hodiny*) | Hours worked per person, for payroll and job costing. |
+| **Hours** (*Hodiny*) | Hours worked per person, for payroll and job costing. For a worker, also their own last few jobs with the review status of each. |
 
 A job is written as a single transaction: its material line items, every
 participant's hours, and any machine usage all land together or not at all.
@@ -102,7 +102,7 @@ Full column reference: [docs/development.md](docs/development.md#seeding-data).
 ## Common commands
 
 ```bash
-python manage.py test                  # full suite (167 tests, needs Postgres)
+python manage.py test                  # full suite (177 tests, needs Postgres)
 python manage.py test workorders       # one app
 ruff check . && ruff format .          # lint and format
 docker compose up --build              # full stack

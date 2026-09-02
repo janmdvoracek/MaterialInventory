@@ -10,6 +10,7 @@ from inventory.models import StockMovement
 from materials.models import Location, Machine, Material
 
 from .models import MachineUsage, WorkerHours, WorkOrder
+from .views import MY_JOBS_LIMIT
 
 
 class TransformCreateTests(TestCase):
@@ -1236,6 +1237,88 @@ class JobReviewTests(ReviewFixtureMixin, TestCase):
         response = self.client.get(reverse('job_dashboard'))
         self.assertEqual(response.status_code, 302)
         self.assertIn('/login/', response.url)
+
+
+class MyJobsTests(ReviewFixtureMixin, TestCase):
+    """The list of their own recent submissions at the top of Hodiny.
+
+    A job is never handed back to its author, and a pending one is filtered out
+    of every report, so this list is the only feedback a worker gets about what
+    became of what they recorded — and Hodiny is the page the hours it is
+    holding back are missing from.
+    """
+
+    def test_author_sees_their_own_pending_job(self):
+        work_order = self.submit_job(self.worker)
+        response = self.client.get(reverse('time_worked'))
+        self.assertEqual(list(response.context['my_jobs']), [work_order])
+        self.assertContains(response, 'Čeká na schválení')
+
+    def test_the_transform_page_no_longer_carries_the_list(self):
+        self.submit_job(self.worker)
+        response = self.client.get(reverse('transform_create'))
+        self.assertNotIn('my_jobs', response.context)
+        self.assertNotContains(response, 'Moje poslední zápisy')
+
+    def test_a_manager_is_not_shown_the_list(self):
+        # Hodiny is the whole depot's report for them, and Přehled already
+        # lists every job with its status.
+        self.submit_job(self.manager)
+        response = self.client.get(reverse('time_worked'))
+        self.assertEqual(list(response.context['my_jobs']), [])
+        self.assertNotContains(response, 'Moje poslední zápisy')
+
+    def test_the_status_follows_the_review(self):
+        work_order = self.submit_job(self.worker)
+        self.client.force_login(self.manager)
+        self.client.post(reverse('job_approve', args=[work_order.pk]))
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('time_worked'))
+        self.assertContains(response, 'Schváleno')
+
+    def test_a_deleted_job_drops_off_the_list(self):
+        work_order = self.submit_job(self.worker)
+        self.client.force_login(self.manager)
+        self.client.post(reverse('job_delete', args=[work_order.pk]))
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('time_worked'))
+        self.assertEqual(list(response.context['my_jobs']), [])
+
+    def test_someone_elses_job_is_not_listed(self):
+        self.submit_job(self.worker)
+        self.client.force_login(self.other_worker)
+        response = self.client.get(reverse('time_worked'))
+        self.assertEqual(list(response.context['my_jobs']), [])
+
+    def test_a_job_someone_named_you_on_is_not_listed(self):
+        # Submissions only — a collaborator did not record the job. Their hours
+        # from it show up in the summary below once it is approved.
+        self.submit_job(self.worker, worker_rows=[{'user': self.other_worker, 'hours': '2'}])
+        self.client.force_login(self.other_worker)
+        response = self.client.get(reverse('time_worked'))
+        self.assertEqual(list(response.context['my_jobs']), [])
+
+    def test_the_hours_shown_are_the_authors_own(self):
+        # Not the job total: the collaborator's 2 h belong to them, not here.
+        self.submit_job(self.worker, hours='3', worker_rows=[{'user': self.other_worker, 'hours': '2'}])
+        response = self.client.get(reverse('time_worked'))
+        self.assertEqual(response.context['my_jobs'][0].my_hours, Decimal('3.00'))
+
+    def test_the_list_ignores_the_hours_filters(self):
+        # The filters scope the report below; a pending job is exactly what that
+        # report cannot show, so the list must not be scoped away with it.
+        work_order = self.submit_job(self.worker)
+        response = self.client.get(reverse('time_worked'), {'date_from': '2000-01-01', 'date_to': '2000-01-02'})
+        self.assertEqual(response.context['summary'], [])
+        self.assertEqual(list(response.context['my_jobs']), [work_order])
+
+    def test_only_the_most_recent_jobs_are_listed(self):
+        for _ in range(MY_JOBS_LIMIT + 2):
+            newest = self.submit_job(self.worker)
+        response = self.client.get(reverse('time_worked'))
+        my_jobs = list(response.context['my_jobs'])
+        self.assertEqual(len(my_jobs), MY_JOBS_LIMIT)
+        self.assertEqual(my_jobs[0], newest)
 
 
 class JobDashboardTests(ReviewFixtureMixin, TestCase):

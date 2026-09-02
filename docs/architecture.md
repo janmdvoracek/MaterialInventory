@@ -109,11 +109,32 @@ waiting would leave it stuck forever.
 
 There are only two outcomes, and both are the manager's to carry out: approve
 the job, or fix it (`job_edit`) — and if it is beyond fixing, delete it
-(`job_delete`). A job is never handed back to its author, so a worker sees
-nothing about the review at all; **only a manager can correct a job**. There is
-no `RETURNED` status and no review note. Migration `0009` removed both, moving
-any job that had been returned back to `PENDING`: it was never approved, so it
-belongs in the queue awaiting a decision.
+(`job_delete`). A job is never handed back to its author; **only a manager can
+correct a job**. There is no `RETURNED` status and no review note. Migration
+`0009` removed both, moving any job that had been returned back to `PENDING`: it
+was never approved, so it belongs in the queue awaiting a decision.
+
+Because of that, `time_worked` puts the requesting worker's own last
+`MY_JOBS_LIMIT` submissions at the top of Hodiny as `my_jobs` (built by
+`_my_recent_jobs`), each with its status badge and their own hours on it
+(`Sum('worker_hours__hours')` filtered to that user, so a collaborator's hours
+stay off it). **This list is the only feedback a worker gets about the review**:
+a pending job is filtered out of Hodiny and the machine history, so without it
+there is no way to tell a job still waiting for approval from one that never
+landed. Hodiny is where it belongs precisely because that is the page the
+withheld hours are missing from.
+
+Two scoping rules it does not share with the report underneath it:
+
+- It is scoped by `created_by` alone, **not** by `_participation_filter` — being
+  named on someone else's job is not recording one, and those hours show up in
+  the summary once the job is approved.
+- The filter form does not touch it. The filters narrow the approved-hours
+  report; a pending job is exactly what that report cannot show, so scoping the
+  list with them would hide the thing it exists to surface.
+
+`_my_recent_jobs` returns `none()` for a manager or admin: Hodiny is the whole
+depot's report for them, and Přehled already lists every job with its status.
 
 Editing does **not** approve. A manager can fix a job and still leave the
 sign-off to someone else, so `job_edit` never touches `status`.

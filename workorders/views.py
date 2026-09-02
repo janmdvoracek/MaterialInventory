@@ -29,6 +29,10 @@ from .forms import (
 from .models import MachineUsage, WorkerHours, WorkOrder
 
 HISTORY_PAGE_SIZE = 50
+# How many of their own recent jobs a worker sees at the top of Hodiny. Short on
+# purpose: it is a status check, not a history — the full one is the manager's
+# Přehled.
+MY_JOBS_LIMIT = 5
 # Reviewing a job is a manager/admin job. Gated on the view, not just by hiding
 # the nav entry — a hidden link is not access control.
 REVIEWER_ROLES = (User.Role.MANAGER, User.Role.ADMIN)
@@ -339,7 +343,32 @@ def time_worked(request):
             'total_hours': sum((row['hours'] for row in summary), Decimal('0')),
             'page_obj': page_obj,
             'querystring': querystring.urlencode(),
+            'my_jobs': _my_recent_jobs(request.user),
         },
+    )
+
+
+def _my_recent_jobs(user):
+    """A worker's own last few submissions, with the status of each.
+
+    This is the only feedback a worker gets about the review: a job is never
+    handed back to its author, and everything above filters to APPROVED, so
+    without it there is no telling a job still waiting for approval from one
+    that never landed. It sits on Hodiny because that is where a worker goes to
+    see their hours, and a pending job is precisely the hours that are missing
+    from the summary above.
+
+    Submissions only, not jobs they were named on — a collaborator did not
+    record the job, and their hours from it appear in the summary once it is
+    approved. Managers get nothing here: Hodiny is the whole depot's report for
+    them, and Přehled already lists every job with its status.
+    """
+    if user.is_manager_or_admin:
+        return WorkOrder.objects.none()
+    return (
+        WorkOrder.objects.filter(created_by=user)
+        .annotate(my_hours=Sum('worker_hours__hours', filter=Q(worker_hours__user=user)))
+        .order_by('-created_at')[:MY_JOBS_LIMIT]
     )
 
 

@@ -5,6 +5,27 @@
 {% if form.is_bound and not form.is_valid %}
     <p class="messages error">Filtr je neplatný, proto se nezobrazují žádné výsledky. Opravte prosím zvýrazněná pole.</p>
 {% endif %}
+{% if my_jobs %}
+<div class="card">
+    <h2>Moje poslední zápisy</h2>
+    <p class="muted">Zápis se do Hodin a Strojů započítá až po schválení vedoucím. Opravu i smazání provádí vedoucí — pokud je něco špatně, dejte mu vědět.</p>
+    <div class="table-scroll">
+    <table>
+        <thead><tr><th>Datum</th><th>Popis</th><th>Moje hodiny</th><th>Stav</th></tr></thead>
+        <tbody>
+        {% for order in my_jobs %}
+            <tr class="{% if order.status == 'PENDING' %}row-pending{% endif %}">
+                <td>{{ order.created_at|date:"Y-m-d H:i" }}</td>
+                <td>{{ order.description|default:"—" }}</td>
+                <td>{{ order.my_hours|default:"0"|floatformat:1 }} h</td>
+                <td><span class="status-badge {{ order.status|lower }}">{{ order.get_status_display }}</span></td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+{% endif %}
 <div class="card">
     <form method="get">
         {{ form.as_p }}

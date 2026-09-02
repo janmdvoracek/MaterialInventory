@@ -120,6 +120,9 @@ nemůžete. Zakázku, která je celá špatně, vedoucí smaže. Zpátky k přep
 zakázka neposílá, takže pokud víte o chybě, dejte vedoucímu vědět, jak to bylo
 správně.
 
+Jak na tom vaše zakázky jsou, uvidíte v záložce **Hodiny** v tabulce *Moje
+poslední zápisy* — viz [Hodiny](#hodiny).
+
 ## Přehled zpracování (pro vedoucí)
 
 Tuto sekci mají v menu pouze vedoucí a správci. Je v ní **seznam všech
@@ -171,6 +174,23 @@ Můžete filtrovat podle data (**Datum od**, **Datum do**).
 
 Běžný pracovník vidí pouze své vlastní hodiny. Vedoucí vidí všechny a může
 filtrovat podle pracovníka.
+
+### Moje poslední zápisy
+
+Nahoře v záložce **Hodiny** je tabulka **posledních pěti zakázek, které jste
+zapsali** — datum, popis, vaše hodiny a stav. Žlutě zvýrazněné a označené *Čeká
+na schválení* jsou ty, které vedoucí ještě neposoudil; *Schváleno* znamená, že
+se už započítávají do Hodin i Strojů. Je to tedy vysvětlení, proč vám hodiny
+v souhrnu pod tabulkou zatím chybí. Zakázka, kterou vedoucí smazal, ze seznamu
+zmizí.
+
+Jsou v ní jen zakázky, které jste zapsali vy — ne ty, na kterých vás někdo jen
+uvedl jako spolupracovníka; ty se vám po schválení objeví přímo v souhrnu
+hodin. Filtry nad souhrnem se této tabulky netýkají, vždy ukazuje vašich pět
+posledních zápisů.
+
+Vedoucí tuto tabulku nemá — jeho zakázky jsou schválené rovnou a všechny
+ostatní vidí v **Přehledu**.
 
 ## Časté potíže
 
