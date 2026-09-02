@@ -234,14 +234,3 @@ class JobFilterForm(forms.Form):
         if date_from and date_to and date_from > date_to:
             raise forms.ValidationError('„Datum od“ musí být dřívější nebo stejné jako „datum do“.')
         return cleaned_data
-
-
-class ReviewNoteForm(forms.Form):
-    """Why a job is being sent back. Required — the worker only ever sees this
-    sentence, so an empty one tells them nothing."""
-
-    note = forms.CharField(
-        max_length=255,
-        label='Důvod vrácení',
-        widget=forms.TextInput(attrs={'placeholder': 'Co je potřeba opravit'}),
-    )

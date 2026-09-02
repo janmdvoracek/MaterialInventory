@@ -2,7 +2,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from django.test import TestCase
-from django.urls import reverse
+from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 
 from accounts.models import User
@@ -631,7 +631,6 @@ class WorkOrderAdminTests(TestCase):
         data = {
             'description': 'Admin-created job',
             'status': WorkOrder.Status.APPROVED,
-            'review_note': '',
             'movements-TOTAL_FORMS': '1',
             'movements-INITIAL_FORMS': '0',
             'movements-MIN_NUM_FORMS': '0',
@@ -1199,55 +1198,23 @@ class JobReviewTests(ReviewFixtureMixin, TestCase):
         work_order.refresh_from_db()
         self.assertEqual(work_order.status, WorkOrder.Status.PENDING)
 
-    def test_return_records_the_reason(self):
+    def test_a_job_can_only_be_pending_or_approved(self):
+        # Returning a job to its author is gone: a manager corrects it or
+        # deletes it. Nothing else may end up in `status`.
+        self.assertEqual([value for value, _ in WorkOrder.Status.choices], ['PENDING', 'APPROVED'])
+
+    def test_there_is_no_return_url(self):
+        with self.assertRaises(NoReverseMatch):
+            reverse('job_return', args=[1])
+
+    def test_the_detail_page_offers_only_approve_edit_and_delete(self):
         work_order = self.submit_job(self.worker)
         self.client.force_login(self.manager)
-        self.client.post(reverse('job_return', args=[work_order.pk]), {'note': 'Špatná frakce'})
-        work_order.refresh_from_db()
-        self.assertEqual(work_order.status, WorkOrder.Status.RETURNED)
-        self.assertEqual(work_order.review_note, 'Špatná frakce')
-        self.assertEqual(work_order.reviewed_by, self.manager)
-
-    def test_return_without_a_reason_is_refused(self):
-        # The note is all the author ever sees about the review.
-        work_order = self.submit_job(self.worker)
-        self.client.force_login(self.manager)
-        self.client.post(reverse('job_return', args=[work_order.pk]), {'note': ''})
-        work_order.refresh_from_db()
-        self.assertEqual(work_order.status, WorkOrder.Status.PENDING)
-
-    def test_returned_job_stays_out_of_the_reports(self):
-        work_order = self.submit_job(self.worker, hours='3')
-        self.client.force_login(self.manager)
-        self.client.post(reverse('job_return', args=[work_order.pk]), {'note': 'Chybí stroj'})
-        response = self.client.get(reverse('time_worked'))
-        self.assertEqual(response.context['summary'], [])
-
-    def test_author_sees_the_reason_on_the_transform_page(self):
-        work_order = self.submit_job(self.worker)
-        self.client.force_login(self.manager)
-        self.client.post(reverse('job_return', args=[work_order.pk]), {'note': 'Chybí tuny'})
-        self.client.force_login(self.worker)
-        response = self.client.get(reverse('transform_create'))
-        self.assertEqual(list(response.context['returned_jobs']), [work_order])
-        self.assertContains(response, 'Chybí tuny')
-
-    def test_someone_elses_returned_job_is_not_shown(self):
-        work_order = self.submit_job(self.worker)
-        self.client.force_login(self.manager)
-        self.client.post(reverse('job_return', args=[work_order.pk]), {'note': 'Chybí tuny'})
-        self.client.force_login(self.other_worker)
-        response = self.client.get(reverse('transform_create'))
-        self.assertEqual(list(response.context['returned_jobs']), [])
-
-    def test_approving_a_returned_job_clears_the_reason(self):
-        work_order = self.submit_job(self.worker)
-        self.client.force_login(self.manager)
-        self.client.post(reverse('job_return', args=[work_order.pk]), {'note': 'Chybí tuny'})
-        self.client.post(reverse('job_approve', args=[work_order.pk]))
-        work_order.refresh_from_db()
-        self.assertEqual(work_order.status, WorkOrder.Status.APPROVED)
-        self.assertEqual(work_order.review_note, '')
+        response = self.client.get(reverse('job_detail', args=[work_order.pk]))
+        self.assertContains(response, 'Schválit')
+        self.assertContains(response, 'Upravit')
+        self.assertContains(response, 'Smazat')
+        self.assertNotContains(response, 'Vrátit')
 
     def test_review_pages_are_closed_to_workers(self):
         # Hiding the nav entry is not access control: the views are gated too.
@@ -1259,7 +1226,6 @@ class JobReviewTests(ReviewFixtureMixin, TestCase):
             ('job_edit', 'get'),
             ('job_delete', 'get'),
             ('job_approve', 'post'),
-            ('job_return', 'post'),
         ):
             with self.subTest(view=name):
                 url = reverse(name) if name == 'job_dashboard' else reverse(name, args=[work_order.pk])
@@ -1286,13 +1252,6 @@ class JobDashboardTests(ReviewFixtureMixin, TestCase):
         response = self.client.get(reverse('job_dashboard'))
         self.assertContains(response, 'row-pending')
         self.assertEqual(response.context['pending_count'], 1)
-
-    def test_dashboard_highlights_returned_jobs(self):
-        work_order = self.submit_job(self.worker)
-        self.client.force_login(self.manager)
-        self.client.post(reverse('job_return', args=[work_order.pk]), {'note': 'Chybí tuny'})
-        response = self.client.get(reverse('job_dashboard'))
-        self.assertContains(response, 'row-returned')
 
     def test_dashboard_shows_the_hours_of_everyone_on_the_job(self):
         self.submit_job(self.worker, hours='3', worker_rows=[{'user': self.other_worker, 'hours': '2'}])

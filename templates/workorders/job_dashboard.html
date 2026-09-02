@@ -22,7 +22,7 @@
         </thead>
         <tbody>
         {% for order in page_obj %}
-            <tr class="{% if order.status == 'PENDING' %}row-pending{% elif order.status == 'RETURNED' %}row-returned{% endif %}">
+            <tr class="{% if order.status == 'PENDING' %}row-pending{% endif %}">
                 <td>{{ order.created_at|date:"Y-m-d H:i" }}</td>
                 <td>{{ order.created_by.username }}</td>
                 <td>{{ order.description|default:"—" }}</td>

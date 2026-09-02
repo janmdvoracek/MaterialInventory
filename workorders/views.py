@@ -22,7 +22,6 @@ from .forms import (
     MachineHistoryFilterForm,
     MachineUsageFormSet,
     ProducedFormSet,
-    ReviewNoteForm,
     TimeWorkedFilterForm,
     WorkerHoursFormSet,
     WorkOrderForm,
@@ -193,13 +192,6 @@ def transform_create(request):
             'produced_formset': produced_formset,
             'machine_formset': machine_formset,
             'worker_formset': worker_formset,
-            # A returned job is the only review outcome a worker can act on, and
-            # it is invisible everywhere else: unapproved jobs are filtered out
-            # of Hodiny and the machine history. Fixing it is still a manager's
-            # job — this is a notice, not an edit link.
-            'returned_jobs': WorkOrder.objects.filter(
-                created_by=request.user, status=WorkOrder.Status.RETURNED
-            ).order_by('-reviewed_at'),
         },
     )
 
@@ -435,7 +427,6 @@ def job_detail(request, pk):
             'produced': produced,
             'machine_usages': work_order.machine_usages.select_related('machine'),
             'worker_hours': work_order.worker_hours.select_related('user'),
-            'review_form': ReviewNoteForm(),
         },
     )
 
@@ -553,31 +544,8 @@ def job_approve(request, pk):
     work_order.status = WorkOrder.Status.APPROVED
     work_order.reviewed_at = timezone.now()
     work_order.reviewed_by = request.user
-    # Whatever it was sent back for no longer applies once it is approved.
-    work_order.review_note = ''
-    work_order.save(update_fields=['status', 'reviewed_at', 'reviewed_by', 'review_note'])
+    work_order.save(update_fields=['status', 'reviewed_at', 'reviewed_by'])
     messages.success(request, 'Zpracování bylo schváleno.')
-    return redirect('job_detail', pk=work_order.pk)
-
-
-@role_required(*REVIEWER_ROLES)
-@require_POST
-def job_return(request, pk):
-    """Send a job back with a reason. Its author sees the reason on the
-    Zpracování page; correcting it is still the manager's job."""
-    work_order = get_object_or_404(WorkOrder, pk=pk)
-    form = ReviewNoteForm(request.POST)
-    if not form.is_valid():
-        # The note is the only thing the author ever sees about the review, so
-        # an empty one would tell them nothing.
-        messages.error(request, 'Uveďte důvod vrácení.')
-        return redirect('job_detail', pk=work_order.pk)
-    work_order.status = WorkOrder.Status.RETURNED
-    work_order.reviewed_at = timezone.now()
-    work_order.reviewed_by = request.user
-    work_order.review_note = form.cleaned_data['note']
-    work_order.save(update_fields=['status', 'reviewed_at', 'reviewed_by', 'review_note'])
-    messages.success(request, 'Zpracování bylo vráceno k přepracování.')
     return redirect('job_detail', pk=work_order.pk)
 
 

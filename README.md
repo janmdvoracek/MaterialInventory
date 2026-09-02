@@ -21,7 +21,7 @@ and code are in English.
 | | |
 |---|---|
 | **Transform** (*Zpracování*) | The main form, and the landing page. One job consumes some materials and produces others — crushing, sorting, cutting — logs the submitter's own hours, names collaborators with their hours, and records machine motohodiny and the tonnage each machine processed. |
-| **Review** (*Přehled*) | Every recorded job with everything that was typed into the form, filterable, with the ones awaiting a decision highlighted. A manager approves, corrects, returns or deletes from here. Manager/Admin only. |
+| **Review** (*Přehled*) | Every recorded job with everything that was typed into the form, filterable, with the ones awaiting a decision highlighted. A manager approves, corrects or deletes from here. Manager/Admin only. |
 | **Machines** (*Stroje*) | Hours per machine and its two reference rates (Kč/hod, Kč/t), plus a filterable usage log. Manager/Admin nav entry. |
 | **Hours** (*Hodiny*) | Hours worked per person, for payroll and job costing. |
 
@@ -102,7 +102,7 @@ Full column reference: [docs/development.md](docs/development.md#seeding-data).
 ## Common commands
 
 ```bash
-python manage.py test                  # full suite (171 tests, needs Postgres)
+python manage.py test                  # full suite (167 tests, needs Postgres)
 python manage.py test workorders       # one app
 ruff check . && ruff format .          # lint and format
 docker compose up --build              # full stack
@@ -116,7 +116,7 @@ More, including single-test invocation and the CI pipeline:
 | Role | Can do |
 |---|---|
 | `WORKER` | Transform and Hours. Sees only their own hours and machine usage, plus jobs they were named a collaborator on. Their submissions wait for approval; a job sent back is shown to them on the Transform page with the reason, but they cannot edit it. |
-| `MANAGER` | Everything a Worker can, plus the Review page (approve / edit / return / delete any job), the Machines pages, and an unrestricted view of everyone's hours and machine usage. Their own submissions are approved on the spot. **No** Django admin access. |
+| `MANAGER` | Everything a Worker can, plus the Review page (approve / edit / delete any job), the Machines pages, and an unrestricted view of everyone's hours and machine usage. Their own submissions are approved on the spot. **No** Django admin access. |
 | `ADMIN` | Everything, plus the Django admin back office for editing the catalog and accounts. |
 
 Workers' scoping is enforced in the database query, not by hiding form fields —

@@ -137,7 +137,6 @@
            (No em dashes anywhere in this block: it is served on every page and
            tests count that character in rendered output.) */
         tr.row-pending > td { background: #fef3c7; }
-        tr.row-returned > td { background: #fee2e2; }
         .status-badge {
             display: inline-block;
             padding: 0.15rem 0.5rem;
@@ -150,11 +149,6 @@
         }
         .status-badge.pending { background: #fde68a; color: #78350f; }
         .status-badge.approved { background: #d1fae5; color: #065f46; }
-        .status-badge.returned { background: #fecaca; color: #991b1b; }
-        .notice-returned {
-            border-left: 4px solid #dc2626;
-            background: #fef2f2;
-        }
         .job-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
         .job-actions form, .job-actions .btn { flex: 1; margin: 0; }
         .btn.secondary { background: #e5e7eb; color: var(--brand-dark); }

@@ -97,8 +97,8 @@ that contribute 12 t to the consumed total.
 
 ### Approval
 
-A `WorkOrder` carries a `status` — `PENDING`, `APPROVED` or `RETURNED` — plus
-`reviewed_at`, `reviewed_by` and a `review_note`.
+A `WorkOrder` carries a `status` — `PENDING` or `APPROVED` — plus `reviewed_at`
+and `reviewed_by`.
 
 **A job counts only once it is approved.** Hodiny, Stroje and the machine-usage
 history all report `status=APPROVED` rows and nothing else, so a job a worker
@@ -107,10 +107,13 @@ signs it off. A manager's or admin's own submission is written `APPROVED` with
 themselves as the reviewer — there is nobody above them to approve it, so
 waiting would leave it stuck forever.
 
-Returning a job requires a reason, because that sentence is the only thing its
-author ever sees about the review: `transform_create` lists the requesting
-user's own `RETURNED` jobs above the form, with the note. **Only a manager can
-correct a job** — the worker gets the notice, not an edit link.
+There are only two outcomes, and both are the manager's to carry out: approve
+the job, or fix it (`job_edit`) — and if it is beyond fixing, delete it
+(`job_delete`). A job is never handed back to its author, so a worker sees
+nothing about the review at all; **only a manager can correct a job**. There is
+no `RETURNED` status and no review note. Migration `0009` removed both, moving
+any job that had been returned back to `PENDING`: it was never approved, so it
+belongs in the queue awaiting a decision.
 
 Editing does **not** approve. A manager can fix a job and still leave the
 sign-off to someone else, so `job_edit` never touches `status`.
@@ -202,10 +205,9 @@ All in `workorders`, all mounted at the **root** by `config/urls.py` —
 | `/jobs/<pk>/` | `job_detail` | One job in full, with the review actions |
 | `/jobs/<pk>/upravit/` | `job_edit` | Correct a recorded job |
 | `/jobs/<pk>/schvalit/` | `job_approve` | POST only |
-| `/jobs/<pk>/vratit/` | `job_return` | POST only, note required |
 | `/jobs/<pk>/smazat/` | `job_delete` | GET confirms, POST deletes |
 
-The six `/jobs/` views are the review pages, and every one of them carries
+The five `/jobs/` views are the review pages, and every one of them carries
 `@role_required(MANAGER, ADMIN)`.
 
 `LOGIN_REDIRECT_URL`, the header logo and the post-submit redirect all point at

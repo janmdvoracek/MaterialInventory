@@ -15,6 +15,5 @@ urlpatterns = [
     path('jobs/<int:pk>/', views.job_detail, name='job_detail'),
     path('jobs/<int:pk>/upravit/', views.job_edit, name='job_edit'),
     path('jobs/<int:pk>/schvalit/', views.job_approve, name='job_approve'),
-    path('jobs/<int:pk>/vratit/', views.job_return, name='job_return'),
     path('jobs/<int:pk>/smazat/', views.job_delete, name='job_delete'),
 ]

@@ -14,9 +14,6 @@
             {% if work_order.reviewed_at %}
                 <tr><th>Posouzeno</th><td>{{ work_order.reviewed_at|date:"Y-m-d H:i" }}{% if work_order.reviewed_by %} ({{ work_order.reviewed_by.username }}){% endif %}</td></tr>
             {% endif %}
-            {% if work_order.review_note %}
-                <tr><th>Důvod vrácení</th><td>{{ work_order.review_note }}</td></tr>
-            {% endif %}
         </tbody>
     </table>
 </div>
@@ -106,12 +103,6 @@
         </form>
     {% endif %}
     <a class="btn secondary" href="{% url 'job_edit' work_order.pk %}">Upravit</a>
-    <form method="post" action="{% url 'job_return' work_order.pk %}">
-        {% csrf_token %}
-        <label for="{{ review_form.note.id_for_label }}">{{ review_form.note.label }}</label>
-        {{ review_form.note }}
-        <button class="btn secondary" type="submit">Vrátit k přepracování</button>
-    </form>
     <a class="btn danger" href="{% url 'job_delete' work_order.pk %}">Smazat</a>
 </div>
 <p><a href="{% url 'job_dashboard' %}">← Zpět na přehled</a></p>

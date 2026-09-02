@@ -1,26 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Zaznamenat zpracování{% endblock %}
 {% block content %}
-{% if returned_jobs %}
-<div class="card notice-returned">
-    <h2>Vráceno k přepracování</h2>
-    <p class="muted">Tato zpracování vedoucí vrátil. Opravu provede vedoucí — dejte mu prosím vědět.</p>
-    <div class="table-scroll">
-    <table>
-        <thead><tr><th>Datum</th><th>Popis</th><th>Důvod</th></tr></thead>
-        <tbody>
-        {% for order in returned_jobs %}
-            <tr>
-                <td>{{ order.created_at|date:"Y-m-d H:i" }}</td>
-                <td>{{ order.description|default:"—" }}</td>
-                <td>{{ order.review_note|default:"—" }}</td>
-            </tr>
-        {% endfor %}
-        </tbody>
-    </table>
-    </div>
-</div>
-{% endif %}
 <div class="card">
     <h1>Zaznamenat zpracování</h1>
     <form method="post">

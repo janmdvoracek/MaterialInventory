@@ -11,13 +11,14 @@ class WorkOrder(models.Model):
     A job a worker submits is a *proposal* until a manager or admin approves it:
     only APPROVED jobs are counted by the Hodiny, Stroje and machine-history
     pages. A manager's own submission is approved on the spot — there is nobody
-    above them to sign it off.
+    above them to sign it off. There is no third outcome: a job a manager is not
+    happy with is corrected (job_edit) or deleted (job_delete), never handed back
+    to its author.
     """
 
     class Status(models.TextChoices):
         PENDING = 'PENDING', 'Čeká na schválení'
         APPROVED = 'APPROVED', 'Schváleno'
-        RETURNED = 'RETURNED', 'Vráceno k přepracování'
 
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='vytvořeno')
     created_by = models.ForeignKey(
@@ -42,7 +43,6 @@ class WorkOrder(models.Model):
         blank=True,
         verbose_name='posoudil',
     )
-    review_note = models.CharField(max_length=255, blank=True, verbose_name='poznámka k posouzení')
 
     class Meta:
         ordering = ['-created_at']

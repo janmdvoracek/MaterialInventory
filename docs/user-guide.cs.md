@@ -115,18 +115,17 @@ neuvidíte. Jakmile ji vedoucí schválí, objeví se všude.
 
 Zakázka zapsaná vedoucím je schválená rovnou.
 
-Když je něco špatně, vedoucí zakázku **vrátí k přepracování** a napíše proč.
-Vrácené zakázky uvidíte nahoře na stránce **Zpracování** i s důvodem. Opravu
-provede vedoucí — vy ji opravit nemůžete, takže mu dejte vědět, jak to bylo
-správně. Vrácená zakázka se do přehledů nepočítá.
+Když je něco špatně, opravu provede vedoucí přímo v zakázce — vy ji opravit
+nemůžete. Zakázku, která je celá špatně, vedoucí smaže. Zpátky k přepracování se
+zakázka neposílá, takže pokud víte o chybě, dejte vedoucímu vědět, jak to bylo
+správně.
 
 ## Přehled zpracování (pro vedoucí)
 
 Tuto sekci mají v menu pouze vedoucí a správci. Je v ní **seznam všech
 zapsaných zpracování** — datum, kdo je zapsal, popis, hodiny celkem a stav.
-Zakázky, které čekají na schválení, jsou **žlutě** zvýrazněné, vrácené
-**červeně**; nahoře je počet čekajících. Filtrovat lze podle stavu, pracovníka
-a data.
+Zakázky, které čekají na schválení, jsou **žlutě** zvýrazněné; nahoře je počet
+čekajících. Filtrovat lze podle stavu, pracovníka a data.
 
 Klepnutím na **Detail** otevřete celou zakázku se vším, co bylo ve formuláři
 vyplněno — hodiny všech lidí, spotřeba, výroba i stroje s motohodinami a tunami.
@@ -136,7 +135,6 @@ Dole jsou akce:
 |---|---|
 | **Schválit** | Zakázka se započítá do Hodin i Strojů. |
 | **Upravit** | Otevře stejný formulář jako Zpracování, předvyplněný. Uložením se řádky přepíšou. **Schválení tím nevzniká** — po opravě je ještě potřeba schválit. |
-| **Vrátit k přepracování** | Vyžaduje důvod. Ten se ukáže pracovníkovi na stránce Zpracování. |
 | **Smazat** | Nevratně smaže celou zakázku i její řádky; motohodiny se strojům odečtou. |
 
 Při úpravě platí stejná pravidla jako při zápisu — hlavně že se **součty
