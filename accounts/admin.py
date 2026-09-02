@@ -1,7 +1,18 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
+from django.contrib.auth.models import Group
 
 from .models import User
+
+# Groups are Django's own bundles of model permissions, registered by
+# django.contrib.auth's admin rather than by this project. Nothing here consults
+# them: access is `User.role` plus role_required in the views, and everyone who
+# can open the admin at all is a superuser (both flags are derived from the role
+# in save_model below), so a superuser passes every permission check regardless.
+# A group could therefore only ever be a no-op that someone mistook for access
+# control, so the section is taken off the index. Nothing is deleted — the model
+# and any rows in it stay exactly as they are.
+admin.site.unregister(Group)
 
 
 @admin.register(User)

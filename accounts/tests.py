@@ -119,6 +119,36 @@ class AdminLinkTests(TestCase):
         self.assertNotIn('Administrace', html)
 
 
+class AdminIndexTests(TestCase):
+    """What the admin index does *not* offer.
+
+    Both entries below were dropped because they looked like features and were
+    not: one duplicated what the job page already edits, the other could not
+    have any effect at all.
+    """
+
+    def setUp(self):
+        self.admin_user = User.objects.create_superuser(username='admin', password='pw', role=User.Role.ADMIN)
+        self.client.force_login(self.admin_user)
+
+    def test_line_items_have_no_section_of_their_own(self):
+        # They are edited as an inline on the job; a second top-level section
+        # for them would duplicate what Zakázky already shows.
+        html = self.client.get(reverse('admin:index')).content.decode()
+        self.assertNotIn('Položky zpracování', html)
+        with self.assertRaises(NoReverseMatch):
+            reverse('admin:inventory_stockmovement_changelist')
+
+    def test_groups_are_not_in_the_admin(self):
+        # Permissions play no part in this app, and every account that can reach
+        # the admin is a superuser, which bypasses them anyway.
+        html = self.client.get(reverse('admin:index')).content.decode()
+        self.assertNotIn('Skupiny', html)
+        self.assertNotIn('Autentizace a autorizace', html)
+        with self.assertRaises(NoReverseMatch):
+            reverse('admin:auth_group_changelist')
+
+
 class AdminCzechTests(TestCase):
     """The admin is Czech from three separate mechanisms, each of which fails
     silently back to English: app `verbose_name`s, model/field `verbose_name`s,
@@ -137,14 +167,6 @@ class AdminCzechTests(TestCase):
         for label in ('Katalog', 'Zakázky', 'Uživatelé', 'Materiály', 'Stroje'):
             with self.subTest(label=label):
                 self.assertIn(label, html)
-
-    def test_line_items_have_no_section_of_their_own(self):
-        # They are edited as an inline on the job; a second top-level section
-        # for them would duplicate what Zakázky already shows.
-        html = self.client.get(reverse('admin:index')).content.decode()
-        self.assertNotIn('Položky zpracování', html)
-        with self.assertRaises(NoReverseMatch):
-            reverse('admin:inventory_stockmovement_changelist')
 
     def test_change_form_labels_are_czech(self):
         response = self.client.get(reverse('admin:materials_material_change', args=[self.material.pk]))

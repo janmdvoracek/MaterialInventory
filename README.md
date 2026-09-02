@@ -101,7 +101,7 @@ Full column reference: [docs/development.md](docs/development.md#seeding-data).
 ## Common commands
 
 ```bash
-python manage.py test                  # full suite (183 tests, needs Postgres)
+python manage.py test                  # full suite (184 tests, needs Postgres)
 python manage.py test workorders       # one app
 ruff check . && ruff format .          # lint and format
 docker compose up --build              # full stack

@@ -277,6 +277,13 @@ reachable by typing the URL. Hiding a link is not access control.
 bootstrap admin would otherwise default to `WORKER` and be locked out of the app
 it administers.
 
+**Django's own permission system is not used, and is hidden.** There are no
+groups and no per-user permissions; `auth.Group` is unregistered from the admin
+in `accounts/admin.py`, and `CustomUserAdmin` sets `fieldsets` without
+`groups`/`user_permissions`. Anything reachable in the admin is reachable by a
+superuser, who bypasses permission checks entirely, so a group would have been a
+no-op that looked like access control. Both gates above are the real ones.
+
 Managers deliberately get **no** Django admin access. Everything they need is in
 the app itself; the admin is a back office for editing the catalog and accounts,
 where an accidental edit has no audit trail.
