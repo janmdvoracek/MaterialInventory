@@ -179,6 +179,7 @@ def transform_create(request):
                     work_order = WorkOrder.objects.create(
                         created_by=request.user,
                         description=order_form.cleaned_data['description'],
+                        performed_on=order_form.cleaned_data['performed_on'],
                         status=WorkOrder.Status.APPROVED if approved else WorkOrder.Status.PENDING,
                         reviewed_at=timezone.now() if approved else None,
                         reviewed_by=request.user if approved else None,
@@ -281,8 +282,13 @@ def _filtered_machine_usages(request):
     form = MachineFilterForm(request.GET or None, user=request.user)
     # Unapproved jobs are proposals, not evidence — they stay out of the ledger
     # until a manager signs them off.
-    usages = MachineUsage.objects.filter(work_order__status=WorkOrder.Status.APPROVED).select_related(
-        'machine', 'work_order', 'work_order__created_by'
+    # Dated by the job, not by the row: `MachineUsage.created_at` is when the
+    # row was written, and `job_edit` rewrites every row, so a corrected job
+    # would otherwise drift to the day it was corrected.
+    usages = (
+        MachineUsage.objects.filter(work_order__status=WorkOrder.Status.APPROVED)
+        .select_related('machine', 'work_order', 'work_order__created_by')
+        .order_by('-work_order__performed_on', '-created_at')
     )
     if not request.user.is_manager_or_admin:
         # Workers only ever see their own machine usage, plus usage from
@@ -306,9 +312,9 @@ def _filtered_machine_usages(request):
     if data.get('created_by'):
         usages = usages.filter(work_order__created_by=data['created_by'])
     if data.get('date_from'):
-        usages = usages.filter(created_at__date__gte=data['date_from'])
+        usages = usages.filter(work_order__performed_on__gte=data['date_from'])
     if data.get('date_to'):
-        usages = usages.filter(created_at__date__lte=data['date_to'])
+        usages = usages.filter(work_order__performed_on__lte=data['date_to'])
     return form, usages
 
 
@@ -399,9 +405,9 @@ def time_worked(request):
             if data.get('worker'):
                 work_orders = work_orders.filter(_participation_filter(data['worker']))
             if data.get('date_from'):
-                work_orders = work_orders.filter(created_at__date__gte=data['date_from'])
+                work_orders = work_orders.filter(performed_on__gte=data['date_from'])
             if data.get('date_to'):
-                work_orders = work_orders.filter(created_at__date__lte=data['date_to'])
+                work_orders = work_orders.filter(performed_on__lte=data['date_to'])
 
     # Re-query by pk so the aggregation below joins cleanly — the collaborator
     # filters above already join the M2M, which would otherwise skew the sums.
@@ -417,7 +423,7 @@ def time_worked(request):
         scoped.annotate(total_hours=Sum('worker_hours__hours'))
         .select_related('created_by')
         .prefetch_related('collaborators', 'worker_hours__user')
-        .order_by('-created_at')
+        .order_by('-performed_on', '-created_at')
     )
     page_obj = Paginator(detail, HISTORY_PAGE_SIZE).get_page(request.GET.get('page'))
     querystring = request.GET.copy()
@@ -457,6 +463,11 @@ def _my_recent_jobs(user):
     return (
         WorkOrder.objects.filter(created_by=user)
         .annotate(my_hours=Sum('worker_hours__hours', filter=Q(worker_hours__user=user)))
+        # The one list still ordered by when it was typed, not when the work
+        # happened: it is a recency list of *submissions*, and a job someone
+        # just back-dated to last month has to appear at the top of it anyway —
+        # checking on it is the whole reason the list exists. The date column
+        # still shows `performed_on`, like everywhere else.
         .order_by('-created_at')[:MY_JOBS_LIMIT]
     )
 
@@ -486,7 +497,7 @@ def job_dashboard(request):
         WorkOrder.objects.select_related('created_by', 'reviewed_by')
         .annotate(total_hours=Sum('worker_hours__hours'))
         .prefetch_related('worker_hours__user')
-        .order_by('-created_at')
+        .order_by('-performed_on', '-created_at')
     )
     if form.is_bound:
         if not form.is_valid():
@@ -500,9 +511,9 @@ def job_dashboard(request):
             if data.get('status'):
                 jobs = jobs.filter(status=data['status'])
             if data.get('date_from'):
-                jobs = jobs.filter(created_at__date__gte=data['date_from'])
+                jobs = jobs.filter(performed_on__gte=data['date_from'])
             if data.get('date_to'):
-                jobs = jobs.filter(created_at__date__lte=data['date_to'])
+                jobs = jobs.filter(performed_on__lte=data['date_to'])
     page_obj = Paginator(jobs, HISTORY_PAGE_SIZE).get_page(request.GET.get('page'))
     querystring = request.GET.copy()
     querystring.pop('page', None)
@@ -581,7 +592,8 @@ def job_edit(request, pk):
             else:
                 with transaction.atomic():
                     work_order.description = order_form.cleaned_data['description']
-                    work_order.save(update_fields=['description'])
+                    work_order.performed_on = order_form.cleaned_data['performed_on']
+                    work_order.save(update_fields=['description', 'performed_on'])
                     _write_job_rows(
                         work_order,
                         author,
@@ -600,6 +612,10 @@ def job_edit(request, pk):
             initial={
                 'description': work_order.description,
                 'hours': _trim(own_hours.hours) if own_hours else None,
+                # Pre-ticked whenever the job was not done the day it was typed
+                # in, so a correction does not quietly reset the date to today.
+                'use_custom_date': work_order.performed_on != timezone.localtime(work_order.created_at).date(),
+                'performed_on': work_order.performed_on,
             }
         )
         consumed_formset = ConsumedFormSet(

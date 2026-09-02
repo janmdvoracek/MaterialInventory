@@ -615,6 +615,7 @@ class WorkOrderAdminTests(TestCase):
         self.client.force_login(self.admin_user)
         data = {
             'description': 'Admin-created job',
+            'performed_on': timezone.localdate().isoformat(),
             'status': WorkOrder.Status.APPROVED,
             'movements-TOTAL_FORMS': '1',
             'movements-INITIAL_FORMS': '0',
@@ -661,6 +662,215 @@ class WorkOrderAdminTests(TestCase):
         self.assertEqual(entry.hours, Decimal('7'))
 
 
+class PerformedOnTests(TestCase):
+    """The date a job was actually done, as opposed to when it was typed in.
+
+    The checkbox is what decides: unticked, the form fills in today whatever is
+    sitting in the date box, so a stale value cannot silently back-date a job.
+    """
+
+    def setUp(self):
+        self.material_raw = Material.objects.create(sku='RAW', name='Štěrk')
+        self.material_finished = Material.objects.create(sku='FIN', name='Frakce 8/16')
+        self.worker = User.objects.create_user(username='worker', password='pw', role=User.Role.WORKER)
+        self.manager = User.objects.create_user(username='manager', password='pw', role=User.Role.MANAGER)
+        self.machine = Machine.objects.create(name='Crusher A')
+        self.client.force_login(self.worker)
+
+    def _submit(self, machine_rows=None, hours='1', **extra):
+        payload = job_payload(
+            [{'material': self.material_raw, 'quantity': Decimal('5')}],
+            [{'material': self.material_finished, 'quantity': Decimal('5')}],
+            machine_rows=machine_rows,
+            hours=hours,
+        )
+        payload.update(extra)
+        return self.client.post(reverse('transform_create'), payload)
+
+    def _approve(self, work_order):
+        self.client.force_login(self.manager)
+        self.client.post(reverse('job_approve', args=[work_order.pk]))
+
+    def test_defaults_to_today(self):
+        self._submit()
+        self.assertEqual(WorkOrder.objects.get().performed_on, timezone.localdate())
+
+    def test_a_ticked_box_stores_the_date_given(self):
+        yesterday = timezone.localdate() - timedelta(days=1)
+        self._submit(use_custom_date='on', performed_on=yesterday.isoformat())
+        self.assertEqual(WorkOrder.objects.get().performed_on, yesterday)
+
+    def test_an_unticked_box_ignores_the_date_field(self):
+        # The input cannot hide itself without JS, so a date left in it must not
+        # count for anything.
+        self._submit(performed_on=(timezone.localdate() - timedelta(days=30)).isoformat())
+        self.assertEqual(WorkOrder.objects.get().performed_on, timezone.localdate())
+
+    def test_ticking_the_box_without_a_date_is_rejected(self):
+        response = self._submit(use_custom_date='on')
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(WorkOrder.objects.exists())
+        self.assertContains(response, 'Zadejte datum provedení')
+
+    def test_a_future_date_is_rejected(self):
+        tomorrow = timezone.localdate() + timedelta(days=1)
+        response = self._submit(use_custom_date='on', performed_on=tomorrow.isoformat())
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(WorkOrder.objects.exists())
+        self.assertContains(response, 'nemůže být v budoucnosti')
+
+    def test_the_whole_job_is_refused_when_the_date_is_bad(self):
+        # Same all-or-nothing rule as the mass balance: no hours, no machines,
+        # no line items land while any part of the form is unusable.
+        self._submit(use_custom_date='on', performed_on='')
+        self.assertFalse(WorkerHours.objects.exists())
+        self.assertFalse(StockMovement.objects.exists())
+
+    def test_the_detail_page_shows_it(self):
+        yesterday = timezone.localdate() - timedelta(days=1)
+        self._submit(use_custom_date='on', performed_on=yesterday.isoformat())
+        work_order = WorkOrder.objects.get()
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('job_detail', args=[work_order.pk]))
+        self.assertContains(response, yesterday.isoformat())
+        self.assertContains(response, 'Datum provedení')
+
+    def test_a_manager_can_correct_it(self):
+        self._submit()
+        work_order = WorkOrder.objects.get()
+        corrected = timezone.localdate() - timedelta(days=3)
+        payload = job_payload(
+            [{'material': self.material_raw, 'quantity': Decimal('5')}],
+            [{'material': self.material_finished, 'quantity': Decimal('5')}],
+        )
+        payload.update(use_custom_date='on', performed_on=corrected.isoformat())
+        self.client.force_login(self.manager)
+        self.client.post(reverse('job_edit', args=[work_order.pk]), payload)
+        work_order.refresh_from_db()
+        self.assertEqual(work_order.performed_on, corrected)
+
+    def test_the_edit_form_arrives_ticked_for_a_back_dated_job(self):
+        # Otherwise a correction that touches nothing else would quietly reset
+        # the date to today.
+        yesterday = timezone.localdate() - timedelta(days=1)
+        self._submit(use_custom_date='on', performed_on=yesterday.isoformat())
+        work_order = WorkOrder.objects.get()
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('job_edit', args=[work_order.pk]))
+        initial = response.context['order_form'].initial
+        self.assertTrue(initial['use_custom_date'])
+        self.assertEqual(initial['performed_on'], yesterday)
+
+    def test_the_edit_form_arrives_unticked_for_a_job_done_the_day_it_was_typed(self):
+        self._submit()
+        work_order = WorkOrder.objects.get()
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('job_edit', args=[work_order.pk]))
+        self.assertFalse(response.context['order_form'].initial['use_custom_date'])
+
+
+class ReportsUsePerformedOnTests(TestCase):
+    """Every report keys off the day the work happened, not the day it was typed.
+
+    The two dates are deliberately far apart in these fixtures: a job entered
+    today for work done 40 days ago must land in last month's figures and stay
+    out of this week's, on all three pages.
+    """
+
+    def setUp(self):
+        self.material_raw = Material.objects.create(sku='RAW', name='Štěrk')
+        self.material_finished = Material.objects.create(sku='FIN', name='Frakce 8/16')
+        self.worker = User.objects.create_user(username='worker', password='pw', role=User.Role.WORKER)
+        self.manager = User.objects.create_user(username='manager', password='pw', role=User.Role.MANAGER)
+        self.machine = Machine.objects.create(name='Crusher A')
+        self.long_ago = timezone.localdate() - timedelta(days=40)
+
+    def _back_dated_job(self):
+        """A job recorded today for work done 40 days ago, approved."""
+        self.client.force_login(self.manager)
+        self.client.post(
+            reverse('transform_create'),
+            job_payload(
+                [{'material': self.material_raw, 'quantity': Decimal('5')}],
+                [{'material': self.material_finished, 'quantity': Decimal('5')}],
+                machine_rows=[{'machine': self.machine, 'hours': Decimal('3'), 'tons': '7'}],
+                hours='4',
+            )
+            | {'use_custom_date': 'on', 'performed_on': self.long_ago.isoformat()},
+        )
+        work_order = WorkOrder.objects.get()
+        # A manager's own submission is approved on the spot, so it is already
+        # reportable; the point here is the date, not the review.
+        self.assertTrue(work_order.is_approved)
+        self.assertEqual(work_order.created_at.date(), timezone.localdate())
+        return work_order
+
+    def _last_week(self):
+        return {'date_from': (timezone.localdate() - timedelta(days=6)).isoformat()}
+
+    def _that_month(self):
+        return {
+            'date_from': (self.long_ago - timedelta(days=1)).isoformat(),
+            'date_to': (self.long_ago + timedelta(days=1)).isoformat(),
+        }
+
+    def test_hours_land_in_the_period_the_work_was_done(self):
+        self._back_dated_job()
+        response = self.client.get(reverse('time_worked'), self._that_month())
+        self.assertEqual(response.context['summary'][0]['hours'], Decimal('4.00'))
+
+    def test_hours_stay_out_of_the_week_it_was_typed_in(self):
+        self._back_dated_job()
+        response = self.client.get(reverse('time_worked'), self._last_week())
+        self.assertEqual(response.context['summary'], [])
+
+    def test_machine_totals_follow_the_work(self):
+        self._back_dated_job()
+        response = self.client.get(reverse('machine_dashboard'), self._that_month())
+        machine = response.context['machines'][0]
+        self.assertEqual(machine.filtered_hours, Decimal('3.00'))
+        self.assertEqual(machine.filtered_tons, Decimal('7.00'))
+
+    def test_machine_totals_stay_out_of_the_week_it_was_typed_in(self):
+        self._back_dated_job()
+        response = self.client.get(reverse('machine_dashboard'), self._last_week())
+        machine = response.context['machines'][0]
+        self.assertIsNone(machine.filtered_hours)
+        self.assertEqual(len(response.context['page_obj'].object_list), 0)
+
+    def test_the_usage_row_is_dated_by_its_job(self):
+        # MachineUsage.created_at is when the row was written, which job_edit
+        # rewrites; the page shows the job's date instead.
+        self._back_dated_job()
+        response = self.client.get(reverse('machine_dashboard'))
+        self.assertContains(response, self.long_ago.isoformat())
+
+    def test_the_review_dashboard_filters_and_dates_by_the_work(self):
+        work_order = self._back_dated_job()
+        self.assertEqual(
+            list(self.client.get(reverse('job_dashboard'), self._that_month()).context['page_obj'].object_list),
+            [work_order],
+        )
+        self.assertEqual(
+            list(self.client.get(reverse('job_dashboard'), self._last_week()).context['page_obj'].object_list),
+            [],
+        )
+        self.assertContains(self.client.get(reverse('job_dashboard')), self.long_ago.isoformat())
+
+    def test_jobs_are_ordered_by_when_the_work_was_done(self):
+        older = self._back_dated_job()
+        self.client.post(
+            reverse('transform_create'),
+            job_payload(
+                [{'material': self.material_raw, 'quantity': Decimal('5')}],
+                [{'material': self.material_finished, 'quantity': Decimal('5')}],
+            ),
+        )
+        newer = WorkOrder.objects.exclude(pk=older.pk).get()
+        response = self.client.get(reverse('job_dashboard'))
+        self.assertEqual(list(response.context['page_obj'].object_list), [newer, older])
+
+
 class MachineDashboardTests(TestCase):
     def setUp(self):
         self.worker = User.objects.create_user(username='worker', password='pw', role=User.Role.WORKER)
@@ -684,11 +894,10 @@ class MachineDashboardTests(TestCase):
         self.assertContains(response, '0,0 h')
 
     def test_totals_follow_the_date_filter(self):
+        # Back-dated on the job, not on the usage row: the row's own
+        # created_at is when it was written, and the page dates it by its job.
         old = self._usage(Decimal('4'), tons=Decimal('10'))
-        # queryset.update() only because this touches created_at: `hours` is
-        # what MachineUsage.save() keeps Machine.total_hours in step with, and
-        # that is not being changed here.
-        MachineUsage.objects.filter(pk=old.pk).update(created_at=timezone.now() - timedelta(days=40))
+        WorkOrder.objects.filter(pk=old.work_order_id).update(performed_on=date.today() - timedelta(days=40))
         self._usage(Decimal('1.5'), tons=Decimal('6'))
         response = self.client.get(
             reverse('machine_dashboard'), {'date_from': (date.today() - timedelta(days=7)).isoformat()}
@@ -1024,7 +1233,7 @@ class TimeWorkedTests(TestCase):
 
     def test_filters_by_date_range(self):
         old = self._job(self.worker, Decimal('4'))
-        WorkOrder.objects.filter(pk=old.pk).update(created_at=timezone.now() - timedelta(days=10))
+        WorkOrder.objects.filter(pk=old.pk).update(performed_on=date.today() - timedelta(days=10))
         self._job(self.worker, Decimal('1'))
         self.client.force_login(self.worker)
         response = self.client.get(
@@ -1392,7 +1601,7 @@ class DatePresetTests(ReviewFixtureMixin, TestCase):
     def test_a_range_actually_filters(self):
         recent = self.submit_job(self.worker)
         old = self.submit_job(self.worker)
-        WorkOrder.objects.filter(pk=old.pk).update(created_at=timezone.now() - timedelta(days=45))
+        WorkOrder.objects.filter(pk=old.pk).update(performed_on=date.today() - timedelta(days=45))
         self.client.force_login(self.manager)
         querystring = self.preset(self.client.get(reverse('job_dashboard')), '30d')['querystring']
         response = self.client.get(f'{reverse("job_dashboard")}?{querystring}')

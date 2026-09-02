@@ -72,6 +72,23 @@ on. Kdo je tu uvedený, uvidí zakázku ve své historii a hodiny se mu započí
 - Když nikdo další nedělal, nechte řádky prázdné.
 - Když stejného člověka uvedete dvakrát, hodiny se mu sečtou.
 
+**2b. Datum provedení**
+
+Zakázka se normálně zapíše na **dnešek**. Když zapisujete práci zpětně,
+zaškrtněte **Jiné datum než dnes** a do pole **Datum provedení** vyberte den,
+kdy se práce skutečně dělala.
+
+- Rozhoduje zaškrtnutí. Když políčko nezaškrtnete, datum v poli se **nepoužije**
+  a uloží se dnešek.
+- Zaškrtnuté políčko bez data aplikace odmítne, stejně jako datum v budoucnosti.
+- Zadává se jen **den**, ne čas.
+- Opravit datum může později vedoucí v úpravě zakázky.
+
+> Podle data provedení se řídí **všechny přehledy** — **Hodiny**, **Stroje**
+> i **Přehled**, jejich filtry, sloupce *Provedeno* i řazení. Zakázka zapsaná
+> dnes za práci z minulého měsíce se tedy započítá do minulého měsíce.
+> V detailu zakázky najdete obě data: *Datum provedení* i *Zaznamenáno*.
+
 **3. Spotřeba a výroba**
 
 - Do **spotřeby** zapište, co se spotřebovalo (materiál a množství).
@@ -203,7 +220,10 @@ filtrovat podle pracovníka.
 ### Moje poslední zápisy
 
 Nahoře v záložce **Hodiny** je tabulka **posledních pěti zakázek, které jste
-zapsali** — datum, popis, vaše hodiny a stav. Žlutě zvýrazněné a označené *Čeká
+zapsali** — datum provedení, popis, vaše hodiny a stav. Řadí se podle toho, kdy
+jste je zapsali (nejnovější nahoře), ne podle data provedení — zpětně zapsaná
+zakázka se tak neztratí někde dole, když si chcete zkontrolovat, jestli už ji
+vedoucí schválil. Žlutě zvýrazněné a označené *Čeká
 na schválení* jsou ty, které vedoucí ještě neposoudil; *Schváleno* znamená, že
 se už započítávají do Hodin i Strojů. Je to tedy vysvětlení, proč vám hodiny
 v souhrnu pod tabulkou zatím chybí. Zakázka, kterou vedoucí smazal, ze seznamu

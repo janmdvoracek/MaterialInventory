@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.db import models, transaction
 from django.db.models import F
+from django.utils import timezone
 
 from materials.models import Machine
 
@@ -21,6 +22,14 @@ class WorkOrder(models.Model):
         APPROVED = 'APPROVED', 'Schváleno'
 
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='vytvořeno')
+    # When the work was actually done, as opposed to when it was typed in. The
+    # two differ only when the submitter ticks „Jiné datum než dnes"; otherwise
+    # the form fills in today, so the column is always answered. Migration 0010
+    # back-filled existing jobs from `created_at`. Day only, deliberately: an
+    # `<input type="date">` renders the same everywhere, while the
+    # `datetime-local` widget the removed Příjem/Výdej forms used let an
+    # English-configured phone show AM/PM regardless of the app's `lang="cs"`.
+    performed_on = models.DateField(default=timezone.localdate, verbose_name='datum provedení')
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='work_orders', verbose_name='vytvořil'
     )
@@ -45,7 +54,9 @@ class WorkOrder(models.Model):
     )
 
     class Meta:
-        ordering = ['-created_at']
+        # By the day the work was done, then by entry order within a day — the
+        # same rule every list in the app follows.
+        ordering = ['-performed_on', '-created_at']
         verbose_name = 'zakázka'
         verbose_name_plural = 'zakázky'
 

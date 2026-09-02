@@ -8,7 +8,8 @@
     </p>
     <table>
         <tbody>
-            <tr><th>Datum</th><td>{{ work_order.created_at|date:"Y-m-d H:i" }}</td></tr>
+            <tr><th>Datum provedení</th><td>{{ work_order.performed_on|date:"Y-m-d" }}</td></tr>
+            <tr><th>Zaznamenáno</th><td>{{ work_order.created_at|date:"Y-m-d H:i" }}</td></tr>
             <tr><th>Zaznamenal</th><td>{{ work_order.created_by.username }}</td></tr>
             <tr><th>Popis</th><td>{{ work_order.description|default:"—" }}</td></tr>
             {% if work_order.reviewed_at %}

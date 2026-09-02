@@ -12,6 +12,13 @@
         {{ order_form.hours }}
         {% for error in order_form.hours.errors %}<p class="messages error">{{ error }}</p>{% endfor %}
 
+        <div class="date-override">
+            <label class="checkbox-label">{{ order_form.use_custom_date }} Jiné datum než dnes</label>
+            <label for="{{ order_form.performed_on.id_for_label }}">Datum provedení</label>
+            {{ order_form.performed_on }}
+            {% for error in order_form.performed_on.errors %}<p class="messages error">{{ error }}</p>{% endfor %}
+        </div>
+
         <h2>Spolupracovníci</h2>
         {{ worker_formset.management_form }}
         {% for form in worker_formset %}

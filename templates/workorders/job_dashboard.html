@@ -19,12 +19,12 @@
     <div class="table-scroll">
     <table>
         <thead>
-            <tr><th>Datum</th><th>Kdo</th><th>Popis</th><th>Hodiny</th><th>Stav</th><th></th></tr>
+            <tr><th>Provedeno</th><th>Kdo</th><th>Popis</th><th>Hodiny</th><th>Stav</th><th></th></tr>
         </thead>
         <tbody>
         {% for order in page_obj %}
             <tr class="{% if order.status == 'PENDING' %}row-pending{% endif %}">
-                <td>{{ order.created_at|date:"Y-m-d H:i" }}</td>
+                <td>{{ order.performed_on|date:"Y-m-d" }}</td>
                 <td>{{ order.created_by.username }}</td>
                 <td>{{ order.description|default:"—" }}</td>
                 <td>{{ order.total_hours|default:"0"|floatformat:1 }} h</td>

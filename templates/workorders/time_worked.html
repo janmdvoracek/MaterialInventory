@@ -11,11 +11,11 @@
     <p class="muted">Zápis se do Hodin a Strojů započítá až po schválení vedoucím. Opravu i smazání provádí vedoucí — pokud je něco špatně, dejte mu vědět.</p>
     <div class="table-scroll">
     <table>
-        <thead><tr><th>Datum</th><th>Popis</th><th>Moje hodiny</th><th>Stav</th></tr></thead>
+        <thead><tr><th>Provedeno</th><th>Popis</th><th>Moje hodiny</th><th>Stav</th></tr></thead>
         <tbody>
         {% for order in my_jobs %}
             <tr class="{% if order.status == 'PENDING' %}row-pending{% endif %}">
-                <td>{{ order.created_at|date:"Y-m-d H:i" }}</td>
+                <td>{{ order.performed_on|date:"Y-m-d" }}</td>
                 <td>{{ order.description|default:"—" }}</td>
                 <td>{{ order.my_hours|default:"0"|floatformat:1 }} h</td>
                 <td><span class="status-badge {{ order.status|lower }}">{{ order.get_status_display }}</span></td>
@@ -59,12 +59,12 @@
     <div class="table-scroll">
     <table>
         <thead>
-            <tr><th>Datum</th><th>Popis</th><th>Hodiny celkem</th><th>Pracovníci</th></tr>
+            <tr><th>Provedeno</th><th>Popis</th><th>Hodiny celkem</th><th>Pracovníci</th></tr>
         </thead>
         <tbody>
         {% for order in page_obj %}
             <tr>
-                <td>{{ order.created_at|date:"Y-m-d H:i" }}</td>
+                <td>{{ order.performed_on|date:"Y-m-d" }}</td>
                 <td>{{ order.description|default:"—" }}</td>
                 <td>{{ order.total_hours|default:"0"|floatformat:1 }} h</td>
                 <td>

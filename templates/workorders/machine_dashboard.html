@@ -40,12 +40,12 @@
     <div class="table-scroll">
     <table>
         <thead>
-            <tr><th>Datum</th><th>Stroj</th><th>Hodiny</th><th>Tuny</th><th>Zakázka</th><th>Kým</th></tr>
+            <tr><th>Provedeno</th><th>Stroj</th><th>Hodiny</th><th>Tuny</th><th>Zakázka</th><th>Kým</th></tr>
         </thead>
         <tbody>
         {% for usage in page_obj %}
             <tr>
-                <td>{{ usage.created_at|date:"Y-m-d H:i" }}</td>
+                <td>{{ usage.work_order.performed_on|date:"Y-m-d" }}</td>
                 <td>{{ usage.machine.name }}</td>
                 <td>{{ usage.hours|floatformat:1 }} h</td>
                 <td>{{ usage.tons|floatformat:2|default:"—" }}</td>

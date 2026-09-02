@@ -110,6 +110,54 @@ rows for the same material so it could test them as a single quantity; with no
 such check left, two rows of 6 t are simply two line items that contribute 12 t
 to the consumed total.
 
+### When a job happened
+
+`WorkOrder.performed_on` is the day the work was done; `created_at` is when
+somebody typed it in. They differ only when the submitter ticks *„Jiné datum než
+dnes"* on the Transform form and picks a date.
+
+The checkbox, not the date input, is what decides. With no JS the input cannot
+hide itself, so `WorkOrderForm.clean()` overwrites whatever is in it with
+today's date whenever the box is unticked — otherwise a value left over from a
+previous attempt could back-date a job nobody meant to back-date. Ticked with an
+empty date, or with a date in the future, is a form error, and the all-or-nothing
+rule applies: no hours, no machines and no line items are written.
+
+Day only, no time. An `<input type="date">` renders identically everywhere,
+whereas the `datetime-local` widget the removed Příjem/Výdej forms used let an
+English-configured phone show AM/PM regardless of the page's `lang="cs"`.
+
+`job_edit` can correct the date, and its form arrives with the box already
+ticked when `performed_on` differs from the recording date — otherwise a
+correction that touched nothing else would quietly reset the job to today.
+
+Migration `0010` added the column with a `timezone.localdate` default and then
+back-filled every existing row from `created_at`: before the field existed there
+was no way to record a job for any day but the one it was entered, so that date
+is the right answer for them.
+
+**Every report keys off `performed_on`.** The date filters on Hodiny, Stroje
+and Přehled compare it directly — it is a `DateField`, so a plain `__gte`/`__lte`
+with no `__date` lookup and no timezone conversion behind it — and each list's
+*Provedeno* column shows it. Ordering is `['-performed_on', '-created_at']` on
+all three lists and in `WorkOrder.Meta` (migration `0011`): the day the work
+happened, then entry order within a day.
+
+Two consequences worth knowing:
+
+- **Machine-usage rows are dated by their job** (`work_order__performed_on`),
+  never by `MachineUsage.created_at`. `job_edit` deletes and rewrites every
+  usage row, so a corrected job would otherwise jump to the day it was
+  corrected.
+- **`my_jobs` is the exception**, still ordered `-created_at`. It is a recency
+  list of *submissions*: a job someone has just back-dated to last month has to
+  appear at the top of it, because checking what became of a fresh submission is
+  the only reason that list exists. Its date column still shows `performed_on`.
+
+`created_at` keeps its own meaning — when the job was typed in — and is still
+shown on the job detail page (*Zaznamenáno*), on the edit and delete pages, and
+in the admin.
+
 ### Approval
 
 A `WorkOrder` carries a `status` — `PENDING` or `APPROVED` — plus `reviewed_at`

@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from django import forms
+from django.utils import timezone
 
 from accounts.models import User
 from materials.models import Machine, Material
@@ -36,6 +37,30 @@ class WorkOrderForm(forms.Form):
         label='Moje hodiny',
         widget=forms.NumberInput(attrs={'placeholder': 'Odpracované hodiny'}),
     )
+    # The date input has no way to hide itself without JS, so the checkbox is
+    # what decides whether it counts. Unticked, whatever is in the field is
+    # ignored and `clean` fills in today — that way a stale value left in the
+    # box can never silently back-date a job.
+    use_custom_date = forms.BooleanField(required=False, label='Jiné datum než dnes')
+    performed_on = forms.DateField(
+        required=False,
+        widget=forms.DateInput(attrs={'type': 'date'}),
+        label='Datum provedení',
+    )
+
+    def clean(self):
+        cleaned_data = super().clean()
+        today = timezone.localdate()
+        if not cleaned_data.get('use_custom_date'):
+            cleaned_data['performed_on'] = today
+            return cleaned_data
+        performed_on = cleaned_data.get('performed_on')
+        if not performed_on:
+            self.add_error('performed_on', 'Zadejte datum provedení, nebo odškrtněte „Jiné datum než dnes“.')
+        elif performed_on > today:
+            # Recording work that has not happened yet is a typo, not a plan.
+            self.add_error('performed_on', 'Datum provedení nemůže být v budoucnosti.')
+        return cleaned_data
 
 
 class MovementItemForm(forms.Form):

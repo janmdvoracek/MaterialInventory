@@ -28,7 +28,7 @@ class WorkerHoursInline(admin.TabularInline):
 
 @admin.register(WorkOrder)
 class WorkOrderAdmin(admin.ModelAdmin):
-    list_display = ('id', 'created_at', 'created_by', 'description', 'status', 'reviewed_by')
+    list_display = ('id', 'performed_on', 'created_at', 'created_by', 'description', 'status', 'reviewed_by')
     list_filter = ('status',)
     date_hierarchy = 'created_at'
     # Who reviewed it and when is written by the approve/return views; leaving
