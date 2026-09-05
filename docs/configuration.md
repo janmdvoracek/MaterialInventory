@@ -105,7 +105,8 @@ The Compose dev row is the non-obvious one: the image carries the `ENV`, but
 | `staticfiles/` | **Generated.** `STATIC_ROOT`, written by `collectstatic`. | No — gitignored |
 
 `.gitignore` used to ignore `static/`, the source directory, which is how
-`static/img/background.jpg` — referenced by `base.html` on every page — went
+`static/img/background.jpg` — referenced by `static/css/app.css`, which
+`base.html` loads on every page — went
 missing from the repository. New assets go in `static/` and **must be
 committed.**
 

@@ -505,7 +505,13 @@ multiplies the `Sum` by the number of matched collaborators.
 - **No JavaScript.** `django_htmx` is installed and htmx is loaded in
   `base.html`, but no template uses an `hx-*` attribute. Every page is a plain
   form POST and redirect. `widget_tweaks` is likewise installed and unused.
-- **No CSS files.** All styling is one inline `<style>` block in `base.html`.
+- **No CSS framework, and no per-template CSS.** All styling is one file,
+  `static/css/app.css`, loaded by `base.html`. No template carries an inline
+  `style=` attribute or a `<style>` block. Colours are custom properties
+  declared twice — `:root` for light, `@media (prefers-color-scheme: dark)`
+  for dark — so dark mode is the same stylesheet with a second set of values,
+  chosen by the operating system. There is no theme toggle and nothing is
+  stored per user, which is what keeps the bullet above true.
 - **No soft deletes.** Catalog entries are retired with `is_active = False`,
   which removes them from every dropdown while preserving their history.
   Deletion is blocked by `on_delete=PROTECT` once anything references them.

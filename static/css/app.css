@@ -1,37 +1,120 @@
+/* Colours live in the two blocks below and nowhere else. The light values sit
+   in :root, the dark ones override the same names under prefers-color-scheme.
+   A colour literal written into a rule further down is a bug: it will be
+   correct in one theme and wrong in the other. Reach for a token, or add one
+   to both blocks. */
 :root {
     color-scheme: light;
+
+    /* Brand: identical in both themes. */
     --brand-dark: #1a1a1a;
     --brand-green: #8bc53f;
     --brand-green-dark: #6fa22f;
     --brand-green-text: #4d7c23;
+
+    --bg: #f5f5f5;
+    --scrim: rgba(245, 245, 245, 0.88);
+    --surface: #ffffff;
+    --shadow: rgba(0, 0, 0, 0.1);
+    --text: #1a1a1a;
+    --text-muted: #6b7280;
+    --link: var(--brand-green-text);
+    --border: #e5e7eb;
+
+    --chrome-bg: var(--brand-dark);
+    --chrome-text: #ffffff;
+    --chrome-link: #d1d5db;
+    --chrome-border: #000000;
+
+    --input-bg: #ffffff;
+    --input-border: #ccc;
+    --focus-ring: rgba(139, 197, 63, 0.35);
+
+    --btn-secondary-bg: #e5e7eb;
+    --btn-secondary-text: var(--brand-dark);
+    --btn-secondary-hover: #d1d5db;
+    --btn-danger-bg: #fecaca;
+    --btn-danger-text: #7f1d1d;
+    --btn-danger-hover: #fca5a5;
+
+    --success-bg: #d1fae5;
+    --success-text: #065f46;
+    --error-bg: #fee2e2;
+    --error-text: #991b1b;
+    --pending-bg: #fde68a;
+    --pending-text: #78350f;
+    --row-pending-bg: #fef3c7;
+    --badge-bg: #e5e7eb;
+    --badge-text: #374151;
+}
+@media (prefers-color-scheme: dark) {
+    :root {
+        color-scheme: dark;
+
+        --bg: #14161a;
+        --scrim: rgba(20, 22, 26, 0.90);
+        --surface: #1e2228;
+        --shadow: rgba(0, 0, 0, 0.45);
+        --text: #e8eaed;
+        --text-muted: #9aa3ae;
+        --link: #a3d160;
+        --border: #333941;
+
+        /* Chrome sits above the page here, as it does in light: the page is
+           near black and the header and nav are a step lighter. */
+        --chrome-bg: #22262c;
+        --chrome-text: #e8eaed;
+        --chrome-link: #c3c8d0;
+        --chrome-border: #0d0f12;
+
+        --input-bg: #14171b;
+        --input-border: #3d444d;
+
+        --btn-secondary-bg: #333941;
+        --btn-secondary-text: #e8eaed;
+        --btn-secondary-hover: #414852;
+        --btn-danger-bg: #5a2222;
+        --btn-danger-text: #ffd5d5;
+        --btn-danger-hover: #6e2a2a;
+
+        --success-bg: #123a2c;
+        --success-text: #8ff0c4;
+        --error-bg: #4a1f1f;
+        --error-text: #ffc9c9;
+        --pending-bg: #5a4410;
+        --pending-text: #ffdf8a;
+        --row-pending-bg: #3a3010;
+        --badge-bg: #333941;
+        --badge-text: #d0d5dc;
+    }
 }
 * { box-sizing: border-box; }
 body {
     font-family: system-ui, -apple-system, sans-serif;
     margin: 0;
     padding-bottom: 88px;
-    background-color: #f5f5f5;
-    background-image: linear-gradient(rgba(245, 245, 245, 0.88), rgba(245, 245, 245, 0.88)), url("../img/background.jpg");
+    background-color: var(--bg);
+    background-image: linear-gradient(var(--scrim), var(--scrim)), url("../img/background.jpg");
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
     background-attachment: fixed;
-    color: #1a1a1a;
+    color: var(--text);
 }
-a { color: var(--brand-green-text); }
+a { color: var(--link); }
 header {
-    background: var(--brand-dark);
-    color: white;
+    background: var(--chrome-bg);
+    color: var(--chrome-text);
     padding: 1rem;
     display: flex;
     justify-content: space-between;
     align-items: center;
 }
-header a { color: white; text-decoration: none; font-weight: 700; letter-spacing: 0.02em; }
+header a { color: var(--chrome-text); text-decoration: none; font-weight: 700; letter-spacing: 0.02em; }
 header .logo { height: 32px; width: auto; display: block; }
 header .header-actions { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; justify-content: flex-end; }
 header a.header-link {
-    color: #d1d5db;
+    color: var(--chrome-link);
     font-weight: 600;
     letter-spacing: normal;
 }
@@ -43,7 +126,7 @@ header button.logout-link {
     padding: 0;
     background: none;
     border: none;
-    color: #d1d5db;
+    color: var(--chrome-link);
     font-family: inherit;
     font-size: 1rem;
     font-weight: 600;
@@ -52,26 +135,28 @@ header button.logout-link {
 header button.logout-link:hover { background: none; color: var(--brand-green); text-decoration: underline; }
 main { padding: 1rem; max-width: 480px; margin: 0 auto; }
 .card {
-    background: white;
+    background: var(--surface);
     border-radius: 8px;
     padding: 1rem;
     margin-bottom: 1rem;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    box-shadow: 0 1px 3px var(--shadow);
 }
 label { display: block; font-weight: 600; margin-top: 0.75rem; margin-bottom: 0.25rem; }
 input:not([type="checkbox"]):not([type="radio"]), select {
     width: 100%;
     padding: 0.75rem;
     font-size: 1rem;
-    border: 1px solid #ccc;
+    background: var(--input-bg);
+    color: var(--text);
+    border: 1px solid var(--input-border);
     border-radius: 6px;
 }
 input:focus, select:focus {
     outline: none;
     border-color: var(--brand-green);
-    box-shadow: 0 0 0 3px rgba(139, 197, 63, 0.35);
+    box-shadow: 0 0 0 3px var(--focus-ring);
 }
-.checkbox-list > div { padding: 0.5rem 0; border-bottom: 1px solid #e5e7eb; }
+.checkbox-list > div { padding: 0.5rem 0; border-bottom: 1px solid var(--border); }
 .checkbox-list > div:last-child { border-bottom: none; }
 .checkbox-list label { display: flex; align-items: center; gap: 0.5rem; font-weight: normal; margin: 0; }
 .checkbox-list input[type="checkbox"] { width: 1.2rem; height: 1.2rem; flex-shrink: 0; }
@@ -93,11 +178,11 @@ button, .btn {
 button:hover, .btn:hover { background: var(--brand-green-dark); }
 .messages { list-style: none; padding: 0; }
 .messages li { padding: 0.75rem; border-radius: 6px; margin-bottom: 0.5rem; }
-.messages .success { background: #d1fae5; color: #065f46; }
-.messages .error { background: #fee2e2; color: #991b1b; }
+.messages .success { background: var(--success-bg); color: var(--success-text); }
+.messages .error { background: var(--error-bg); color: var(--error-text); }
 table { width: 100%; border-collapse: collapse; }
-th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid #e5e7eb; white-space: nowrap; }
-th { color: var(--brand-dark); border-bottom: 2px solid var(--brand-green); }
+th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid var(--border); white-space: nowrap; }
+th { color: var(--text); border-bottom: 2px solid var(--brand-green); }
 .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 nav.bottom {
     position: fixed;
@@ -105,8 +190,8 @@ nav.bottom {
     left: 0;
     right: 0;
     display: flex;
-    background: var(--brand-dark);
-    border-top: 1px solid #000;
+    background: var(--chrome-bg);
+    border-top: 1px solid var(--chrome-border);
 }
 nav.bottom a {
     flex: 1;
@@ -114,7 +199,7 @@ nav.bottom a {
     text-align: center;
     padding: 0.7rem 0.25rem;
     text-decoration: none;
-    color: #d1d5db;
+    color: var(--chrome-link);
     font-size: 0.72rem;
     font-weight: 700;
     line-height: 1.2;
@@ -124,11 +209,9 @@ nav.bottom a:hover, nav.bottom a:active { color: var(--brand-green); }
 .item-row { display: flex; gap: 0.5rem; align-items: flex-end; margin-bottom: 0.5rem; }
 .date-override { margin-top: 1rem; }
 .item-row > div { flex: 1; }
-/* Jobs still waiting for a manager, and ones sent back, are the whole
-   point of the Přehled page, so they have to stand out from the rest.
-   (No em dashes anywhere in this block: it is served on every page and
-   tests count that character in rendered output.) */
-tr.row-pending > td { background: #fef3c7; }
+/* Jobs still waiting for a manager are the whole point of the Prehled page,
+   so they have to stand out from the rest of the table. */
+tr.row-pending > td { background: var(--row-pending-bg); }
 .status-badge {
     display: inline-block;
     padding: 0.15rem 0.5rem;
@@ -136,11 +219,11 @@ tr.row-pending > td { background: #fef3c7; }
     font-size: 0.78rem;
     font-weight: 700;
     white-space: nowrap;
-    background: #e5e7eb;
-    color: #374151;
+    background: var(--badge-bg);
+    color: var(--badge-text);
 }
-.status-badge.pending { background: #fde68a; color: #78350f; }
-.status-badge.approved { background: #d1fae5; color: #065f46; }
+.status-badge.pending { background: var(--pending-bg); color: var(--pending-text); }
+.status-badge.approved { background: var(--success-bg); color: var(--success-text); }
 .job-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 .quick-filters { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 .quick-filters .btn {
@@ -151,8 +234,8 @@ tr.row-pending > td { background: #fef3c7; }
     font-size: 0.95rem;
 }
 .job-actions form, .job-actions .btn { flex: 1; margin: 0; }
-.btn.secondary { background: #e5e7eb; color: var(--brand-dark); }
-.btn.secondary:hover { background: #d1d5db; }
-.btn.danger { background: #fecaca; color: #7f1d1d; }
-.btn.danger:hover { background: #fca5a5; }
-.muted { color: #6b7280; }
+.btn.secondary { background: var(--btn-secondary-bg); color: var(--btn-secondary-text); }
+.btn.secondary:hover { background: var(--btn-secondary-hover); }
+.btn.danger { background: var(--btn-danger-bg); color: var(--btn-danger-text); }
+.btn.danger:hover { background: var(--btn-danger-hover); }
+.muted { color: var(--text-muted); }

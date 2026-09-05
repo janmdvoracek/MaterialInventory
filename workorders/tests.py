@@ -1,6 +1,8 @@
+import re
 from datetime import date, timedelta
 from decimal import Decimal
 
+from django.conf import settings
 from django.test import TestCase
 from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
@@ -1872,3 +1874,52 @@ class JobDeleteTests(ReviewFixtureMixin, TestCase):
         self.assertFalse(StockMovement.objects.exists())
         self.assertFalse(WorkerHours.objects.exists())
         self.assertFalse(MachineUsage.objects.exists())
+
+
+class ThemeTokenTests(TestCase):
+    """Dark mode is a second set of values for one set of names.
+
+    Every colour in `static/css/app.css` is a custom property declared twice:
+    once in `:root` and once in the `prefers-color-scheme: dark` override. The
+    failure mode is silent both ways round. A token declared only in the light
+    block keeps its light value on a dark screen, and a mistyped `var()` name
+    resolves to nothing at all; neither raises, and neither shows up in any
+    test that drives a view, because the stylesheet is an external file that
+    the test client never fetches or parses.
+    """
+
+    # The brand green is the same colour in both themes on purpose, and the
+    # focus ring is that green at low alpha, so these five are declared once.
+    SHARED = {
+        '--brand-dark',
+        '--brand-green',
+        '--brand-green-dark',
+        '--brand-green-text',
+        '--focus-ring',
+    }
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        css = (settings.BASE_DIR / 'static' / 'css' / 'app.css').read_text(encoding='utf-8')
+        dark_at = css.index('@media (prefers-color-scheme: dark)')
+        cls.css = css
+        cls.light = set(re.findall(r'^\s*(--[\w-]+):', css[:dark_at], re.MULTILINE))
+        cls.dark = set(
+            re.findall(r'^\s*(--[\w-]+):', css[dark_at : css.index('* { box-sizing', dark_at)], re.MULTILINE)
+        )
+        cls.used = set(re.findall(r'var\((--[\w-]+)\)', css))
+
+    def test_every_light_token_has_a_dark_counterpart(self):
+        self.assertEqual(self.light - self.dark, self.SHARED)
+
+    def test_the_dark_block_introduces_no_token_of_its_own(self):
+        self.assertEqual(self.dark - self.light, set())
+
+    def test_every_referenced_token_is_declared(self):
+        self.assertEqual(self.used - self.light - self.dark, set())
+
+    def test_no_rule_hardcodes_a_colour_outside_the_token_blocks(self):
+        rules = self.css[self.css.index('* { box-sizing') :]
+        literals = re.findall(r'#[0-9a-fA-F]{3,8}\b|rgba?\([^)]*\)', rules)
+        self.assertEqual(literals, [])

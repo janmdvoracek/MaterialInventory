@@ -5,6 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Evidence materiálu{% endblock %}</title>
+    <meta name="theme-color" content="#1a1a1a" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#22262c" media="(prefers-color-scheme: dark)">
     <script src="https://unpkg.com/htmx.org@2.0.3" defer></script>
     <link rel="stylesheet" href="{% static 'css/app.css' %}"></head>
 <body class="page-{{ request.resolver_match.url_name }}">
