@@ -1,0 +1,75 @@
+{% comment %}
+The body of the Zpracování form: the job's own fields, then the four formset
+sections. Shared by transform_form.html (recording a job) and job_edit.html (a
+manager correcting one), so a field added to a row cannot land on one page and
+be forgotten on the other. The two views already share `_collect_rows` and
+`_write_job_rows`; this is the markup half of the same rule.
+
+Rendered inside the caller's own <form>, so there is no <form> tag, no
+{% csrf_token %} and no submit button here — those differ per page and stay
+with the caller.
+
+„Zapsat za" is guarded because it is manager-only: `job_edit` builds
+`WorkOrderForm` without a `user`, so the field is simply not there. The hours
+label comes from the form rather than being written out, because each page
+means something different by it — see `WorkOrderForm.__init__` and `job_edit`.
+{% endcomment %}
+<label for="{{ order_form.description.id_for_label }}">Popis</label>
+{{ order_form.description }}
+
+{% if order_form.author %}
+    <label for="{{ order_form.author.id_for_label }}">Zapsat za</label>
+    {{ order_form.author }}
+    <p class="muted">{{ order_form.author.help_text }}</p>
+{% endif %}
+
+<label for="{{ order_form.hours.id_for_label }}">{{ order_form.hours.label }}</label>
+{{ order_form.hours }}
+{% for error in order_form.hours.errors %}<p class="messages error">{{ error }}</p>{% endfor %}
+
+<div class="date-override">
+    <label for="{{ order_form.performed_on.id_for_label }}">Datum provedení</label>
+    {{ order_form.performed_on }}
+    {% for error in order_form.performed_on.errors %}<p class="messages error">{{ error }}</p>{% endfor %}
+</div>
+
+<h2>Spolupracovníci</h2>
+{{ worker_formset.management_form }}
+{% for form in worker_formset %}
+    <div class="item-row">
+        <div>{{ form.user }}</div>
+        <div>{{ form.hours }}</div>
+    </div>
+    {% for error in form.non_field_errors %}<p class="messages error">{{ error }}</p>{% endfor %}
+{% endfor %}
+
+<h2>Spotřebováno</h2>
+{{ consumed_formset.management_form }}
+{% for form in consumed_formset %}
+    <div class="item-row">
+        <div>{{ form.material }}</div>
+        <div>{{ form.quantity }}</div>
+    </div>
+    {% for error in form.non_field_errors %}<p class="messages error">{{ error }}</p>{% endfor %}
+{% endfor %}
+
+<h2>Vyrobeno</h2>
+{{ produced_formset.management_form }}
+{% for form in produced_formset %}
+    <div class="item-row">
+        <div>{{ form.material }}</div>
+        <div>{{ form.quantity }}</div>
+    </div>
+    {% for error in form.non_field_errors %}<p class="messages error">{{ error }}</p>{% endfor %}
+{% endfor %}
+
+<h2>Použité stroje</h2>
+{{ machine_formset.management_form }}
+{% for form in machine_formset %}
+    <div class="item-row">
+        <div>{{ form.machine }}</div>
+        <div>{{ form.hours }}</div>
+        <div>{{ form.tons }}</div>
+    </div>
+    {% for error in form.non_field_errors %}<p class="messages error">{{ error }}</p>{% endfor %}
+{% endfor %}

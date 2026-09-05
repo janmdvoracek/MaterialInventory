@@ -250,6 +250,19 @@ things it has to get right, and both have a test:
   manager's privilege decides its width), and rewritten `StockMovement` rows
   keep `created_by = author`.
 
+The two pages share their markup as well as their helpers: the job's own fields
+and the four formset sections live in `templates/workorders/_job_form_fields.html`,
+included by both `transform_form.html` and `job_edit.html` inside each page's own
+`<form>`. **Add a field to a formset row and there is one template to change, not
+two.** Only what genuinely differs stays with the caller — the heading, the submit
+button, and the *Zpět bez uložení* link. Two details make one partial serve both:
+*„Zapsat za"* is wrapped in an `{% if order_form.author %}`, which is false on
+`job_edit` because it builds `WorkOrderForm` without a `user` and the field is
+never added; and the hours label is read off the form rather than written out,
+because each page means something different by it — `job_edit` sets it to
+*„Hodiny – <author>"*, since a manager correcting somebody else's job is looking
+at neither *„Moje hodiny"* nor a bare *„Odpracované hodiny"*.
+
 ### `WorkerHours` vs `MachineUsage`
 
 Two unrelated numbers. Do not derive one from the other.

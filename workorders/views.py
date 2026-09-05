@@ -659,6 +659,11 @@ def job_edit(request, pk):
                 {'user': row.user_id, 'hours': _trim(row.hours)} for row in work_order.worker_hours.exclude(user=author)
             ],
         )
+    # The shared form body reads this label off the form, and neither of the two
+    # the form sets itself fits here: a manager is correcting somebody else's
+    # job, so it is neither „Moje hodiny" nor an unqualified „Odpracované
+    # hodiny". Set on both branches, since an invalid POST re-renders too.
+    order_form.fields['hours'].label = f'Hodiny – {author.username}'
     return render(
         request,
         'workorders/job_edit.html',
