@@ -116,8 +116,8 @@ class MovementItemForm(forms.Form):
         return cleaned_data
 
 
-ConsumedFormSet = forms.formset_factory(MovementItemForm, extra=3)
-ProducedFormSet = forms.formset_factory(MovementItemForm, extra=3)
+ConsumedFormSet = forms.formset_factory(MovementItemForm, extra=1)
+ProducedFormSet = forms.formset_factory(MovementItemForm, extra=1)
 
 
 class MachineUsageForm(forms.Form):
@@ -157,7 +157,7 @@ class MachineUsageForm(forms.Form):
         return cleaned_data
 
 
-MachineUsageFormSet = forms.formset_factory(MachineUsageForm, extra=4)
+MachineUsageFormSet = forms.formset_factory(MachineUsageForm, extra=1)
 
 
 class WorkerHoursForm(forms.Form):
@@ -194,7 +194,38 @@ class WorkerHoursForm(forms.Form):
         return cleaned_data
 
 
-WorkerHoursFormSet = forms.formset_factory(WorkerHoursForm, extra=3)
+WorkerHoursFormSet = forms.formset_factory(WorkerHoursForm, extra=1)
+
+
+# The four row sections of the job form, in the order `_job_form_fields.html`
+# renders them: the formset prefix — which is also the suffix of the
+# „+ další řádek" button that grows that section, `add_workers` and friends —
+# and the form a single row is made of. `_grown_job_forms` in views.py walks
+# this, so a fifth section needs adding here and nowhere else.
+JOB_SECTIONS = (
+    ('workers', WorkerHoursForm),
+    ('consumed', MovementItemForm),
+    ('produced', MovementItemForm),
+    ('machines', MachineUsageForm),
+)
+
+
+def job_row_formset(row_form, *, prefix, rows, blank_rows, form_kwargs=None):
+    """One section of the job form holding exactly `rows`, plus `blank_rows` empty ones.
+
+    The formset classes above pad a fixed number of blanks onto whatever they
+    are handed, which is what a fresh form wants and the opposite of what a page
+    being re-rendered after „+ další řádek" wants — there the row count *is* the
+    answer, and padding it again would add three rows per tap instead of one.
+    `extra` is a class attribute, so the size has to be baked into a class
+    rather than passed to the instance; `formset_factory` is a `type()` call and
+    cheap enough to run per request.
+
+    The rows go in as `initial`, not `data`: the rebuilt page is unbound on
+    purpose. See `_grown_job_forms`.
+    """
+    formset_class = forms.formset_factory(row_form, extra=blank_rows)
+    return formset_class(prefix=prefix, initial=rows, form_kwargs=form_kwargs or {})
 
 
 class DateRangeFilterForm(forms.Form):

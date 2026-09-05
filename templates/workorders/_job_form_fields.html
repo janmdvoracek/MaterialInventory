@@ -6,8 +6,21 @@ be forgotten on the other. The two views already share `_collect_rows` and
 `_write_job_rows`; this is the markup half of the same rule.
 
 Rendered inside the caller's own <form>, so there is no <form> tag, no
-{% csrf_token %} and no submit button here — those differ per page and stay
-with the caller.
+{% csrf_token %} and no primary submit button here — those differ per page and
+stay with the caller.
+
+The „+ další řádek" buttons *are* here, one per section, because they belong to
+the rows they grow. Each is a plain submit that posts the form back under
+`add_<prefix>`; the view rebuilds the page unbound with one more blank row and
+renders it. That is the whole mechanism — there is no JavaScript in this app,
+and a formset otherwise renders a fixed number of rows and no way past them.
+They carry `formnovalidate` because „Moje hodiny" and „Datum provedení" are
+required, and without it the browser would refuse to submit a half-filled form
+and the button would silently do nothing.
+
+Because the browser submits a form via its *first* submit button when Enter is
+pressed in a text field, and these come before the caller's real one, each
+caller opens its <form> with an off-screen decoy submit so Enter still saves.
 
 „Zapsat za" is guarded because it is manager-only: `job_edit` builds
 `WorkOrderForm` without a `user`, so the field is simply not there. The hours
@@ -43,6 +56,8 @@ means something different by it — see `WorkOrderForm.__init__` and `job_edit`.
     {% for error in form.non_field_errors %}<p class="messages error">{{ error }}</p>{% endfor %}
 {% endfor %}
 
+<button class="btn secondary add-row" type="submit" name="add_workers" formnovalidate>+ další řádek</button>
+
 <h2>Spotřebováno</h2>
 {{ consumed_formset.management_form }}
 {% for form in consumed_formset %}
@@ -52,6 +67,8 @@ means something different by it — see `WorkOrderForm.__init__` and `job_edit`.
     </div>
     {% for error in form.non_field_errors %}<p class="messages error">{{ error }}</p>{% endfor %}
 {% endfor %}
+
+<button class="btn secondary add-row" type="submit" name="add_consumed" formnovalidate>+ další řádek</button>
 
 <h2>Vyrobeno</h2>
 {{ produced_formset.management_form }}
@@ -63,6 +80,8 @@ means something different by it — see `WorkOrderForm.__init__` and `job_edit`.
     {% for error in form.non_field_errors %}<p class="messages error">{{ error }}</p>{% endfor %}
 {% endfor %}
 
+<button class="btn secondary add-row" type="submit" name="add_produced" formnovalidate>+ další řádek</button>
+
 <h2>Použité stroje</h2>
 {{ machine_formset.management_form }}
 {% for form in machine_formset %}
@@ -73,3 +92,4 @@ means something different by it — see `WorkOrderForm.__init__` and `job_edit`.
     </div>
     {% for error in form.non_field_errors %}<p class="messages error">{{ error }}</p>{% endfor %}
 {% endfor %}
+<button class="btn secondary add-row" type="submit" name="add_machines" formnovalidate>+ další řádek</button>

@@ -235,3 +235,24 @@ tr.row-pending > td { background: var(--row-pending-bg); }
 .btn.danger { background: var(--btn-danger-bg); color: var(--btn-danger-text); }
 .btn.danger:hover { background: var(--btn-danger-hover); }
 .muted { color: var(--text-muted); }
+/* „+ další řádek", one under each section of the job form. Sized down and
+   un-stretched from the full-width default, since it sits among the rows it
+   grows rather than ending the form. Colours come from .btn.secondary. */
+.add-row {
+    width: auto;
+    margin: 0 0 1rem;
+    padding: 0.5rem 0.9rem;
+    font-size: 0.9rem;
+}
+/* Off-screen but still submittable: the decoy submit button that keeps Enter
+   saving the job form instead of adding a row. See transform_form.html. */
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}

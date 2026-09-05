@@ -11,7 +11,7 @@ from accounts.models import User
 from materials.models import Machine, Material
 
 from .models import MachineUsage, StockMovement, WorkerHours, WorkOrder
-from .views import MY_JOBS_LIMIT, _last_month
+from .views import MAX_ROWS_PER_SECTION, MY_JOBS_LIMIT, _last_month
 
 
 class TransformCreateTests(TestCase):
@@ -1877,6 +1877,170 @@ class JobDeleteTests(ReviewFixtureMixin, TestCase):
         self.assertFalse(StockMovement.objects.exists())
         self.assertFalse(WorkerHours.objects.exists())
         self.assertFalse(MachineUsage.objects.exists())
+
+
+class AddRowTests(ReviewFixtureMixin, TestCase):
+    """„+ další řádek" grows one section of the job form.
+
+    A formset renders a fixed number of rows, so before this the form was a hard
+    cap on what could be recorded: a job crushing one input into four fractions
+    did not fit, and the mass balance meant it could not be split across two
+    submissions either. The button posts the form back under `add_<prefix>` and
+    the view re-renders it unbound with one more blank row in that section.
+
+    Unbound is what most of this asserts. Asking for another row is not
+    submitting the form, so the page has to come back carrying what was typed
+    and complaining about nothing.
+    """
+
+    def _grow(self, section, url=None, **overrides):
+        """Press one „+ další řádek" on an otherwise ordinary, balanced form."""
+        data = job_payload(
+            [{'material': self.material_raw, 'quantity': Decimal('5')}],
+            [{'material': self.material_finished, 'quantity': Decimal('5')}],
+        )
+        data.update(overrides)
+        data[f'add_{section}'] = ''
+        return self.client.post(url or reverse('transform_create'), data)
+
+    def test_the_named_section_gains_a_row_and_the_others_do_not(self):
+        self.client.force_login(self.worker)
+        response = self._grow('consumed')
+        # The typed row plus the blank one just added; every other section keeps
+        # the single row `job_payload` sends and gains nothing.
+        self.assertEqual(len(response.context['consumed_formset'].forms), 2)
+        self.assertEqual(len(response.context['produced_formset'].forms), 1)
+        self.assertEqual(len(response.context['machine_formset'].forms), 1)
+        self.assertEqual(len(response.context['worker_formset'].forms), 1)
+
+    def test_the_new_row_is_reachable_in_the_rendered_form(self):
+        """The point of the whole feature: a fourth row the browser can post."""
+        self.client.force_login(self.worker)
+        data = job_payload(
+            [{'material': self.material_raw, 'quantity': Decimal('5')}],
+            [
+                {'material': self.material_finished, 'quantity': Decimal('2')},
+                {'material': self.material_finished, 'quantity': Decimal('2')},
+                {'material': self.material_finished, 'quantity': Decimal('1')},
+            ],
+        )
+        data['add_produced'] = ''
+        response = self.client.post(reverse('transform_create'), data)
+        self.assertContains(response, 'produced-3-material')
+        self.assertContains(response, 'produced-3-quantity')
+        self.assertEqual(response.context['produced_formset'].management_form['TOTAL_FORMS'].value(), 4)
+
+    def test_what_was_typed_comes_back(self):
+        self.client.force_login(self.worker)
+        response = self._grow('produced', description='Drcení na frakce', hours='7')
+        self.assertContains(response, 'value="Drcení na frakce"')
+        self.assertContains(response, 'value="7"')
+        # The material already chosen is re-selected, not reset to the prompt.
+        self.assertContains(response, f'value="{self.material_raw.pk}" selected')
+
+    def test_the_date_comes_back_as_iso_rather_than_czech(self):
+        """`<input type="date">` reads only ISO, and `cs` formats dates `05.09.2026`.
+
+        The rebuilt form is unbound, which is the case
+        `WorkOrderForm.performed_on` carries an explicit `format` for — here the
+        initial is the raw POST string, which passes through untouched. A
+        regression shows up as a silently blank date box, not as an error.
+        """
+        self.client.force_login(self.worker)
+        today = timezone.localdate().isoformat()
+        response = self._grow('machines', performed_on=today)
+        self.assertContains(response, f'value="{today}"')
+
+    def test_nothing_is_written(self):
+        self.client.force_login(self.worker)
+        self._grow('consumed')
+        self.assertEqual(WorkOrder.objects.count(), 0)
+        self.assertEqual(StockMovement.objects.count(), 0)
+
+    def test_an_unfinished_form_is_not_scolded(self):
+        """A bound rebuild would put „Toto pole je vyžadováno." over the hours
+        box of somebody who has not reached it yet."""
+        self.client.force_login(self.worker)
+        response = self._grow('consumed', hours='', description='')
+        self.assertNotContains(response, 'Toto pole je vyžadováno.')
+        self.assertNotContains(response, 'Přidejte alespoň jednu položku')
+        self.assertEqual(list(response.context['messages']), [])
+
+    def test_an_unbalanced_form_is_not_scolded_either(self):
+        self.client.force_login(self.worker)
+        response = self._grow('produced', **{'produced-0-quantity': '9'})
+        self.assertNotContains(response, 'se musí rovnat')
+        self.assertEqual(WorkOrder.objects.count(), 0)
+
+    def test_the_collaborator_list_follows_zapsat_za(self):
+        """The author decides who may be named, so growing has to resolve it.
+
+        A manager recording for a worker must not get their own name back in the
+        list — and a collaborator already picked would drop off the re-rendered
+        row if the queryset it belongs to changed underneath it.
+        """
+        self.client.force_login(self.manager)
+        response = self._grow('workers', author=str(self.worker.pk))
+        choices = response.context['worker_formset'].forms[0].fields['user'].queryset
+        self.assertNotIn(self.worker, choices)
+        self.assertIn(self.manager, choices)
+        self.assertIn(self.other_worker, choices)
+        self.assertContains(response, f'value="{self.worker.pk}" selected')
+
+    def test_a_worker_growing_their_own_form_keeps_the_workers_only_list(self):
+        self.client.force_login(self.worker)
+        response = self._grow('workers')
+        choices = response.context['worker_formset'].forms[0].fields['user'].queryset
+        self.assertNotIn(self.worker, choices)
+        self.assertNotIn(self.manager, choices)
+        self.assertIn(self.other_worker, choices)
+
+    def test_a_tampered_row_count_does_not_blow_up(self):
+        """TOTAL_FORMS is read straight out of the POST here, so it is untrusted."""
+        self.client.force_login(self.worker)
+        response = self._grow('consumed', **{'consumed-TOTAL_FORMS': 'není číslo'})
+        self.assertEqual(response.status_code, 200)
+        # Nothing to restore, so the section comes back as its new blank row.
+        self.assertEqual(len(response.context['consumed_formset'].forms), 1)
+
+    def test_an_absurd_row_count_is_capped(self):
+        self.client.force_login(self.worker)
+        response = self._grow('consumed', **{'consumed-TOTAL_FORMS': '999999'})
+        # Exactly the cap, not the cap plus the new blank row: at the ceiling
+        # Django will not add an extra beyond its own max_num, which is the same
+        # 1000. Nothing legitimate reaches this, and a form that did would be
+        # refused by the formset on submit anyway.
+        self.assertEqual(len(response.context['consumed_formset'].forms), MAX_ROWS_PER_SECTION)
+
+    def test_job_edit_grows_the_same_way(self):
+        work_order = self.submit_job(self.worker)
+        self.client.force_login(self.manager)
+        response = self._grow('machines', url=reverse('job_edit', args=[work_order.pk]))
+        self.assertEqual(len(response.context['machine_formset'].forms), 2)
+        self.assertEqual(len(response.context['consumed_formset'].forms), 1)
+
+    def test_job_edit_saves_nothing_while_growing(self):
+        work_order = self.submit_job(self.worker)
+        self.client.force_login(self.manager)
+        self._grow('consumed', url=reverse('job_edit', args=[work_order.pk]), description='Nemá se uložit')
+        work_order.refresh_from_db()
+        self.assertNotEqual(work_order.description, 'Nemá se uložit')
+
+    def test_job_edit_keeps_the_authors_name_on_the_hours_label(self):
+        """The label override applies on every branch, the grown one included."""
+        work_order = self.submit_job(self.worker)
+        self.client.force_login(self.manager)
+        response = self._grow('workers', url=reverse('job_edit', args=[work_order.pk]))
+        self.assertEqual(response.context['order_form'].fields['hours'].label, f'Hodiny – {self.worker.username}')
+
+    def test_enter_still_saves_rather_than_adding_a_row(self):
+        """A form is submitted through its *first* submit button when Enter is
+        pressed in a text field. „+ další řádek" comes before the real button,
+        so both pages open their <form> with an off-screen decoy that posts no
+        name — without it, Enter in Popis would add a collaborator row."""
+        self.client.force_login(self.worker)
+        body = self.client.get(reverse('transform_create')).content.decode()
+        self.assertLess(body.index('visually-hidden'), body.index('name="add_workers"'))
 
 
 class ThemeTokenTests(TestCase):

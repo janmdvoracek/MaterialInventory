@@ -71,6 +71,10 @@ on. Kdo je tu uvedený, uvidí zakázku ve své historii a hodiny se mu započí
 - Sebe zde neuvádíte — vaše hodiny jsou už v poli *Moje hodiny*.
 - Když nikdo další nedělal, nechte řádky prázdné.
 - Když stejného člověka uvedete dvakrát, hodiny se mu sečtou.
+- Nestačí-li vám připravené řádky, klepněte pod nimi na **„+ další řádek"**.
+  Stránka se načte znovu s jedním řádkem navíc a **všechno, co jste už vyplnili,
+  v ní zůstane**. Nic se tím neukládá a nic se nekontroluje — přidat řádek můžete
+  i do rozdělaného formuláře.
 
 **2a. Zapsat za někoho jiného** *(jen vedoucí a správci)*
 
@@ -107,6 +111,9 @@ zpětně, přepište ho na den, kdy se práce skutečně dělala.
 - **Množství se všude zadává v tunách** — jiná jednotka v aplikaci není.
 - Do **výroby** zapište, co vzniklo.
 - Řádků je připraveno několik. Nepoužité nechte prázdné.
+- Když jich potřebujete víc — třeba když z jednoho materiálu vzniknou čtyři
+  frakce — klepněte pod tou částí na **„+ další řádek"**. Přidá se jeden prázdný
+  řádek a vyplněné údaje zůstanou. Tlačítko má každá část formuláře zvlášť.
 - Vyplnit musíte buď celý řádek, nebo žádný — samotné množství bez materiálu
   aplikace odmítne.
 - Vyplněná musí být **alespoň jedna položka spotřeby a alespoň jedna položka
@@ -125,9 +132,10 @@ zpětně, přepište ho na den, kdy se práce skutečně dělala.
 
 Vyplňte **Stroj**, počet **Hodin** (motohodin) a **Tuny**, které stroj
 zpracoval. Pokud šel materiál přes více strojů za sebou, použijte více řádků.
-Stejný stroj můžete uvést vícekrát. Stroje jsou nepovinné — pokud se žádný
-nepoužil, nechte řádky prázdné. Jakmile ale řádek začnete vyplňovat, musí být
-vyplněný celý.
+Stejný stroj můžete uvést vícekrát; na další řádky se dostanete tlačítkem
+**„+ další řádek"** pod nimi. Stroje jsou nepovinné — pokud se žádný nepoužil,
+nechte řádky prázdné. Jakmile ale řádek začnete vyplňovat, musí být vyplněný
+celý.
 
 > Tuny u stroje se **nezapočítávají** do kontroly součtů spotřeby a výroby.
 > Když materiál projde třemi stroji za sebou, projde každý z nich stejné

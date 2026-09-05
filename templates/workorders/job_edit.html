@@ -9,6 +9,15 @@
     </p>
     <form method="post">
         {% csrf_token %}
+        {% comment %}
+        Pressing Enter in a text field submits the form through its first submit
+        button, which would otherwise be a „+ další řádek" inside the include
+        below — so Enter would add a row instead of saving. This one is that
+        first button. It is off-screen, out of the tab order and hidden from
+        assistive tech, and posts nothing (no name), so it is indistinguishable
+        from the real button at the bottom.
+        {% endcomment %}
+        <button class="visually-hidden" type="submit" tabindex="-1" aria-hidden="true">Uložit změny</button>
         {% include "workorders/_job_form_fields.html" %}
 
         <button type="submit">Uložit změny</button>

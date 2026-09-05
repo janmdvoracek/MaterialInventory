@@ -40,7 +40,9 @@ it off.
 
 Django 6.1, PostgreSQL 16, server-rendered Django templates. **No JavaScript at
 all** — not a build step, not a framework, not a CDN tag: every page is a plain
-form POST and redirect, which keeps the app working on a LAN with no internet.
+form POST, which keeps the app working on a LAN with no internet. Even the
+*„+ další řádek"* buttons on the entry form are submits that come back with a
+bigger form, not script.
 WhiteNoise serves static files; Gunicorn runs the app in production. Ruff
 handles linting and formatting.
 
@@ -103,7 +105,7 @@ Full column reference: [docs/development.md](docs/development.md#seeding-data).
 ## Common commands
 
 ```bash
-python manage.py test                  # full suite (212 tests, needs Postgres)
+python manage.py test                  # full suite (227 tests, needs Postgres)
 python manage.py test workorders       # one app
 ruff check . && ruff format .          # lint and format
 docker compose up --build              # full stack

@@ -17,6 +17,7 @@ from accounts.models import User
 from materials.models import Machine
 
 from .forms import (
+    JOB_SECTIONS,
     ConsumedFormSet,
     JobFilterForm,
     MachineFilterForm,
@@ -25,6 +26,7 @@ from .forms import (
     TimeWorkedFilterForm,
     WorkerHoursFormSet,
     WorkOrderForm,
+    job_row_formset,
 )
 from .models import MachineUsage, StockMovement, WorkerHours, WorkOrder
 
@@ -143,9 +145,125 @@ def _write_job_rows(work_order, author, own_hours, consumed_rows, produced_rows,
         )
 
 
+# What each „+ další řádek" button posts under. A submit button reaches the
+# server only when it is the one that was pressed, so the key being there at all
+# is the whole signal — there is no value to compare against.
+ADD_ROW_BUTTONS = {f'add_{prefix}': prefix for prefix, _ in JOB_SECTIONS}
+
+# Ceiling on the rows one section can be rebuilt with. Growing a section reads
+# TOTAL_FORMS straight out of the POST rather than through a management form, so
+# it needs its own limit: without one, a hand-edited value is a cheap way to make
+# the server build a million form objects. 1000 is what the rendered management
+# form already advertises as MAX_NUM_FORMS, so a legitimate page never hits it —
+# and a form that somehow did would be refused by the formset on submit. At
+# exactly the cap the new blank row is dropped, because Django will not add an
+# extra beyond its own max_num either; there is nothing to do about that and
+# nothing that depends on it.
+MAX_ROWS_PER_SECTION = 1000
+
+
+def _pressed_add_row(post_data):
+    """The prefix of the section whose „+ další řádek" was pressed, or None."""
+    for name, prefix in ADD_ROW_BUTTONS.items():
+        if name in post_data:
+            return prefix
+    return None
+
+
+def _submitted_rows(post_data, row_form, prefix):
+    """One section's rows, as the raw strings the browser posted.
+
+    Read out of the POST directly rather than off a bound formset, because the
+    grown page is rebuilt unbound — see `_grown_job_forms`. `base_fields` is the
+    row's own field list, so a column added to a row form is carried over here
+    without a second list to keep in step.
+    """
+    try:
+        count = int(post_data.get(f'{prefix}-TOTAL_FORMS', 0))
+    except (TypeError, ValueError):
+        # A management form that does not parse describes no rows. The section
+        # comes back with just its new blank one, which is the honest answer:
+        # there is nothing to restore.
+        count = 0
+    return [
+        {name: post_data.get(f'{prefix}-{index}-{name}', '') for name in row_form.base_fields}
+        for index in range(min(count, MAX_ROWS_PER_SECTION))
+    ]
+
+
+def _submitted_author(post_data, submitter):
+    """Who „Zapsat za" currently names, on a page being re-rendered rather than submitted.
+
+    The collaborator list is built from the author, so growing the
+    Spolupracovníci section has to resolve it the way a real submission would.
+    Otherwise a manager recording for someone else would get their own name back
+    in the list, and a collaborator they had already picked would drop out of
+    the queryset and off the row that was re-rendered.
+
+    The form is bound only to read that one field. Everything else about it is
+    very likely incomplete — that is the normal state of a form somebody is
+    still filling in — and its errors are thrown away. A plain worker has no
+    `author` field at all, so this is just `submitter` for them.
+    """
+    form = WorkOrderForm(post_data, user=submitter)
+    form.is_valid()
+    return form.author_or(submitter)
+
+
+def _grown_job_forms(post_data, grown, *, author, viewer, order_form_user=None):
+    """Every form on the job page, rebuilt from `post_data` with one more blank
+    row in the `grown` section. Returns the job form and the four formsets by prefix.
+
+    Unbound throughout, and deliberately: „+ další řádek" asks for a bigger form,
+    it does not submit one, so the page has to come back carrying what was typed
+    and complaining about nothing. A bound rebuild would render „Toto pole je
+    vyžadováno." over the hours box of somebody who only wanted a fourth
+    material row.
+
+    Raw POST strings round-trip through an unbound widget without help: a pk
+    string re-selects its option, and a date string reaches `<input type="date">`
+    unchanged instead of going out through the `cs` DATE_INPUT_FORMATS as
+    `05.09.2026`, which the widget rejects and shows blank — the same trap
+    `WorkOrderForm.performed_on` carries an explicit `format` for.
+    """
+    order_form = WorkOrderForm(user=order_form_user)
+    # Read off the form's own fields, so „Zapsat za" — which exists only on a
+    # manager's form — is carried over without a second list of names here.
+    # Assigned after construction because the field set is not known until then.
+    order_form.initial = {name: post_data.get(name, '') for name in order_form.fields}
+    formsets = {
+        prefix: job_row_formset(
+            row_form,
+            prefix=prefix,
+            rows=_submitted_rows(post_data, row_form, prefix),
+            blank_rows=1 if prefix == grown else 0,
+            form_kwargs={'user': author, 'viewer': viewer} if prefix == 'workers' else None,
+        )
+        for prefix, row_form in JOB_SECTIONS
+    }
+    return order_form, formsets
+
+
 @login_required
 def transform_create(request):
-    if request.method == 'POST':
+    # „+ další řádek" is not a submission: the page comes straight back one row
+    # bigger, with nothing validated and nothing written. Checked before the
+    # normal POST branch so that branch stays the submission path and nothing
+    # else.
+    grown = _pressed_add_row(request.POST) if request.method == 'POST' else None
+    if grown:
+        order_form, formsets = _grown_job_forms(
+            request.POST,
+            grown,
+            author=_submitted_author(request.POST, request.user),
+            viewer=request.user,
+            order_form_user=request.user,
+        )
+        consumed_formset = formsets['consumed']
+        produced_formset = formsets['produced']
+        machine_formset = formsets['machines']
+        worker_formset = formsets['workers']
+    elif request.method == 'POST':
         order_form = WorkOrderForm(request.POST, user=request.user)
         consumed_formset = ConsumedFormSet(request.POST, prefix='consumed')
         produced_formset = ProducedFormSet(request.POST, prefix='produced')
@@ -575,7 +693,17 @@ def job_edit(request, pk):
     # it: the "moje hodiny" field is the author's, and the collaborator list has
     # to exclude the author rather than the editor.
     author = work_order.created_by
-    if request.method == 'POST':
+    # Same as on the Transform form: grow the section and re-render, unbound.
+    # The author is the job's, not whatever the POST says — a manager correcting
+    # somebody's job cannot reassign it, and there is no „Zapsat za" field here.
+    grown = _pressed_add_row(request.POST) if request.method == 'POST' else None
+    if grown:
+        order_form, formsets = _grown_job_forms(request.POST, grown, author=author, viewer=request.user)
+        consumed_formset = formsets['consumed']
+        produced_formset = formsets['produced']
+        machine_formset = formsets['machines']
+        worker_formset = formsets['workers']
+    elif request.method == 'POST':
         order_form = WorkOrderForm(request.POST)
         consumed_formset = ConsumedFormSet(request.POST, prefix='consumed')
         produced_formset = ProducedFormSet(request.POST, prefix='produced')
