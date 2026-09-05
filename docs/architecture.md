@@ -545,11 +545,16 @@ multiplies the `Sum` by the number of matched collaborators.
 ## What is deliberately absent
 
 - **No stock balances.** See the note at the top; this is the big one.
-- **No REST API.** `rest_framework` is installed and configured for session auth,
-  but there are no serializers, viewsets, or routes. It is a placeholder.
-- **No JavaScript.** `django_htmx` is installed and htmx is loaded in
-  `base.html`, but no template uses an `hx-*` attribute. Every page is a plain
-  form POST and redirect. `widget_tweaks` is likewise installed and unused.
+- **No REST API.** `rest_framework` was installed and configured for session
+  auth, but there were never any serializers, viewsets or routes. It and the
+  `REST_FRAMEWORK` settings block are gone.
+- **No JavaScript.** Every page is a plain form POST and redirect. `django_htmx`
+  and `widget_tweaks` were installed and never used — no template carried an
+  `hx-*` attribute or loaded the tag library — so both are gone, along with the
+  htmx middleware and the `<script src="https://unpkg.com/htmx.org">` tag in
+  `base.html`. That tag was worth removing on its own: the deployment is
+  LAN-only, and it made every page load reach for a CDN the depot may not be
+  able to see. The only script the app serves now is the admin's own.
 - **No CSS framework, and no per-template CSS.** All styling is one file,
   `static/css/app.css`, loaded by `base.html`. No template carries an inline
   `style=` attribute or a `<style>` block. Colours are custom properties

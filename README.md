@@ -38,9 +38,11 @@ it off.
 
 ## Tech stack
 
-Django 6.1, PostgreSQL 16, server-rendered Django templates with no JavaScript
-build step. WhiteNoise serves static files; Gunicorn runs the app in production.
-Ruff handles linting and formatting.
+Django 6.1, PostgreSQL 16, server-rendered Django templates. **No JavaScript at
+all** — not a build step, not a framework, not a CDN tag: every page is a plain
+form POST and redirect, which keeps the app working on a LAN with no internet.
+WhiteNoise serves static files; Gunicorn runs the app in production. Ruff
+handles linting and formatting.
 
 Python is 3.12 locally and in CI, but the Docker image builds on 3.14 — see
 [configuration.md](docs/configuration.md#python-version).

@@ -36,11 +36,13 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'rest_framework',
-    'django_htmx',
-    'widget_tweaks',
     'accounts',
     'materials',
+    # Holds no code — only its migrations. `StockMovement` moved to `workorders`
+    # (state-only, `inventory.0008` / `workorders.0013`), but the app has to stay
+    # installed: `materials.0008` depends on `inventory.0006`, and Django cannot
+    # resolve a dependency on an app it does not know about. Removing this line
+    # breaks `migrate` on a fresh database.
     'inventory',
     'workorders',
 ]
@@ -54,7 +56,6 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'django_htmx.middleware.HtmxMiddleware',
 ]
 
 AUTH_USER_MODEL = 'accounts.User'
@@ -173,12 +174,3 @@ STORAGES = {
 }
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-
-REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.SessionAuthentication',
-    ],
-    'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.IsAuthenticated',
-    ],
-}
