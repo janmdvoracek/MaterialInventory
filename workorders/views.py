@@ -256,11 +256,11 @@ def machine_dashboard(request):
 def _machine_summary(usages, form):
     """Hours and tonnage per machine over `usages`.
 
-    Totalled from the usage rows rather than read off `Machine.total_hours`:
-    that counter is bumped the moment a row is written, so it also holds hours
-    from jobs still waiting for approval, and it knows nothing about the filter.
-    The counter stays as it is — the admin shows it, and `MachineUsage` keeps it
-    correct — so the two legitimately differ while a job is pending.
+    A machine stores no totals of its own — these are summed from the usage
+    rows on every render, over exactly the rows the page's own filter allows
+    (`usages`). That is what keeps a total and the detail rows below it from
+    ever disagreeing, and it is why both respect the approval status: a job
+    still waiting for a manager is not counted here.
 
     Every active machine is listed, not just the ones with rows in range: with
     no filter that is the full fleet, and under a date filter a machine sitting
@@ -370,7 +370,7 @@ def _time_worked_summary(work_orders):
     These are the labour hours each person typed on the Transform form, not a
     share of the job's machine runtime — two people on a 3-hour crushing job
     each report what they personally worked, so this column has no fixed
-    relationship to `Machine.total_hours`.
+    relationship to the motohodiny `MachineUsage` records for the same job.
     """
     totals = (
         WorkerHours.objects.filter(work_order__in=work_orders)

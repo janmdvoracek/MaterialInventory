@@ -121,8 +121,10 @@ example — has no blank option and needs nothing.
 ## Time zones
 
 `USE_TZ` stays on, so **the database stores UTC**. `TIME_ZONE` affects only
-rendering and the day boundaries that `__date` lookups use for the history date
-filters.
+rendering. No filter depends on it: the date filters compare
+`WorkOrder.performed_on`, a `DateField` with no time and no zone, so a job
+recorded at 00:30 local cannot land on the previous UTC day the way a
+`created_at__date` lookup could.
 
 Templates localize automatically. **Python code does not.** Anything formatting
 a datetime outside a template must call `timezone.localtime()` explicitly.

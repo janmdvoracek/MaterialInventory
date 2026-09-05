@@ -135,8 +135,8 @@ LANGUAGE_CODE = 'cs'
 LOCALE_PATHS = [BASE_DIR / 'locale']
 
 # Depot-local time. USE_TZ keeps everything stored as UTC; this only affects
-# how datetimes render and how `__date` lookups (the history date filters) pick
-# their day boundaries.
+# how datetimes render. No filter depends on it: the date filters compare
+# `WorkOrder.performed_on`, a `DateField` with no time and no zone.
 TIME_ZONE = 'Europe/Prague'
 
 USE_I18N = True

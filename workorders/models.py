@@ -7,11 +7,11 @@ class WorkOrder(models.Model):
     """Groups the stock movements produced by a single transformation job.
 
     A job a worker submits is a *proposal* until a manager or admin approves it:
-    only APPROVED jobs are counted by the Hodiny, Stroje and machine-history
-    pages. A manager's own submission is approved on the spot — there is nobody
-    above them to sign it off. There is no third outcome: a job a manager is not
-    happy with is corrected (job_edit) or deleted (job_delete), never handed back
-    to its author.
+    only APPROVED jobs are counted by the Hodiny and Stroje pages. A manager's
+    own submission is approved on the spot — there is nobody above them to sign
+    it off. There is no third outcome: a job a manager is not happy with is
+    corrected (job_edit) or deleted (job_delete), never handed back to its
+    author.
     """
 
     class Status(models.TextChoices):
@@ -20,9 +20,9 @@ class WorkOrder(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='vytvořeno')
     # When the work was actually done, as opposed to when it was typed in. The
-    # two differ only when the submitter ticks „Jiné datum než dnes"; otherwise
-    # the form fills in today, so the column is always answered. Migration 0010
-    # back-filled existing jobs from `created_at`. Day only, deliberately: an
+    # form pre-fills today, so the column is always answered and back-dating is
+    # just editing the box — the two differ only when someone does. Migration
+    # 0010 back-filled existing jobs from `created_at`. Day only, deliberately: an
     # `<input type="date">` renders the same everywhere, while the
     # `datetime-local` widget the removed Příjem/Výdej forms used let an
     # English-configured phone show AM/PM regardless of the app's `lang="cs"`.

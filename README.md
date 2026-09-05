@@ -32,7 +32,7 @@ is derived from the other. See [docs/architecture.md](docs/architecture.md).
 
 **A job a worker submits does not count until a manager approves it.** It is
 recorded straight away and shows up highlighted on the Review page, but the
-Hours, Machines and machine-history pages report approved jobs only. A manager's
+Hours and Machines pages report approved jobs only. A manager's
 own submission is approved as it is written — there is nobody above them to sign
 it off.
 

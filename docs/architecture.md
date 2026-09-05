@@ -111,8 +111,8 @@ to the consumed total.
 ### When a job happened
 
 `WorkOrder.performed_on` is the day the work was done; `created_at` is when
-somebody typed it in. They differ only when the submitter ticks *„Jiné datum než
-dnes"* on the Transform form and picks a date.
+somebody typed it in. They differ only when the submitter edits the date box
+on the Transform form, which otherwise already holds today.
 
 The field is **required and pre-filled with today**
 (`initial=timezone.localdate`), so the ordinary case needs no thought and
