@@ -6,8 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Evidence materiálu{% endblock %}</title>
     <script src="https://unpkg.com/htmx.org@2.0.3" defer></script>
-    <link rel="stylesheet" type="text/css" href="/static/css/app.css">
-</head>
+    <link rel="stylesheet" href="{% static 'css/app.css' %}"></head>
 <body class="page-{{ request.resolver_match.url_name }}">
     <header>
         <a href="{% url 'transform_create' %}"><img class="logo" src="{% static 'img/logo.png' %}" alt="Petrokámen"></a>
