@@ -451,8 +451,8 @@ and invited them to would put the creator's hours on their screen.
 
 ## Filter forms
 
-All three list views — machine history, time worked, and the job dashboard —
-follow one pattern, and the edge cases are the point:
+All three list views — Stroje, Hodiny and the job dashboard — follow one
+pattern, and the edge cases are the point:
 
 | Request | Behaviour |
 |---|---|
@@ -473,6 +473,13 @@ Neither `JobFilterForm` nor `MachineFilterForm` has a worker variant, and
 neither takes a `user`: the pages they filter are manager/admin only in the
 view, so there is no field to hide and no scoping to double up on.
 `TimeWorkedFilterForm` is the one that still does.
+
+All three subclass **`DateRangeFilterForm`**, which holds the `date_from` /
+`date_to` pair and the „od ≤ do" check — every filtered page narrows by a span
+of days on top of whatever else it scopes by, so that rule lives in one place.
+Each subclass declares only its own fields, plus a `field_order`: `{{ form.as_p }}`
+renders in declaration order and inherited fields come first, so without it the
+dates would jump above the picker they qualify.
 
 ### Quick date ranges
 
@@ -496,8 +503,13 @@ so „posledních 7 dní" is today plus the six before it; „Vše" removes both
 parameters, which is the way back out of a range without emptying a date input
 by hand.
 
-Adding a filtered page means both halves: `'date_presets':
-_date_preset_links(request)` in the context *and* the include in the template.
+Adding a filtered page means both halves: the context key *and* the include in
+the template. The context side is `**_list_page_context(request, rows)` in
+`workorders/views.py`, which returns all three keys a filtered list needs —
+`page_obj`, `querystring` (every parameter except `page`, so a page link carries
+the filters with it) and `date_presets`. They travel together because a page
+wants all three, and picking up two of them is the failure that is hard to
+spot: the filter silently disappears on page two.
 
 ## Time-worked reporting
 

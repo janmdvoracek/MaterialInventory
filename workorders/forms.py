@@ -197,22 +197,22 @@ class WorkerHoursForm(forms.Form):
 WorkerHoursFormSet = forms.formset_factory(WorkerHoursForm, extra=3)
 
 
-class TimeWorkedFilterForm(forms.Form):
-    worker = forms.ModelChoiceField(
-        queryset=User.objects.all().order_by('username'),
-        required=False,
-        label='Pracovník',
-        empty_label='Všichni pracovníci',
-    )
+class DateRangeFilterForm(forms.Form):
+    """The date range every filtered page has, and the one rule about it.
+
+    Hodiny, Stroje and Přehled each scope by something of their own, but all
+    three also narrow to a span of days, so the pair of fields and the
+    „od ≤ do“ check live here instead of three times over. This is also what
+    parses the dates the quick-range links write into the querystring
+    (`_date_preset_links` in `workorders/views.py`).
+
+    Subclasses declare their own fields and set `field_order`: `{{ form.as_p }}`
+    renders in declaration order and fields inherited from a base class come
+    first, which would otherwise put the dates above the picker they qualify.
+    """
+
     date_from = forms.DateField(required=False, widget=forms.DateInput(attrs={'type': 'date'}), label='Datum od')
     date_to = forms.DateField(required=False, widget=forms.DateInput(attrs={'type': 'date'}), label='Datum do')
-
-    def __init__(self, *args, user=None, **kwargs):
-        super().__init__(*args, **kwargs)
-        if user is not None and not user.is_manager_or_admin:
-            # Workers only ever see their own hours, so picking someone else
-            # would be a dead end.
-            del self.fields['worker']
 
     def clean(self):
         cleaned_data = super().clean()
@@ -223,7 +223,25 @@ class TimeWorkedFilterForm(forms.Form):
         return cleaned_data
 
 
-class MachineFilterForm(forms.Form):
+class TimeWorkedFilterForm(DateRangeFilterForm):
+    field_order = ['worker', 'date_from', 'date_to']
+
+    worker = forms.ModelChoiceField(
+        queryset=User.objects.all().order_by('username'),
+        required=False,
+        label='Pracovník',
+        empty_label='Všichni pracovníci',
+    )
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if user is not None and not user.is_manager_or_admin:
+            # Workers only ever see their own hours, so picking someone else
+            # would be a dead end.
+            del self.fields['worker']
+
+
+class MachineFilterForm(DateRangeFilterForm):
     """Filters the whole Stroje page — both the per-machine totals and the usage
     rows underneath them, which are two views of the same set of rows.
 
@@ -231,6 +249,8 @@ class MachineFilterForm(forms.Form):
     only, so `created_by` is never a dead end and there is nobody to hide it
     from.
     """
+
+    field_order = ['machine', 'created_by', 'date_from', 'date_to']
 
     machine = forms.ModelChoiceField(
         queryset=Machine.objects.all().order_by('name'),
@@ -244,21 +264,13 @@ class MachineFilterForm(forms.Form):
         label='Vytvořil',
         empty_label='Všichni uživatelé',
     )
-    date_from = forms.DateField(required=False, widget=forms.DateInput(attrs={'type': 'date'}), label='Datum od')
-    date_to = forms.DateField(required=False, widget=forms.DateInput(attrs={'type': 'date'}), label='Datum do')
-
-    def clean(self):
-        cleaned_data = super().clean()
-        date_from = cleaned_data.get('date_from')
-        date_to = cleaned_data.get('date_to')
-        if date_from and date_to and date_from > date_to:
-            raise forms.ValidationError('„Datum od“ musí být dřívější nebo stejné jako „datum do“.')
-        return cleaned_data
 
 
-class JobFilterForm(forms.Form):
+class JobFilterForm(DateRangeFilterForm):
     """Filters for the manager dashboard. No worker variant: the whole view is
     manager/admin only, so nothing has to be hidden from anyone."""
+
+    field_order = ['created_by', 'status', 'date_from', 'date_to']
 
     created_by = forms.ModelChoiceField(
         queryset=User.objects.all().order_by('username'),
@@ -271,13 +283,3 @@ class JobFilterForm(forms.Form):
         required=False,
         label='Stav',
     )
-    date_from = forms.DateField(required=False, widget=forms.DateInput(attrs={'type': 'date'}), label='Datum od')
-    date_to = forms.DateField(required=False, widget=forms.DateInput(attrs={'type': 'date'}), label='Datum do')
-
-    def clean(self):
-        cleaned_data = super().clean()
-        date_from = cleaned_data.get('date_from')
-        date_to = cleaned_data.get('date_to')
-        if date_from and date_to and date_from > date_to:
-            raise forms.ValidationError('„Datum od“ musí být dřívější nebo stejné jako „datum do“.')
-        return cleaned_data

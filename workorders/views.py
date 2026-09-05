@@ -237,18 +237,13 @@ def machine_dashboard(request):
     """
     form, usages = _filtered_machine_usages(request)
     machines = _machine_summary(usages, form)
-    page_obj = Paginator(usages, HISTORY_PAGE_SIZE).get_page(request.GET.get('page'))
-    querystring = request.GET.copy()
-    querystring.pop('page', None)
     return render(
         request,
         'workorders/machine_dashboard.html',
         {
             'form': form,
             'machines': machines,
-            'page_obj': page_obj,
-            'querystring': querystring.urlencode(),
-            'date_presets': _date_preset_links(request),
+            **_list_page_context(request, usages),
         },
     )
 
@@ -359,6 +354,25 @@ def _date_preset_links(request):
     return links
 
 
+def _list_page_context(request, rows):
+    """The three context keys every filtered list page needs.
+
+    `page_obj` is the page of `rows` this request asks for, `querystring` is
+    every *other* parameter so a page link carries the filters with it, and
+    `date_presets` is the quick-range row at the top of the filter card. They
+    are one call because a page needs all three — the presets are useless
+    without the row template, and paging without the querystring drops the
+    filter on the second page.
+    """
+    querystring = request.GET.copy()
+    querystring.pop('page', None)
+    return {
+        'page_obj': Paginator(rows, HISTORY_PAGE_SIZE).get_page(request.GET.get('page')),
+        'querystring': querystring.urlencode(),
+        'date_presets': _date_preset_links(request),
+    }
+
+
 def _participation_filter(user):
     """A user "worked on" a job if they submitted it or were named a collaborator."""
     return Q(created_by=user) | Q(collaborators=user)
@@ -427,9 +441,6 @@ def time_worked(request):
         .prefetch_related('collaborators', 'worker_hours__user')
         .order_by('-performed_on', '-created_at')
     )
-    page_obj = Paginator(detail, HISTORY_PAGE_SIZE).get_page(request.GET.get('page'))
-    querystring = request.GET.copy()
-    querystring.pop('page', None)
     return render(
         request,
         'workorders/time_worked.html',
@@ -437,10 +448,8 @@ def time_worked(request):
             'form': form,
             'summary': summary,
             'total_hours': sum((row['hours'] for row in summary), Decimal('0')),
-            'page_obj': page_obj,
-            'querystring': querystring.urlencode(),
-            'date_presets': _date_preset_links(request),
             'my_jobs': _my_recent_jobs(request.user),
+            **_list_page_context(request, detail),
         },
     )
 
@@ -516,18 +525,13 @@ def job_dashboard(request):
                 jobs = jobs.filter(performed_on__gte=data['date_from'])
             if data.get('date_to'):
                 jobs = jobs.filter(performed_on__lte=data['date_to'])
-    page_obj = Paginator(jobs, HISTORY_PAGE_SIZE).get_page(request.GET.get('page'))
-    querystring = request.GET.copy()
-    querystring.pop('page', None)
     return render(
         request,
         'workorders/job_dashboard.html',
         {
             'form': form,
-            'page_obj': page_obj,
-            'querystring': querystring.urlencode(),
-            'date_presets': _date_preset_links(request),
             'pending_count': WorkOrder.objects.filter(status=WorkOrder.Status.PENDING).count(),
+            **_list_page_context(request, jobs),
         },
     )
 
