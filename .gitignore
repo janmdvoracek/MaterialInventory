@@ -3,6 +3,7 @@ __pycache__/
 .claude
 .venv/
 .vscode*
+.idea*
 venv/
 db.sqlite3
 # STATIC_ROOT — collectstatic output, generated. Not `static/`, which is the
