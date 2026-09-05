@@ -287,7 +287,10 @@ def _machine_summary(usages, form):
 
 
 def _filtered_machine_usages(request):
-    form = MachineFilterForm(request.GET or None, user=request.user)
+    # No per-user scoping here, unlike `time_worked`: `machine_dashboard` is
+    # `role_required(*REVIEWER_ROLES)`, so everyone who reaches this point sees
+    # the whole depot anyway.
+    form = MachineFilterForm(request.GET or None)
     # Unapproved jobs are proposals, not evidence — they stay out of the ledger
     # until a manager signs them off.
     # A usage row has no date of its own — the job's `performed_on` is its date,
@@ -297,14 +300,6 @@ def _filtered_machine_usages(request):
         .select_related('machine', 'work_order', 'work_order__created_by')
         .order_by('-work_order__performed_on', '-id')
     )
-    if not request.user.is_manager_or_admin:
-        # Workers only ever see their own machine usage, plus usage from
-        # transformations they collaborated on; enforced here (not just by
-        # hiding the `created_by` filter field) so it can't be bypassed via
-        # the querystring directly.
-        usages = usages.filter(
-            Q(work_order__created_by=request.user) | Q(work_order__collaborators=request.user)
-        ).distinct()
     if not form.is_bound:
         # No filters submitted at all (initial page load) — show everything.
         return form, usages

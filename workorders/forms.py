@@ -225,7 +225,12 @@ class TimeWorkedFilterForm(forms.Form):
 
 class MachineFilterForm(forms.Form):
     """Filters the whole Stroje page — both the per-machine totals and the usage
-    rows underneath them, which are two views of the same set of rows."""
+    rows underneath them, which are two views of the same set of rows.
+
+    Takes no `user`, unlike `TimeWorkedFilterForm`: the page is manager/admin
+    only, so `created_by` is never a dead end and there is nobody to hide it
+    from.
+    """
 
     machine = forms.ModelChoiceField(
         queryset=Machine.objects.all().order_by('name'),
@@ -241,13 +246,6 @@ class MachineFilterForm(forms.Form):
     )
     date_from = forms.DateField(required=False, widget=forms.DateInput(attrs={'type': 'date'}), label='Datum od')
     date_to = forms.DateField(required=False, widget=forms.DateInput(attrs={'type': 'date'}), label='Datum do')
-
-    def __init__(self, *args, user=None, **kwargs):
-        super().__init__(*args, **kwargs)
-        if user is not None and not user.is_manager_or_admin:
-            # Workers only ever see their own machine usage, so this filter
-            # would be a dead end.
-            del self.fields['created_by']
 
     def clean(self):
         cleaned_data = super().clean()

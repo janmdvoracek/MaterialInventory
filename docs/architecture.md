@@ -377,9 +377,15 @@ Two gates:
 **The `/jobs/` review views and `machine_dashboard` all use `role_required`** — a
 worker who types one of those URLs gets a 403, not a page. Hiding a link is not
 access control, so Stroje is gated in the view as well as kept out of a worker's
-nav. Its worker-scoping query (own jobs plus collaborations) and the `del` of the
-filter's `created_by` field are still in place but no longer reachable; they are
-kept as a second line of defence if the gate is ever relaxed.
+nav.
+
+The gate **replaced** Stroje's worker scoping rather than sitting on top of it.
+`_filtered_machine_usages` no longer narrows the rows to the viewer's own jobs,
+and `MachineFilterForm` no longer takes a `user` or hides its `created_by`
+field — everyone who gets past the decorator sees the whole depot, so both were
+unreachable. `time_worked` is now the only page that scopes by participation,
+because it is the only filtered list a worker can open. Relaxing the gate means
+writing both halves back.
 
 **Superusers bypass both gates.** `createsuperuser` never sets a `role`, so a
 bootstrap admin would otherwise default to `WORKER` and be locked out of the app
@@ -404,8 +410,10 @@ consistent however the account was created.
 
 ### How worker scoping is enforced
 
-Two views scope their results — machine-usage history and time worked. Each does
-it **twice**, and the two are not equivalent:
+**One view scopes its results: `time_worked`.** It is the only filtered list a
+worker can open — Stroje and Přehled are both `role_required`, and a page whose
+every visitor is a manager has nothing to scope. It does the job **twice**, and
+the two are not equivalent:
 
 ```python
 # In the view — this is the real enforcement.
@@ -414,14 +422,15 @@ if not request.user.is_manager_or_admin:
 
 # In the form's __init__ — cosmetic only.
 if not user.is_manager_or_admin:
-    del self.fields['created_by']
+    del self.fields['worker']
 ```
 
 Deleting the field just removes a dropdown that would be a dead end. The
-**queryset filter** is what makes `?created_by=<someone-else>` a no-op. Each
-view has a `test_worker_cannot_bypass_restriction_via_*_param` test asserting
-exactly that. Keep both when adding a scoped view; the enforcement must not
-depend on the form.
+**queryset filter** is what makes `?worker=<someone-else>` a no-op, and
+`test_worker_cannot_bypass_restriction_via_worker_param` asserts exactly that.
+Keep both when adding a view a worker can reach; the enforcement must not depend
+on the form. Don't add either half to a `role_required` view — `machine_dashboard`
+carried both until it was gated, and they became code no request could execute.
 
 `time_worked` needs a **third** step on top: after aggregating, it filters the
 summary rows to the requesting worker. Without that, a job someone else created
@@ -447,8 +456,10 @@ Note the ordering: `is_bound` is checked *before* `is_valid()`, because an
 unbound form is also not valid, and conflating them would return nothing on a
 plain page load.
 
-`JobFilterForm` has no worker variant: the page it filters is manager/admin only
-in the view, so there is no field to hide and no scoping to double up on.
+Neither `JobFilterForm` nor `MachineFilterForm` has a worker variant, and
+neither takes a `user`: the pages they filter are manager/admin only in the
+view, so there is no field to hide and no scoping to double up on.
+`TimeWorkedFilterForm` is the one that still does.
 
 ### Quick date ranges
 
