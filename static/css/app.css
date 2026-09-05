@@ -235,12 +235,14 @@ tr.row-pending > td { background: var(--row-pending-bg); }
 .btn.danger { background: var(--btn-danger-bg); color: var(--btn-danger-text); }
 .btn.danger:hover { background: var(--btn-danger-hover); }
 .muted { color: var(--text-muted); }
-/* „+ další řádek", one under each section of the job form. Sized down and
-   un-stretched from the full-width default, since it sits among the rows it
-   grows rather than ending the form. Colours come from .btn.secondary. */
-.add-row {
+/* „+ další řádek" / „− odebrat řádek", one pair under each section of the job
+   form. Sized down and un-stretched from the full-width default, since they sit
+   among the rows they resize rather than ending the form. Colours come from
+   .btn.secondary. */
+.row-controls { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.row-controls button {
     width: auto;
-    margin: 0 0 1rem;
+    margin: 0;
     padding: 0.5rem 0.9rem;
     font-size: 0.9rem;
 }

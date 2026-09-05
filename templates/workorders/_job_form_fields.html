@@ -9,14 +9,20 @@ Rendered inside the caller's own <form>, so there is no <form> tag, no
 {% csrf_token %} and no primary submit button here — those differ per page and
 stay with the caller.
 
-The „+ další řádek" buttons *are* here, one per section, because they belong to
-the rows they grow. Each is a plain submit that posts the form back under
-`add_<prefix>`; the view rebuilds the page unbound with one more blank row and
-renders it. That is the whole mechanism — there is no JavaScript in this app,
-and a formset otherwise renders a fixed number of rows and no way past them.
-They carry `formnovalidate` because „Moje hodiny" and „Datum provedení" are
-required, and without it the browser would refuse to submit a half-filled form
-and the button would silently do nothing.
+The two row buttons *are* here, one pair per section, because they belong to the
+rows they resize. Each is a plain submit posting the form back under
+`add_<prefix>` or `remove_<prefix>`; the view rebuilds the page unbound with one
+more blank row, or one fewer row, and renders it. That is the whole mechanism —
+there is no JavaScript in this app, and a formset otherwise renders a fixed
+number of rows with no way past them in either direction. Both carry
+`formnovalidate` because „Moje hodiny" and „Datum provedení" are required, and
+without it the browser would refuse to submit a half-filled form and the buttons
+would silently do nothing.
+
+„− odebrat řádek" drops the *last* row — the exact one „+ další řádek" adds — and
+is hidden once a section is down to a single row, so it is never shown as a
+button that does nothing. The view holds the same floor regardless of what the
+POST asks for, so hiding it is presentation, not the rule.
 
 Because the browser submits a form via its *first* submit button when Enter is
 pressed in a text field, and these come before the caller's real one, each
@@ -56,7 +62,12 @@ means something different by it — see `WorkOrderForm.__init__` and `job_edit`.
     {% for error in form.non_field_errors %}<p class="messages error">{{ error }}</p>{% endfor %}
 {% endfor %}
 
-<button class="btn secondary add-row" type="submit" name="add_workers" formnovalidate>+ další řádek</button>
+<div class="row-controls">
+    <button class="btn secondary" type="submit" name="add_workers" formnovalidate>+ další řádek</button>
+    {% if worker_formset|length > 1 %}
+        <button class="btn secondary" type="submit" name="remove_workers" formnovalidate>− odebrat řádek</button>
+    {% endif %}
+</div>
 
 <h2>Spotřebováno</h2>
 {{ consumed_formset.management_form }}
@@ -68,7 +79,12 @@ means something different by it — see `WorkOrderForm.__init__` and `job_edit`.
     {% for error in form.non_field_errors %}<p class="messages error">{{ error }}</p>{% endfor %}
 {% endfor %}
 
-<button class="btn secondary add-row" type="submit" name="add_consumed" formnovalidate>+ další řádek</button>
+<div class="row-controls">
+    <button class="btn secondary" type="submit" name="add_consumed" formnovalidate>+ další řádek</button>
+    {% if consumed_formset|length > 1 %}
+        <button class="btn secondary" type="submit" name="remove_consumed" formnovalidate>− odebrat řádek</button>
+    {% endif %}
+</div>
 
 <h2>Vyrobeno</h2>
 {{ produced_formset.management_form }}
@@ -80,7 +96,12 @@ means something different by it — see `WorkOrderForm.__init__` and `job_edit`.
     {% for error in form.non_field_errors %}<p class="messages error">{{ error }}</p>{% endfor %}
 {% endfor %}
 
-<button class="btn secondary add-row" type="submit" name="add_produced" formnovalidate>+ další řádek</button>
+<div class="row-controls">
+    <button class="btn secondary" type="submit" name="add_produced" formnovalidate>+ další řádek</button>
+    {% if produced_formset|length > 1 %}
+        <button class="btn secondary" type="submit" name="remove_produced" formnovalidate>− odebrat řádek</button>
+    {% endif %}
+</div>
 
 <h2>Použité stroje</h2>
 {{ machine_formset.management_form }}
@@ -92,4 +113,9 @@ means something different by it — see `WorkOrderForm.__init__` and `job_edit`.
     </div>
     {% for error in form.non_field_errors %}<p class="messages error">{{ error }}</p>{% endfor %}
 {% endfor %}
-<button class="btn secondary add-row" type="submit" name="add_machines" formnovalidate>+ další řádek</button>
+<div class="row-controls">
+    <button class="btn secondary" type="submit" name="add_machines" formnovalidate>+ další řádek</button>
+    {% if machine_formset|length > 1 %}
+        <button class="btn secondary" type="submit" name="remove_machines" formnovalidate>− odebrat řádek</button>
+    {% endif %}
+</div>

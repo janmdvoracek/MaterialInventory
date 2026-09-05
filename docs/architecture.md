@@ -281,22 +281,37 @@ because each page means something different by it — `job_edit` sets it to
 *„Hodiny – <author>"*, since a manager correcting somebody else's job is looking
 at neither *„Moje hodiny"* nor a bare *„Odpracované hodiny"*.
 
-### Growing a section without JavaScript
+### Resizing a section without JavaScript
 
-A formset renders a fixed number of rows. Before the „+ další řádek" buttons, that
-made the entry form a hard cap on what could be recorded: three consumed rows,
-three produced, four machines, three collaborators, and no way past any of them.
-A job crushing one input into four output fractions did not fit, and because the
-mass balance is checked across a single submission it could not be split over two
+A formset renders a fixed number of rows. Before the row buttons, that made the
+entry form a hard cap on what could be recorded: three consumed rows, three
+produced, four machines, three collaborators, and no way past any of them. A job
+crushing one input into four output fractions did not fit, and because the mass
+balance is checked across a single submission it could not be split over two
 either.
 
-The button under each section is an ordinary submit named `add_<prefix>`. The
-pairs live in `JOB_SECTIONS` in `workorders/forms.py` — prefix and row form — and
-that tuple is the only place a fifth section would have to be registered.
-`_pressed_add_row` looks for one at the top of both `transform_create` and
-`job_edit`, ahead of the submission branch; `_grown_job_forms` then rebuilds every
-form on the page out of the raw POST, giving the named section one more blank row
-and every other section exactly the rows it already had.
+Each section carries two ordinary submit buttons, `add_<prefix>` and
+`remove_<prefix>`. The prefixes live in `JOB_SECTIONS` in `workorders/forms.py` —
+prefix and row form — and that tuple is the only place a fifth section would have
+to be registered. `_pressed_row_button` looks for either at the top of both
+`transform_create` and `job_edit`, ahead of the submission branch, and reports
+which section and which direction as `(prefix, delta)`; `_resized_job_forms` then
+rebuilds every form on the page out of the raw POST, giving the named section one
+row more or less and every other section exactly the rows it already had.
+
+**Removing takes the last row — the exact one adding appends**, so the two
+buttons undo each other. Anything cleverer, like dropping the last *empty* row,
+would make the button hard to predict from looking at it, and nothing here is
+saved: what is on screen is the whole state.
+
+**No section falls below `MIN_ROWS_PER_SECTION` (1).** `_resized_section` applies
+that floor to every section on every rebuild, not only the one whose button was
+pressed — so neither a „− odebrat řádek" that arrives twice (a double tap on a
+slow connection) nor a hand-edited `TOTAL_FORMS` can leave a heading with no row
+under it and only the add button as the way back. The template also hides
+„− odebrat řádek" once a section is down to one row, so it is never shown as a
+control that does nothing; that is presentation, and the view holds the floor
+regardless of what arrives.
 
 **The rebuilt page is unbound, and that is the point.** Asking for another row is
 not submitting the form, so the page must come back carrying what was typed and
@@ -311,10 +326,10 @@ explicit `format` for.
 
 Four details are load-bearing and easy to undo by accident:
 
-- **The buttons carry `formnovalidate`.** *„Moje hodiny"* and *„Datum provedení"*
-  are required, so without it the browser blocks the submit and the button does
+- **Both buttons carry `formnovalidate`.** *„Moje hodiny"* and *„Datum provedení"*
+  are required, so without it the browser blocks the submit and the buttons do
   nothing until the rest of the form happens to be complete — which is exactly
-  when nobody needs another row.
+  when nobody needs to change the number of rows.
 - **`job_row_formset` builds a class per call.** `extra` is a class attribute, so
   a formset sized to its caller cannot take the size as a constructor argument.
   Reusing the module-level `extra=3` classes would pad three more rows onto every
@@ -325,15 +340,18 @@ Four details are load-bearing and easy to undo by accident:
   `.visually-hidden`, has no `name` so it posts nothing, and is out of the tab
   order and hidden from assistive tech.
 - **`TOTAL_FORMS` is untrusted on this path.** It is read straight out of the POST
-  rather than through a management form, so it is parsed defensively and capped at
-  `MAX_ROWS_PER_SECTION` (1000, which is what the management form already
-  advertises as `MAX_NUM_FORMS`). At exactly the cap the new blank row is dropped,
-  because Django will not add an extra beyond its own `max_num` either.
+  rather than through a management form, so it is parsed defensively and clamped
+  between `MIN_ROWS_PER_SECTION` and `MAX_ROWS_PER_SECTION` (1000, which is what
+  the management form already advertises as `MAX_NUM_FORMS`). At exactly the cap
+  the new blank row is dropped, because Django will not add an extra beyond its
+  own `max_num` either.
 
-`AddRowTests` in `workorders/tests.py` covers the lot: that only the named section
-grows, that the typed values and the chosen author come back, that the date stays
-ISO, that nothing is written and nothing is scolded, and that the decoy button
-precedes the first „+ další řádek" in the rendered page.
+`RowButtonTests` in `workorders/tests.py` covers the lot: that only the named
+section changes size, that removing takes the last row and never the last one
+standing, that the remove button disappears at the floor, that the typed values
+and the chosen author come back, that the date stays ISO, that nothing is written
+and nothing is scolded, and that the decoy button precedes the first
+„+ další řádek" in the rendered page.
 
 ### `WorkerHours` vs `MachineUsage`
 
@@ -602,9 +620,9 @@ multiplies the `Sum` by the number of matched collaborators.
 - **No REST API.** `rest_framework` was installed and configured for session
   auth, but there were never any serializers, viewsets or routes. It and the
   `REST_FRAMEWORK` settings block are gone.
-- **No JavaScript.** Every page is a plain form POST. Even growing a formset
+- **No JavaScript.** Every page is a plain form POST. Even resizing a formset
   section round-trips through the server rather than scripting the DOM — see
-  "Growing a section without JavaScript" above. `django_htmx`
+  "Resizing a section without JavaScript" above. `django_htmx`
   and `widget_tweaks` were installed and never used — no template carried an
   `hx-*` attribute or loaded the tag library — so both are gone, along with the
   htmx middleware and the `<script src="https://unpkg.com/htmx.org">` tag in

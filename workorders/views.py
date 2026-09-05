@@ -145,10 +145,18 @@ def _write_job_rows(work_order, author, own_hours, consumed_rows, produced_rows,
         )
 
 
-# What each „+ další řádek" button posts under. A submit button reaches the
-# server only when it is the one that was pressed, so the key being there at all
-# is the whole signal — there is no value to compare against.
+# What the two row buttons under each section post under. A submit button
+# reaches the server only when it is the one that was pressed, so the key being
+# there at all is the whole signal — there is no value to compare against.
 ADD_ROW_BUTTONS = {f'add_{prefix}': prefix for prefix, _ in JOB_SECTIONS}
+REMOVE_ROW_BUTTONS = {f'remove_{prefix}': prefix for prefix, _ in JOB_SECTIONS}
+
+# Floor on the rows a section can be left with. „− odebrat řádek" stops here, and
+# so does a rebuild from a POST that claims fewer: a section with no rows at all
+# would render as a bare heading, and the only way back would be the add button
+# next to it. Enforced on every section on every rebuild, not just the one whose
+# button was pressed, so a hand-edited TOTAL_FORMS cannot empty a section either.
+MIN_ROWS_PER_SECTION = 1
 
 # Ceiling on the rows one section can be rebuilt with. Growing a section reads
 # TOTAL_FORMS straight out of the POST rather than through a management form, so
@@ -162,11 +170,18 @@ ADD_ROW_BUTTONS = {f'add_{prefix}': prefix for prefix, _ in JOB_SECTIONS}
 MAX_ROWS_PER_SECTION = 1000
 
 
-def _pressed_add_row(post_data):
-    """The prefix of the section whose „+ další řádek" was pressed, or None."""
+def _pressed_row_button(post_data):
+    """Which section a row button was pressed for and which way, or None.
+
+    Returns `(prefix, delta)` — delta `+1` for „+ další řádek", `-1` for
+    „− odebrat řádek". None means this POST is an ordinary submission.
+    """
     for name, prefix in ADD_ROW_BUTTONS.items():
         if name in post_data:
-            return prefix
+            return prefix, 1
+    for name, prefix in REMOVE_ROW_BUTTONS.items():
+        if name in post_data:
+            return prefix, -1
     return None
 
 
@@ -174,16 +189,16 @@ def _submitted_rows(post_data, row_form, prefix):
     """One section's rows, as the raw strings the browser posted.
 
     Read out of the POST directly rather than off a bound formset, because the
-    grown page is rebuilt unbound — see `_grown_job_forms`. `base_fields` is the
-    row's own field list, so a column added to a row form is carried over here
-    without a second list to keep in step.
+    resized page is rebuilt unbound — see `_resized_job_forms`. `base_fields` is
+    the row's own field list, so a column added to a row form is carried over
+    here without a second list to keep in step.
     """
     try:
         count = int(post_data.get(f'{prefix}-TOTAL_FORMS', 0))
     except (TypeError, ValueError):
         # A management form that does not parse describes no rows. The section
-        # comes back with just its new blank one, which is the honest answer:
-        # there is nothing to restore.
+        # comes back as a single blank row, which is the honest answer: there is
+        # nothing to restore.
         count = 0
     return [
         {name: post_data.get(f'{prefix}-{index}-{name}', '') for name in row_form.base_fields}
@@ -194,7 +209,7 @@ def _submitted_rows(post_data, row_form, prefix):
 def _submitted_author(post_data, submitter):
     """Who „Zapsat za" currently names, on a page being re-rendered rather than submitted.
 
-    The collaborator list is built from the author, so growing the
+    The collaborator list is built from the author, so resizing the
     Spolupracovníci section has to resolve it the way a real submission would.
     Otherwise a manager recording for someone else would get their own name back
     in the list, and a collaborator they had already picked would drop out of
@@ -210,14 +225,37 @@ def _submitted_author(post_data, submitter):
     return form.author_or(submitter)
 
 
-def _grown_job_forms(post_data, grown, *, author, viewer, order_form_user=None):
-    """Every form on the job page, rebuilt from `post_data` with one more blank
-    row in the `grown` section. Returns the job form and the four formsets by prefix.
+def _resized_section(rows, delta):
+    """`rows` with the pressed button applied: one blank row more, or one row less.
 
-    Unbound throughout, and deliberately: „+ další řádek" asks for a bigger form,
-    it does not submit one, so the page has to come back carrying what was typed
-    and complaining about nothing. A bound rebuild would render „Toto pole je
-    vyžadováno." over the hours box of somebody who only wanted a fourth
+    Returns the rows to keep and how many blank ones to pad with, because
+    growing adds a row the POST has no values for while shrinking just drops the
+    last set it does. The floor is applied to both, and to `delta == 0` — the
+    three sections whose button was not pressed — so no section can come back
+    empty however the POST was edited.
+
+    The row that goes is the *last* one, which is the exact opposite of the one
+    that arrives. Anything cleverer (drop the last empty row, say) would make
+    the button hard to predict from looking at it, and nothing here is saved:
+    what is on screen is the whole state.
+    """
+    if delta > 0:
+        blank_rows = 1
+    else:
+        if delta < 0 and len(rows) > MIN_ROWS_PER_SECTION:
+            rows = rows[:-1]
+        blank_rows = 0
+    return rows, max(blank_rows, MIN_ROWS_PER_SECTION - len(rows))
+
+
+def _resized_job_forms(post_data, section, delta, *, author, viewer, order_form_user=None):
+    """Every form on the job page, rebuilt from `post_data` with `section` one row
+    bigger or smaller. Returns the job form and the four formsets by prefix.
+
+    Unbound throughout, and deliberately: the row buttons ask for a different
+    form, they do not submit one, so the page has to come back carrying what was
+    typed and complaining about nothing. A bound rebuild would render „Toto pole
+    je vyžadováno." over the hours box of somebody who only wanted a fourth
     material row.
 
     Raw POST strings round-trip through an unbound widget without help: a pk
@@ -231,30 +269,35 @@ def _grown_job_forms(post_data, grown, *, author, viewer, order_form_user=None):
     # manager's form — is carried over without a second list of names here.
     # Assigned after construction because the field set is not known until then.
     order_form.initial = {name: post_data.get(name, '') for name in order_form.fields}
-    formsets = {
-        prefix: job_row_formset(
+    formsets = {}
+    for prefix, row_form in JOB_SECTIONS:
+        rows, blank_rows = _resized_section(
+            _submitted_rows(post_data, row_form, prefix),
+            delta if prefix == section else 0,
+        )
+        formsets[prefix] = job_row_formset(
             row_form,
             prefix=prefix,
-            rows=_submitted_rows(post_data, row_form, prefix),
-            blank_rows=1 if prefix == grown else 0,
+            rows=rows,
+            blank_rows=blank_rows,
             form_kwargs={'user': author, 'viewer': viewer} if prefix == 'workers' else None,
         )
-        for prefix, row_form in JOB_SECTIONS
-    }
     return order_form, formsets
 
 
 @login_required
 def transform_create(request):
-    # „+ další řádek" is not a submission: the page comes straight back one row
-    # bigger, with nothing validated and nothing written. Checked before the
-    # normal POST branch so that branch stays the submission path and nothing
-    # else.
-    grown = _pressed_add_row(request.POST) if request.method == 'POST' else None
-    if grown:
-        order_form, formsets = _grown_job_forms(
+    # Neither row button is a submission: the page comes straight back one row
+    # bigger or smaller, with nothing validated and nothing written. Checked
+    # before the normal POST branch so that branch stays the submission path and
+    # nothing else.
+    resized = _pressed_row_button(request.POST) if request.method == 'POST' else None
+    if resized:
+        section, delta = resized
+        order_form, formsets = _resized_job_forms(
             request.POST,
-            grown,
+            section,
+            delta,
             author=_submitted_author(request.POST, request.user),
             viewer=request.user,
             order_form_user=request.user,
@@ -693,12 +736,13 @@ def job_edit(request, pk):
     # it: the "moje hodiny" field is the author's, and the collaborator list has
     # to exclude the author rather than the editor.
     author = work_order.created_by
-    # Same as on the Transform form: grow the section and re-render, unbound.
+    # Same as on the Transform form: resize the section and re-render, unbound.
     # The author is the job's, not whatever the POST says — a manager correcting
     # somebody's job cannot reassign it, and there is no „Zapsat za" field here.
-    grown = _pressed_add_row(request.POST) if request.method == 'POST' else None
-    if grown:
-        order_form, formsets = _grown_job_forms(request.POST, grown, author=author, viewer=request.user)
+    resized = _pressed_row_button(request.POST) if request.method == 'POST' else None
+    if resized:
+        section, delta = resized
+        order_form, formsets = _resized_job_forms(request.POST, section, delta, author=author, viewer=request.user)
         consumed_formset = formsets['consumed']
         produced_formset = formsets['produced']
         machine_formset = formsets['machines']

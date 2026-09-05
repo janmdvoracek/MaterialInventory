@@ -75,6 +75,10 @@ on. Kdo je tu uvedený, uvidí zakázku ve své historii a hodiny se mu započí
   Stránka se načte znovu s jedním řádkem navíc a **všechno, co jste už vyplnili,
   v ní zůstane**. Nic se tím neukládá a nic se nekontroluje — přidat řádek můžete
   i do rozdělaného formuláře.
+- Řádek navíc odeberete tlačítkem **„− odebrat řádek"** vedle něj. Odebere se
+  vždy **poslední** řádek té části — i kdyby byl vyplněný, takže se nejdřív
+  podívejte, co v něm je. Poslední zbývající řádek odebrat nejde a tlačítko se
+  u něj proto vůbec nezobrazí.
 
 **2a. Zapsat za někoho jiného** *(jen vedoucí a správci)*
 
@@ -114,6 +118,8 @@ zpětně, přepište ho na den, kdy se práce skutečně dělala.
 - Když jich potřebujete víc — třeba když z jednoho materiálu vzniknou čtyři
   frakce — klepněte pod tou částí na **„+ další řádek"**. Přidá se jeden prázdný
   řádek a vyplněné údaje zůstanou. Tlačítko má každá část formuláře zvlášť.
+- **„− odebrat řádek"** vedle něj odebere poslední řádek té části. Prázdné řádky
+  ale odebírat nemusíte — aplikace je při ukládání jednoduše přeskočí.
 - Vyplnit musíte buď celý řádek, nebo žádný — samotné množství bez materiálu
   aplikace odmítne.
 - Vyplněná musí být **alespoň jedna položka spotřeby a alespoň jedna položka
@@ -133,7 +139,8 @@ zpětně, přepište ho na den, kdy se práce skutečně dělala.
 Vyplňte **Stroj**, počet **Hodin** (motohodin) a **Tuny**, které stroj
 zpracoval. Pokud šel materiál přes více strojů za sebou, použijte více řádků.
 Stejný stroj můžete uvést vícekrát; na další řádky se dostanete tlačítkem
-**„+ další řádek"** pod nimi. Stroje jsou nepovinné — pokud se žádný nepoužil,
+**„+ další řádek"** pod nimi a přebytečný odeberete tlačítkem
+**„− odebrat řádek"**. Stroje jsou nepovinné — pokud se žádný nepoužil,
 nechte řádky prázdné. Jakmile ale řádek začnete vyplňovat, musí být vyplněný
 celý.
 

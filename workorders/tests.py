@@ -11,7 +11,7 @@ from accounts.models import User
 from materials.models import Machine, Material
 
 from .models import MachineUsage, StockMovement, WorkerHours, WorkOrder
-from .views import MAX_ROWS_PER_SECTION, MY_JOBS_LIMIT, _last_month
+from .views import MAX_ROWS_PER_SECTION, MIN_ROWS_PER_SECTION, MY_JOBS_LIMIT, _last_month
 
 
 class TransformCreateTests(TestCase):
@@ -1879,33 +1879,42 @@ class JobDeleteTests(ReviewFixtureMixin, TestCase):
         self.assertFalse(MachineUsage.objects.exists())
 
 
-class AddRowTests(ReviewFixtureMixin, TestCase):
-    """„+ další řádek" grows one section of the job form.
+class RowButtonTests(ReviewFixtureMixin, TestCase):
+    """„+ další řádek" and „− odebrat řádek" resize one section of the job form.
 
-    A formset renders a fixed number of rows, so before this the form was a hard
+    A formset renders a fixed number of rows, so before these the form was a hard
     cap on what could be recorded: a job crushing one input into four fractions
     did not fit, and the mass balance meant it could not be split across two
-    submissions either. The button posts the form back under `add_<prefix>` and
-    the view re-renders it unbound with one more blank row in that section.
+    submissions either. Each button posts the form back under `add_<prefix>` or
+    `remove_<prefix>` and the view re-renders it unbound, one row bigger or
+    smaller in that section.
 
-    Unbound is what most of this asserts. Asking for another row is not
-    submitting the form, so the page has to come back carrying what was typed
-    and complaining about nothing.
+    Unbound is what most of this asserts. Asking for a different number of rows
+    is not submitting the form, so the page has to come back carrying what was
+    typed and complaining about nothing.
     """
 
-    def _grow(self, section, url=None, **overrides):
-        """Press one „+ další řádek" on an otherwise ordinary, balanced form."""
+    def _press(self, button, url=None, consumed=None, produced=None, **overrides):
+        """Press one row button on an otherwise ordinary, balanced form."""
         data = job_payload(
-            [{'material': self.material_raw, 'quantity': Decimal('5')}],
-            [{'material': self.material_finished, 'quantity': Decimal('5')}],
+            consumed or [{'material': self.material_raw, 'quantity': Decimal('5')}],
+            produced or [{'material': self.material_finished, 'quantity': Decimal('5')}],
         )
         data.update(overrides)
-        data[f'add_{section}'] = ''
+        data[button] = ''
         return self.client.post(url or reverse('transform_create'), data)
+
+    def _three_consumed(self):
+        """Three consumed rows with quantities that cannot be confused for anything
+        else on the page — the hours field and the produced row both hold small
+        numbers."""
+        return [{'material': self.material_raw, 'quantity': q} for q in ('11', '22', '33')]
+
+    # ---------------------------------------------------------------- adding
 
     def test_the_named_section_gains_a_row_and_the_others_do_not(self):
         self.client.force_login(self.worker)
-        response = self._grow('consumed')
+        response = self._press('add_consumed')
         # The typed row plus the blank one just added; every other section keeps
         # the single row `job_payload` sends and gains nothing.
         self.assertEqual(len(response.context['consumed_formset'].forms), 2)
@@ -1932,7 +1941,7 @@ class AddRowTests(ReviewFixtureMixin, TestCase):
 
     def test_what_was_typed_comes_back(self):
         self.client.force_login(self.worker)
-        response = self._grow('produced', description='Drcení na frakce', hours='7')
+        response = self._press('add_produced', description='Drcení na frakce', hours='7')
         self.assertContains(response, 'value="Drcení na frakce"')
         self.assertContains(response, 'value="7"')
         # The material already chosen is re-selected, not reset to the prompt.
@@ -1948,12 +1957,12 @@ class AddRowTests(ReviewFixtureMixin, TestCase):
         """
         self.client.force_login(self.worker)
         today = timezone.localdate().isoformat()
-        response = self._grow('machines', performed_on=today)
+        response = self._press('add_machines', performed_on=today)
         self.assertContains(response, f'value="{today}"')
 
     def test_nothing_is_written(self):
         self.client.force_login(self.worker)
-        self._grow('consumed')
+        self._press('add_consumed')
         self.assertEqual(WorkOrder.objects.count(), 0)
         self.assertEqual(StockMovement.objects.count(), 0)
 
@@ -1961,14 +1970,14 @@ class AddRowTests(ReviewFixtureMixin, TestCase):
         """A bound rebuild would put „Toto pole je vyžadováno." over the hours
         box of somebody who has not reached it yet."""
         self.client.force_login(self.worker)
-        response = self._grow('consumed', hours='', description='')
+        response = self._press('add_consumed', hours='', description='')
         self.assertNotContains(response, 'Toto pole je vyžadováno.')
         self.assertNotContains(response, 'Přidejte alespoň jednu položku')
         self.assertEqual(list(response.context['messages']), [])
 
     def test_an_unbalanced_form_is_not_scolded_either(self):
         self.client.force_login(self.worker)
-        response = self._grow('produced', **{'produced-0-quantity': '9'})
+        response = self._press('add_produced', **{'produced-0-quantity': '9'})
         self.assertNotContains(response, 'se musí rovnat')
         self.assertEqual(WorkOrder.objects.count(), 0)
 
@@ -1980,7 +1989,7 @@ class AddRowTests(ReviewFixtureMixin, TestCase):
         row if the queryset it belongs to changed underneath it.
         """
         self.client.force_login(self.manager)
-        response = self._grow('workers', author=str(self.worker.pk))
+        response = self._press('add_workers', author=str(self.worker.pk))
         choices = response.context['worker_formset'].forms[0].fields['user'].queryset
         self.assertNotIn(self.worker, choices)
         self.assertIn(self.manager, choices)
@@ -1989,7 +1998,7 @@ class AddRowTests(ReviewFixtureMixin, TestCase):
 
     def test_a_worker_growing_their_own_form_keeps_the_workers_only_list(self):
         self.client.force_login(self.worker)
-        response = self._grow('workers')
+        response = self._press('add_workers')
         choices = response.context['worker_formset'].forms[0].fields['user'].queryset
         self.assertNotIn(self.worker, choices)
         self.assertNotIn(self.manager, choices)
@@ -1998,14 +2007,14 @@ class AddRowTests(ReviewFixtureMixin, TestCase):
     def test_a_tampered_row_count_does_not_blow_up(self):
         """TOTAL_FORMS is read straight out of the POST here, so it is untrusted."""
         self.client.force_login(self.worker)
-        response = self._grow('consumed', **{'consumed-TOTAL_FORMS': 'není číslo'})
+        response = self._press('add_consumed', **{'consumed-TOTAL_FORMS': 'není číslo'})
         self.assertEqual(response.status_code, 200)
         # Nothing to restore, so the section comes back as its new blank row.
         self.assertEqual(len(response.context['consumed_formset'].forms), 1)
 
     def test_an_absurd_row_count_is_capped(self):
         self.client.force_login(self.worker)
-        response = self._grow('consumed', **{'consumed-TOTAL_FORMS': '999999'})
+        response = self._press('add_consumed', **{'consumed-TOTAL_FORMS': '999999'})
         # Exactly the cap, not the cap plus the new blank row: at the ceiling
         # Django will not add an extra beyond its own max_num, which is the same
         # 1000. Nothing legitimate reaches this, and a form that did would be
@@ -2015,14 +2024,14 @@ class AddRowTests(ReviewFixtureMixin, TestCase):
     def test_job_edit_grows_the_same_way(self):
         work_order = self.submit_job(self.worker)
         self.client.force_login(self.manager)
-        response = self._grow('machines', url=reverse('job_edit', args=[work_order.pk]))
+        response = self._press('add_machines', url=reverse('job_edit', args=[work_order.pk]))
         self.assertEqual(len(response.context['machine_formset'].forms), 2)
         self.assertEqual(len(response.context['consumed_formset'].forms), 1)
 
     def test_job_edit_saves_nothing_while_growing(self):
         work_order = self.submit_job(self.worker)
         self.client.force_login(self.manager)
-        self._grow('consumed', url=reverse('job_edit', args=[work_order.pk]), description='Nemá se uložit')
+        self._press('add_consumed', url=reverse('job_edit', args=[work_order.pk]), description='Nemá se uložit')
         work_order.refresh_from_db()
         self.assertNotEqual(work_order.description, 'Nemá se uložit')
 
@@ -2030,7 +2039,7 @@ class AddRowTests(ReviewFixtureMixin, TestCase):
         """The label override applies on every branch, the grown one included."""
         work_order = self.submit_job(self.worker)
         self.client.force_login(self.manager)
-        response = self._grow('workers', url=reverse('job_edit', args=[work_order.pk]))
+        response = self._press('add_workers', url=reverse('job_edit', args=[work_order.pk]))
         self.assertEqual(response.context['order_form'].fields['hours'].label, f'Hodiny – {self.worker.username}')
 
     def test_enter_still_saves_rather_than_adding_a_row(self):
@@ -2041,6 +2050,84 @@ class AddRowTests(ReviewFixtureMixin, TestCase):
         self.client.force_login(self.worker)
         body = self.client.get(reverse('transform_create')).content.decode()
         self.assertLess(body.index('visually-hidden'), body.index('name="add_workers"'))
+
+    # -------------------------------------------------------------- removing
+
+    def test_the_named_section_loses_a_row_and_the_others_do_not(self):
+        self.client.force_login(self.worker)
+        response = self._press('remove_consumed', consumed=self._three_consumed())
+        self.assertEqual(len(response.context['consumed_formset'].forms), 2)
+        self.assertEqual(len(response.context['produced_formset'].forms), 1)
+        self.assertEqual(len(response.context['machine_formset'].forms), 1)
+        self.assertEqual(len(response.context['worker_formset'].forms), 1)
+
+    def test_the_row_that_goes_is_the_last_one(self):
+        """The exact row „+ další řádek" would have added, so the two buttons
+        undo each other."""
+        self.client.force_login(self.worker)
+        response = self._press('remove_consumed', consumed=self._three_consumed())
+        self.assertContains(response, 'value="11"')
+        self.assertContains(response, 'value="22"')
+        self.assertNotContains(response, 'value="33"')
+
+    def test_the_last_row_is_never_removed(self):
+        """A section with one row left stays at one, however often it is pressed.
+
+        The button is hidden at that point, so this is the POST arriving anyway —
+        a double tap on a slow connection, or a hand-edited form.
+        """
+        self.client.force_login(self.worker)
+        response = self._press('remove_consumed')
+        self.assertEqual(len(response.context['consumed_formset'].forms), MIN_ROWS_PER_SECTION)
+
+    def test_the_remove_button_is_hidden_on_a_section_down_to_one_row(self):
+        self.client.force_login(self.worker)
+        # Two machine rows, so that section still has one to spare and its own
+        # button stays up — hiding is per section, not per page.
+        response = self._press('remove_consumed', **{'machines-TOTAL_FORMS': '2'})
+        self.assertNotContains(response, 'name="remove_consumed"')
+        # The way back is still offered.
+        self.assertContains(response, 'name="add_consumed"')
+        self.assertContains(response, 'name="remove_machines"')
+
+    def test_no_section_ever_comes_back_empty(self):
+        """The floor holds for the sections nobody pressed, too — otherwise a
+        hand-edited TOTAL_FORMS would leave a bare heading with no row under it."""
+        self.client.force_login(self.worker)
+        response = self._press('add_consumed', **{'produced-TOTAL_FORMS': '0'})
+        self.assertEqual(len(response.context['produced_formset'].forms), MIN_ROWS_PER_SECTION)
+
+    def test_removing_writes_nothing_and_scolds_nobody(self):
+        self.client.force_login(self.worker)
+        response = self._press('remove_produced', consumed=self._three_consumed(), hours='')
+        self.assertNotContains(response, 'Toto pole je vyžadováno.')
+        self.assertNotContains(response, 'se musí rovnat')
+        self.assertEqual(WorkOrder.objects.count(), 0)
+        self.assertEqual(StockMovement.objects.count(), 0)
+
+    def test_removing_keeps_the_rest_of_the_form(self):
+        self.client.force_login(self.worker)
+        response = self._press(
+            'remove_machines',
+            consumed=self._three_consumed(),
+            description='Drcení na frakce',
+        )
+        self.assertContains(response, 'value="Drcení na frakce"')
+        self.assertContains(response, f'value="{self.material_raw.pk}" selected')
+        self.assertContains(response, f'value="{timezone.localdate().isoformat()}"')
+
+    def test_job_edit_removes_the_same_way(self):
+        work_order = self.submit_job(self.worker)
+        self.client.force_login(self.manager)
+        response = self._press(
+            'remove_consumed',
+            url=reverse('job_edit', args=[work_order.pk]),
+            consumed=self._three_consumed(),
+        )
+        self.assertEqual(len(response.context['consumed_formset'].forms), 2)
+        work_order.refresh_from_db()
+        # The job still has the one line item it was recorded with.
+        self.assertEqual(work_order.movements.count(), 2)
 
 
 class ThemeTokenTests(TestCase):
