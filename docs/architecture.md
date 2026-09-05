@@ -364,7 +364,7 @@ wired in `config/urls.py` with Czech form subclasses from `accounts/forms.py`;
 | Role | `is_staff` / `is_superuser` | App access |
 |---|---|---|
 | `WORKER` | no | Zpracování, Hodiny; own records only; submissions await approval |
-| `MANAGER` | no | + Přehled (approve/edit/delete), + Stroje in the nav, + everyone's records |
+| `MANAGER` | no | + Přehled (approve/edit/delete), + Stroje, + everyone's records |
 | `ADMIN` | **yes / yes** | + Django admin |
 
 Two gates:
@@ -374,10 +374,12 @@ Two gates:
   not a bounce back to login, which would be a confusing dead end.
 - `User.is_manager_or_admin` for conditional UI and query scoping.
 
-**The `/jobs/` review views all use `role_required`** — a worker who types one of
-those URLs gets a 403, not a page. `machine_dashboard` and
-`machine_dashboard` still does not: it is hidden from a worker's nav but
-reachable by typing the URL. Hiding a link is not access control.
+**The `/jobs/` review views and `machine_dashboard` all use `role_required`** — a
+worker who types one of those URLs gets a 403, not a page. Hiding a link is not
+access control, so Stroje is gated in the view as well as kept out of a worker's
+nav. Its worker-scoping query (own jobs plus collaborations) and the `del` of the
+filter's `created_by` field are still in place but no longer reachable; they are
+kept as a second line of defence if the gate is ever relaxed.
 
 **Superusers bypass both gates.** `createsuperuser` never sets a `role`, so a
 bootstrap admin would otherwise default to `WORKER` and be locked out of the app

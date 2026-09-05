@@ -937,10 +937,13 @@ class ReportsUsePerformedOnTests(TestCase):
 
 class MachineDashboardTests(TestCase):
     def setUp(self):
+        # The page is manager/admin-only, so a manager reads it — but the jobs
+        # behind the numbers are still a worker's.
         self.worker = User.objects.create_user(username='worker', password='pw', role=User.Role.WORKER)
+        self.manager = User.objects.create_user(username='manager', password='pw', role=User.Role.MANAGER)
         self.machine_active = Machine.objects.create(name='Crusher A')
         self.machine_retired = Machine.objects.create(name='Old Excavator', is_active=False)
-        self.client.force_login(self.worker)
+        self.client.force_login(self.manager)
 
     def _usage(self, hours, tons=None, status=WorkOrder.Status.APPROVED):
         work_order = WorkOrder.objects.create(created_by=self.worker, description='job', status=status)
@@ -1062,36 +1065,17 @@ class MachineUsageDetailTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertIn('/login/', response.url)
 
-    def test_worker_only_sees_own_usage(self):
-        own = self._usage(self.worker)
-        self._usage(self.manager)
-        self.client.force_login(self.worker)
-        response = self.client.get(reverse('machine_dashboard'))
-        usages = response.context['page_obj'].object_list
-        self.assertEqual(list(usages), [own])
-
-    def test_worker_cannot_bypass_restriction_via_created_by_param(self):
+    def test_worker_gets_403(self):
+        # Stroje is manager/admin-only in the view, not merely absent from a
+        # worker's nav: typing the URL is a 403, not a scoped-down page.
         self._usage(self.worker)
-        other = self._usage(self.manager)
-        self.client.force_login(self.worker)
-        response = self.client.get(reverse('machine_dashboard'), {'created_by': self.manager.pk})
-        usages = response.context['page_obj'].object_list
-        self.assertNotIn(other, usages)
-
-    def test_worker_sees_usage_from_collaborated_work_order(self):
-        work_order = WorkOrder.objects.create(
-            created_by=self.manager, description='Joint job', status=WorkOrder.Status.APPROVED
-        )
-        work_order.collaborators.add(self.worker)
-        shared = MachineUsage.objects.create(work_order=work_order, machine=self.machine, hours=Decimal('2'))
         self.client.force_login(self.worker)
         response = self.client.get(reverse('machine_dashboard'))
-        usages = response.context['page_obj'].object_list
-        self.assertIn(shared, usages)
+        self.assertEqual(response.status_code, 403)
 
     def test_detail_shows_tons(self):
         self._usage(self.worker, tons=Decimal('12.5'))
-        self.client.force_login(self.worker)
+        self.client.force_login(self.manager)
         response = self.client.get(reverse('machine_dashboard'))
         # Comma decimal separator: template output is localised under cs.
         self.assertContains(response, '12,50')
@@ -1100,14 +1084,9 @@ class MachineUsageDetailTests(TestCase):
         # Rows written before the column existed have no tonnage; the table
         # must still render them.
         self._usage(self.worker)
-        self.client.force_login(self.worker)
+        self.client.force_login(self.manager)
         response = self.client.get(reverse('machine_dashboard'))
         self.assertContains(response, '—')
-
-    def test_created_by_filter_hidden_from_worker(self):
-        self.client.force_login(self.worker)
-        response = self.client.get(reverse('machine_dashboard'))
-        self.assertNotIn('created_by', response.context['form'].fields)
 
     def test_created_by_filter_available_to_manager(self):
         self.client.force_login(self.manager)
@@ -1124,14 +1103,14 @@ class MachineUsageDetailTests(TestCase):
     def test_detail_filters_by_machine(self):
         matching = self._usage(self.worker, machine=self.machine)
         self._usage(self.worker, machine=self.other_machine)
-        self.client.force_login(self.worker)
+        self.client.force_login(self.manager)
         response = self.client.get(reverse('machine_dashboard'), {'machine': self.machine.pk})
         usages = response.context['page_obj'].object_list
         self.assertEqual(list(usages), [matching])
 
     def test_detail_shows_no_rows_when_filter_is_invalid(self):
         self._usage(self.worker)
-        self.client.force_login(self.worker)
+        self.client.force_login(self.manager)
         response = self.client.get(reverse('machine_dashboard'), {'date_from': 'not-a-date'})
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.context['form'].is_valid())

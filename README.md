@@ -101,7 +101,7 @@ Full column reference: [docs/development.md](docs/development.md#seeding-data).
 ## Common commands
 
 ```bash
-python manage.py test                  # full suite (211 tests, needs Postgres)
+python manage.py test                  # full suite (208 tests, needs Postgres)
 python manage.py test workorders       # one app
 ruff check . && ruff format .          # lint and format
 docker compose up --build              # full stack
@@ -114,15 +114,14 @@ More, including single-test invocation and the CI pipeline:
 
 | Role | Can do |
 |---|---|
-| `WORKER` | Transform and Hours. Sees only their own hours and machine usage, plus jobs they were named a collaborator on. Their submissions wait for approval; a job sent back is shown to them on the Transform page with the reason, but they cannot edit it. |
-| `MANAGER` | Everything a Worker can, plus the Review page (approve / edit / delete any job), the Machines pages, and an unrestricted view of everyone's hours and machine usage. Their own submissions are approved on the spot. **No** Django admin access. |
+| `WORKER` | Transform and Hours. Sees only their own hours, plus jobs they were named a collaborator on. Their submissions wait for approval, and their last five are listed with a status badge at the top of Hours; they cannot edit them. |
+| `MANAGER` | Everything a Worker can, plus the Review page (approve / edit / delete any job), the Machines page, and an unrestricted view of everyone's hours and machine usage. Their own submissions are approved on the spot. **No** Django admin access. |
 | `ADMIN` | Everything, plus the Django admin back office for editing the catalog and accounts. |
 
 Workers' scoping is enforced in the database query, not by hiding form fields —
-editing the URL does not widen what they can see. The Review pages are gated in
-the view with `role_required`, so a worker who types the URL gets a 403. The
-Machines pages are the exception: they are hidden from a worker's nav but not
-gated, so a worker who types that URL still gets in.
+editing the URL does not widen what they can see. The Review pages and the
+Machines page are gated in the view with `role_required`, so a worker who types
+one of those URLs gets a 403 rather than a scoped-down page.
 
 ## Project layout
 
