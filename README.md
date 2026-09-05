@@ -129,8 +129,8 @@ one of those URLs gets a 403 rather than a scoped-down page.
 config/       Django project — settings, root URLconf, WSGI/ASGI
 accounts/     Custom User model, roles, role_required decorator, Czech auth forms
 materials/    Material / Machine catalog + the seed_data command
-inventory/    StockMovement — the material line items of a job. Model only; edited as an inline on the job.
-workorders/   Transform form, job review dashboard, machine page, time-worked reporting, all URLs
+workorders/   Jobs and their StockMovement line items; Transform form, review dashboard, machine page, time-worked reporting, all URLs
+inventory/    Migration history only — no code. Held StockMovement before it moved to workorders.
 templates/    All HTML; base.html holds the site CSS and bottom nav
 static/       Source static assets (tracked; NOT the collectstatic output)
 seed_data/    CSV templates — real data files are gitignored

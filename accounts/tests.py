@@ -137,7 +137,7 @@ class AdminIndexTests(TestCase):
         html = self.client.get(reverse('admin:index')).content.decode()
         self.assertNotIn('Položky zpracování', html)
         with self.assertRaises(NoReverseMatch):
-            reverse('admin:inventory_stockmovement_changelist')
+            reverse('admin:workorders_stockmovement_changelist')
 
     def test_groups_are_not_in_the_admin(self):
         # Permissions play no part in this app, and every account that can reach

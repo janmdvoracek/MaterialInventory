@@ -14,7 +14,6 @@ from django.views.decorators.http import require_POST
 
 from accounts.decorators import role_required
 from accounts.models import User
-from inventory.models import StockMovement
 from materials.models import Machine
 
 from .forms import (
@@ -27,7 +26,7 @@ from .forms import (
     WorkerHoursFormSet,
     WorkOrderForm,
 )
-from .models import MachineUsage, WorkerHours, WorkOrder
+from .models import MachineUsage, StockMovement, WorkerHours, WorkOrder
 
 HISTORY_PAGE_SIZE = 50
 # How many of their own recent jobs a worker sees at the top of Hodiny. Short on

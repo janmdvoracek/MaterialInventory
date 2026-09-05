@@ -1,10 +1,14 @@
 from django.contrib import admin
 
-from inventory.models import StockMovement
-
-from .models import MachineUsage, WorkerHours, WorkOrder
+from .models import MachineUsage, StockMovement, WorkerHours, WorkOrder
 
 
+# StockMovement is deliberately edited here and nowhere else — it is not
+# registered as a model of its own. A line item never exists apart from the job
+# it belongs to, and this inline already edits them, so registering it too put a
+# second top-level section in the admin index holding one model that was
+# reachable from the job anyway. Everything about a job is edited in one place,
+# under Zakázky. `accounts.tests.AdminIndexTests` asserts the section stays gone.
 class MovementInline(admin.TabularInline):
     model = StockMovement
     extra = 1

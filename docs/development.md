@@ -76,9 +76,9 @@ load-bearing (see [localization.md](localization.md)).
 
 Two things to know about where coverage lives:
 
-**`inventory/tests.py` is model-level only.** The app has no views left to
-drive, so everything that exercised a request path went with the stock pages.
-`workorders/tests.py` is where the app is actually covered.
+**There is no `inventory/tests.py`.** The app holds nothing but migrations, and
+`StockMovement`'s model-level tests moved into `workorders/tests.py` along with
+the model. That file is where the app is actually covered.
 
 **`EmptyLabelTests`** (`workorders/tests.py`) fails if any `ModelChoiceField`
 forgets its `empty_label`. See

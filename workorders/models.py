@@ -65,6 +65,66 @@ class WorkOrder(models.Model):
         return self.status == self.Status.APPROVED
 
 
+class StockMovement(models.Model):
+    """One material line item on a transformation job — what it consumed or produced.
+
+    This is a record of what was processed, not a stock balance. Nothing sums
+    these into an on-hand quantity and nothing checks sufficiency before
+    writing one; the app tracks jobs, hours and machines, not inventory levels.
+
+    A row has no timestamp of its own. Its date is the job's `performed_on`, and
+    its position within the job is the order it was typed — which is what `id`
+    ordering below gives.
+
+    The class name and the table name are both historical, kept because renaming
+    either would cost a data migration to no benefit. See `Meta.db_table`.
+    """
+
+    class MovementType(models.TextChoices):
+        TRANSFORM_CONSUME = 'TRANSFORM_CONSUME', 'Zpracování – spotřeba'
+        TRANSFORM_PRODUCE = 'TRANSFORM_PRODUCE', 'Zpracování – výroba'
+
+    material = models.ForeignKey(
+        'materials.Material', on_delete=models.PROTECT, related_name='movements', verbose_name='materiál'
+    )
+    movement_type = models.CharField(max_length=20, choices=MovementType.choices, verbose_name='typ pohybu')
+    quantity = models.DecimalField(
+        max_digits=12,
+        decimal_places=3,
+        help_text='Množství se znaménkem: kladné pro vyrobený materiál, záporné pro spotřebovaný.',
+        verbose_name='množství',
+    )
+    work_order = models.ForeignKey(
+        WorkOrder,
+        on_delete=models.PROTECT,
+        related_name='movements',
+        verbose_name='zakázka',
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='stock_movements', verbose_name='vytvořil'
+    )
+
+    class Meta:
+        # The model lived in its own `inventory` app while the app tracked stock.
+        # It moved here when that app was left with nothing else — a line item
+        # only exists as part of a job, and every line of code that writes or
+        # reads one was already in `workorders`. The move was state-only
+        # (`inventory.0008` / `workorders.0013`, a `SeparateDatabaseAndState`
+        # pair that emits no SQL), so the table keeps the name it was created
+        # with. Renaming it would be a data migration bought for nothing.
+        db_table = 'inventory_stockmovement'
+        # By insertion, which within a job is the order the rows were typed.
+        ordering = ['id']
+        indexes = [
+            models.Index(fields=['material']),
+        ]
+        verbose_name = 'položka zpracování'
+        verbose_name_plural = 'položky zpracování'
+
+    def __str__(self):
+        return f'{self.movement_type}: {self.quantity} t of {self.material}'
+
+
 class WorkerHours(models.Model):
     """Labour hours one person spent on a transformation job.
 

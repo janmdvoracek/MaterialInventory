@@ -1,15 +1,22 @@
 # Architecture
 
-A modular monolith: one Django project (`config`) with four apps that depend on
-each other in one direction only — `accounts` and `materials` hold the reference
-data, `inventory` records the material line items, and `workorders` groups those
-into jobs and owns every page.
+A modular monolith: one Django project (`config`) with three code-bearing apps
+that depend on each other in one direction only — `accounts` and `materials`
+hold the reference data, and `workorders` owns the jobs, their material line
+items, and every page.
 
 ```
 accounts ──┐
-           ├──> inventory ──> workorders
-materials ─┘        (StockMovement.work_order → WorkOrder)
+           ├──> workorders
+materials ─┘
 ```
+
+A fourth app, `inventory`, is still in `INSTALLED_APPS` but holds **no code at
+all** — only its `migrations/` package. It used to own `StockMovement` back when
+the app tracked stock; that model moved to `workorders` (see below) and nothing
+was left. It cannot simply be deleted: `materials.0008` depends on
+`inventory.0006` to drop the `Location` FK column before the table it points at,
+and Django cannot resolve a dependency on an app it does not know about.
 
 > **This app does not track stock.** Receipts, shipments, adjustments, the stock
 > dashboard, the movement history and its CSV export were all removed, along with
@@ -20,9 +27,18 @@ materials ─┘        (StockMovement.work_order → WorkOrder)
 
 ## Job line items
 
-`inventory.StockMovement` keeps its name to avoid a table rename, but it is no
+`workorders.StockMovement` keeps its name — and its table name — for the same
+reason: renaming either would cost a data migration and buy nothing. It is no
 longer a ledger. One row is **one material line on one job**: what the job
 consumed or what it produced.
+
+The model lived in its own `inventory` app while the app tracked stock. Once
+that app had no views, no forms, no URLs and no admin left, a one-model app was
+just an import hop — every line of code that writes or reads a line item was
+already in `workorders`. `inventory.0008` and `workorders.0013` are a
+`SeparateDatabaseAndState` pair that moves it between app labels and **emits no
+SQL**; `Meta.db_table = 'inventory_stockmovement'` pins the table where it
+already is.
 
 | Field | Meaning |
 |---|---|
@@ -52,8 +68,9 @@ top-level section to the admin index — labelled *Zpracování*, the same word 
 the worker-facing form, and holding one model already reachable from *Zakázky*.
 Everything about a job is edited in one place.
 
-That leaves `inventory` with no admin at all. Its `AppConfig.verbose_name` is
-kept for whenever something is registered again, but nothing renders it today.
+`inventory` therefore has no admin, and now no models either, so its
+`AppConfig` carries no `verbose_name`: that only ever labelled an admin index
+section, and there is no section without a registered model.
 The `date_hierarchy` that used to live on the movement list moved to
 `WorkOrderAdmin`, which is now the only admin that has one — and the only place
 the Czech date-hierarchy string from `locale/cs` is exercised.
@@ -64,7 +81,8 @@ There is no available-quantity helper, no `select_for_update()`, and no check to
 perform before writing a line item. A job records what a worker says happened.
 If you ever need balances back, you are adding a genuinely new subsystem — read
 the git history for `inventory/services.py` rather than assuming any of the old
-machinery is still wired up.
+machinery is still wired up. (That history is under the old app path; the model
+itself is in `workorders/models.py` now.)
 
 ## Work orders
 
@@ -348,8 +366,9 @@ filtered results" heading reads as an answer.
 
 ## Pages and URLs
 
-All in `workorders`, all mounted at the **root** by `config/urls.py` —
-`inventory` contributes no URLs at all.
+All in `workorders`, all mounted at the **root** by `config/urls.py`. No other
+app contributes a URL: `accounts` and `materials` are model-and-form only, and
+`inventory` holds nothing but migrations.
 
 | URL | Name | What |
 |---|---|---|
@@ -368,7 +387,8 @@ The five `/jobs/` views are the review pages, and every one of them carries
 `LOGIN_REDIRECT_URL`, the header logo and the post-submit redirect all point at
 `transform_create`. Login and password change are Django's own generic views,
 wired in `config/urls.py` with Czech form subclasses from `accounts/forms.py`;
-`accounts/views.py` is empty.
+`accounts` has no `views.py` at all, and neither does `materials` — both files
+held nothing but `# Create your views here.` and were removed.
 
 ## Roles and permissions
 
