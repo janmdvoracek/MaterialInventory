@@ -227,7 +227,7 @@ def transform_create(request):
     )
 
 
-@login_required
+@role_required(*REVIEWER_ROLES)
 def machine_dashboard(request):
     """Stroje: the filter, per-machine totals under it, the usage rows below.
 
