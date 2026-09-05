@@ -156,7 +156,7 @@ for them — the msgid falls straight back to English no matter what
 | String | Where it shows |
 |---|---|
 | `- Select an option -` | the blank option in every admin `<select>` |
-| `Filter by %(field_name)s` | the `date_hierarchy` bar on the movement list |
+| `Filter by %(field_name)s` | the `date_hierarchy` bar on `WorkOrderAdmin`, the only admin that has one |
 | `Are you sure you want to delete the %(object_name)s …` | delete confirmation |
 | `After you’ve created a user, …` | the user add form |
 | `Search %(name)s`, `Pagination %(name)s` | screen-reader-only headings |

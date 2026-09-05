@@ -31,7 +31,10 @@ class WorkerHoursInline(admin.TabularInline):
 class WorkOrderAdmin(admin.ModelAdmin):
     list_display = ('id', 'performed_on', 'created_at', 'created_by', 'description', 'status', 'reviewed_by')
     list_filter = ('status',)
-    date_hierarchy = 'created_at'
+    # The day the work was done, like every filter and every ordering in the
+    # app. `created_at` stays a column in `list_display` — it answers a
+    # different question ("when was this typed in") and is still worth seeing.
+    date_hierarchy = 'performed_on'
     # Who reviewed it and when is written by `job_approve`; leaving them
     # editable here would let the two disagree about what happened.
     readonly_fields = ('created_by', 'reviewed_at', 'reviewed_by')

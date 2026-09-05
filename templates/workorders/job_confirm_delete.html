@@ -19,10 +19,13 @@
         </tbody>
     </table>
     </div>
-    <form method="post">
-        {% csrf_token %}
-        <button class="btn danger" type="submit">Ano, smazat</button>
-    </form>
-    <a class="btn secondary" href="{% url 'job_detail' work_order.pk %}">Zpět</a>
+    {# Same row treatment as the Akce card on job_detail. #}
+    <div class="job-actions">
+        <form method="post">
+            {% csrf_token %}
+            <button class="btn danger" type="submit">Ano, smazat</button>
+        </form>
+        <a class="btn secondary" href="{% url 'job_detail' work_order.pk %}">Zpět</a>
+    </div>
 </div>
 {% endblock %}

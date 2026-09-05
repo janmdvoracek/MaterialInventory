@@ -156,10 +156,6 @@ input:focus, select:focus {
     border-color: var(--brand-green);
     box-shadow: 0 0 0 3px var(--focus-ring);
 }
-.checkbox-list > div { padding: 0.5rem 0; border-bottom: 1px solid var(--border); }
-.checkbox-list > div:last-child { border-bottom: none; }
-.checkbox-list label { display: flex; align-items: center; gap: 0.5rem; font-weight: normal; margin: 0; }
-.checkbox-list input[type="checkbox"] { width: 1.2rem; height: 1.2rem; flex-shrink: 0; }
 button, .btn {
     display: inline-block;
     width: 100%;

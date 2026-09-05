@@ -95,14 +95,18 @@
 
 <div class="card">
     <h2>Akce</h2>
-    {% if not work_order.is_approved %}
-        <form method="post" action="{% url 'job_approve' work_order.pk %}">
-            {% csrf_token %}
-            <button type="submit">Schválit</button>
-        </form>
-    {% endif %}
-    <a class="btn secondary" href="{% url 'job_edit' work_order.pk %}">Upravit</a>
-    <a class="btn danger" href="{% url 'job_delete' work_order.pk %}">Smazat</a>
+    {# .job-actions lays the three out as one row of equal buttons; without it #}
+    {# `button, .btn` (width: 100%) stacks them full-width down the card.      #}
+    <div class="job-actions">
+        {% if not work_order.is_approved %}
+            <form method="post" action="{% url 'job_approve' work_order.pk %}">
+                {% csrf_token %}
+                <button type="submit">Schválit</button>
+            </form>
+        {% endif %}
+        <a class="btn secondary" href="{% url 'job_edit' work_order.pk %}">Upravit</a>
+        <a class="btn danger" href="{% url 'job_delete' work_order.pk %}">Smazat</a>
+    </div>
 </div>
 <p><a href="{% url 'job_dashboard' %}">← Zpět na přehled</a></p>
 {% endblock %}
