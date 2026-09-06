@@ -51,6 +51,19 @@ but it also downgrades the widget from `<input type="number">` to a plain text
 input — costing every mobile user their numeric keypad, on an app used almost
 entirely from phones. The current asymmetry is the better trade.
 
+**Anything rendered outside a template has to localize itself.** Templates do
+it for free; `str(value)` and f-strings do not. Two places in the app:
+
+- The mass-balance error message (`_balance_error`) puts its totals through
+  `django.utils.formats.localize`, or it would report `9.5` in an app that
+  shows `9,5` everywhere else.
+- The summary CSV exports call `number_format(value, decimal_pos=N)` per cell.
+  That comma is also why the files are **`;`-delimited**: Excel under `cs`
+  splits a `.csv` on the locale's list separator, which is the semicolon, and a
+  comma decimal and a comma delimiter cannot share a file. The same files carry
+  a UTF-8 BOM, without which Excel opens „Štěrk" as mojibake. See
+  [architecture.md](architecture.md).
+
 ## Dates still round-trip
 
 Czech `DATE_INPUT_FORMATS` is `%d.%m.%Y`-first and does not list ISO. Django
@@ -128,7 +141,8 @@ recorded at 00:30 local cannot land on the previous UTC day the way a
 
 Templates localize automatically. **Python code does not.** Anything formatting
 a datetime outside a template must call `timezone.localtime()` explicitly.
-Nothing does today — the CSV export that did was removed with the stock pages.
+Nothing does today: the summary CSV exports format decimals and put one
+`timezone.localdate()` in a filename, and a date carries no zone to get wrong.
 
 ## The admin
 

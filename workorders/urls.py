@@ -9,6 +9,12 @@ urlpatterns = [
     path('machines/', views.machine_dashboard, name='machine_dashboard'),
     path('materials/', views.material_dashboard, name='material_dashboard'),
     path('hours/', views.time_worked, name='time_worked'),
+    # The summary table of each of those three as a CSV. Same querystring as the
+    # page, so a download is whatever was on screen; each is gated exactly like
+    # the page it belongs to.
+    path('machines/export/', views.machine_dashboard_export, name='machine_dashboard_export'),
+    path('materials/export/', views.material_dashboard_export, name='material_dashboard_export'),
+    path('hours/export/', views.time_worked_export, name='time_worked_export'),
     # Manager review of recorded jobs. Every view behind these is gated by
     # role_required, not just hidden from the nav.
     path('jobs/', views.job_dashboard, name='job_dashboard'),

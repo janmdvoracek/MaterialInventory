@@ -26,6 +26,10 @@ and code are in English.
 | **Materials** (*Materiál*) | Tonnage consumed, produced and net per material over a date range, and the individual line items behind those totals — "how much 8/16 did we make last month?". Manager/Admin only. |
 | **Hours** (*Hodiny*) | Hours worked per person, for payroll and job costing. For a worker, also their own last few jobs with the review status of each. |
 
+The summary table on each of those last three downloads as a CSV that opens
+straight into Excel — semicolon-delimited, UTF-8 BOM, comma decimals — over
+whatever filter the page is showing.
+
 A job is written as a single transaction: its material line items, every
 participant's hours, and any machine usage all land together or not at all.
 Labour hours and machine motohodiny are deliberately separate numbers — neither
@@ -106,7 +110,7 @@ Full column reference: [docs/development.md](docs/development.md#seeding-data).
 ## Common commands
 
 ```bash
-python manage.py test                  # full suite (250 tests, needs Postgres)
+python manage.py test                  # full suite (262 tests, needs Postgres)
 python manage.py test workorders       # one app
 ruff check . && ruff format .          # lint and format
 docker compose up --build              # full stack

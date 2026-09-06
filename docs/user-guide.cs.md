@@ -22,6 +22,7 @@ adrese, kterou vám dal správce, a přihlaste se uživatelským jménem a hesle
 - [Stroje](#stroje)
 - [Materiál](#materiál)
 - [Hodiny](#hodiny)
+- [Stažení do Excelu](#stažení-do-excelu)
 - [Časté potíže](#časté-potíže)
 
 ---
@@ -306,6 +307,34 @@ posledních zápisů.
 
 Vedoucí tuto tabulku nemá — jeho zakázky jsou schválené rovnou a všechny
 ostatní vidí v **Přehledu**.
+
+## Stažení do Excelu
+
+Pod souhrnnou tabulkou v **Hodinách**, **Strojích** i **Materiálu** je tlačítko
+**Stáhnout do CSV / Excelu**. Stáhne se soubor s tou tabulkou, která je právě
+na obrazovce — **i s nastaveným filtrem**. Postup je tedy vždy stejný: nejdřív
+si stránku nafiltrujte (třeba **Minulý měsíc**), zkontrolujte čísla a teprve
+pak klepněte na tlačítko.
+
+| Stránka | Co se stáhne |
+|---|---|
+| **Hodiny** | Tabulka **Souhrn** — pracovník, hodiny, počet zakázek |
+| **Stroje** | Tabulka **Stav strojů** — stroj, hodiny, tuny a obě sazby |
+| **Materiál** | Tabulka **Souhrn materiálů** — spotřebováno, vyrobeno, rozdíl |
+
+Stahuje se **souhrn**, ne dlouhý seznam jednotlivých záznamů pod ním.
+
+Soubor se jmenuje například `souhrn-hodin-2026-09-06.csv` — datum ke konci je
+den, kdy jste ho stáhli, aby se dva soubory ve stažených nepřepsaly. Otevřete
+ho poklepáním; Excel ho rozdělí do sloupců sám a čísla v něm umí sečíst.
+Prázdná buňka ve sloupci **Tun** nebo u sazby znamená **není známo** (na
+stránce je na jejím místě pomlčka) — nulu tam schválně nepíšeme, aby vám
+nepokazila součet.
+
+Do souboru se dostane přesně to, co je na stránce: **jen schválené zakázky**,
+a pracovník si stáhne jenom své vlastní hodiny. Když je filtr špatně vyplněný
+(stránka to hlásí červeně), stáhne se soubor jen se záhlavím a bez řádků —
+stejně jako je tabulka na stránce prázdná.
 
 ## Časté potíže
 

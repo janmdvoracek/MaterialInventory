@@ -478,6 +478,56 @@ answers it. Its queryset is every material rather than the active ones, because
 narrowing to a retired material is the only way to see its history — the
 summary above is what restricts itself to `is_active=True`.
 
+### Each summary table downloads as a CSV
+
+Hodiny, Stroje and Materiál each carry a „Stáhnout do CSV / Excelu" button at
+the foot of their **summary** card — „Souhrn", „Stav strojů", „Souhrn
+materiálů". The paginated detail rows underneath are not exported; they are the
+working-out, and the summary is the report.
+
+The link carries the page's own `querystring`, so the file is the table that
+was on screen — pick "minulý měsíc", then download last month. Each export view
+is built from the *same* helpers as its page, which is what makes that true
+rather than merely intended:
+
+| Export | Name | Built from |
+|---|---|---|
+| „Stav strojů" | `machine_dashboard_export` | `_filtered_machine_usages` + `_machine_summary` |
+| „Souhrn materiálů" | `material_dashboard_export` | `_filtered_material_movements` + `_material_summary` |
+| „Souhrn" (hodiny) | `time_worked_export` | `_time_worked_scope` |
+
+`_time_worked_scope` was extracted out of `time_worked` for this: Hodiny scopes
+by participation as well as by the filter, and an export that scoped a worker
+differently from the table they started it from would hand them the depot's
+hours. With the scoping in the shared helper there is one rule, not two. The
+rest follows from reusing the helpers — a pending job is out of the file
+exactly as it is out of the page, and an invalid filter exports a header row
+and nothing else.
+
+Each export carries the same gate as its page: `time_worked_export` is
+`login_required` (a worker downloads their own row), the other two are
+`role_required(MANAGER, ADMIN)`.
+
+**The file format answers "CSV or Excel" once, and adds no dependency.**
+`_csv_response` writes `;`-delimited rows behind a UTF-8 BOM:
+
+- **`;`** because Excel splits a `.csv` on the *locale's* list separator, and
+  under `cs` that is the semicolon. A comma-delimited file opens in one column.
+  It also leaves the comma free to be the decimal separator.
+- **The BOM** is what makes Excel read the file as UTF-8. Without it, „Štěrk"
+  opens as mojibake. Browsers and LibreOffice ignore it, and Python reads it
+  back with `encoding='utf-8-sig'`.
+- **Numbers go through `number_format`**, so a tonnage is `12,50` — a number
+  Excel can sum under `cs`, not text. Python code does not localise itself; see
+  [localization.md](localization.md).
+- **An unknown exports blank, not `—`.** A NULL `MachineUsage.tons` or an unset
+  rate renders as a dash on the page, but a dash in a spreadsheet cell is text
+  that breaks a column of numbers; blank stays out of a `SUM`. A real zero is
+  passed in by the caller, matching the page's `|default:"0"`.
+
+openpyxl would buy cell formatting nobody asked for and a dependency the app
+otherwise does without.
+
 ## Pages and URLs
 
 All in `workorders`, all mounted at the **root** by `config/urls.py`. No other
@@ -495,9 +545,15 @@ app contributes a URL: `accounts` and `materials` are model-and-form only, and
 | `/jobs/<pk>/upravit/` | `job_edit` | Correct a recorded job |
 | `/jobs/<pk>/schvalit/` | `job_approve` | POST only |
 | `/jobs/<pk>/smazat/` | `job_delete` | GET confirms, POST deletes |
+| `/hours/export/` | `time_worked_export` | The Hodiny summary as a CSV |
+| `/machines/export/` | `machine_dashboard_export` | „Stav strojů" as a CSV |
+| `/materials/export/` | `material_dashboard_export` | „Souhrn materiálů" as a CSV |
 
 The five `/jobs/` views are the review pages, and every one of them carries
 `@role_required(MANAGER, ADMIN)`.
+
+The three `/export/` URLs are downloads rather than pages: no template, no nav
+entry, and each gated exactly like the page it hangs off.
 
 `LOGIN_REDIRECT_URL`, the header logo and the post-submit redirect all point at
 `transform_create`. Login and password change are Django's own generic views,

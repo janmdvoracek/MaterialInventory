@@ -1,3 +1,4 @@
+import csv
 from collections import defaultdict
 from datetime import timedelta
 from decimal import Decimal
@@ -8,9 +9,10 @@ from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Count, Q, Sum
 from django.db.models.functions import Abs, Coalesce
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
-from django.utils.formats import localize
+from django.utils.formats import localize, number_format
 from django.views.decorators.http import require_POST
 
 from accounts.decorators import role_required
@@ -629,6 +631,133 @@ def _list_page_context(request, rows):
     }
 
 
+# The summary table of each filtered page, downloadable. One format for both
+# halves of „csv/excel": a CSV that Excel opens by double-clicking, which on a
+# Czech machine means two things beyond plain `csv.writer` defaults.
+#
+# `;` because Excel splits a .csv on the *locale's* list separator, and under cs
+# that is the semicolon — a comma-delimited file lands in one column. It also
+# frees the comma to be the decimal separator, which is what the numbers below
+# use, so a tonnage arrives as a number rather than as text Excel refuses to sum.
+#
+# The BOM is what makes Excel read the file as UTF-8; without it „Štěrk" opens
+# as mojibake. Browsers and LibreOffice ignore it, and Python's own `csv` reader
+# skips it given `encoding='utf-8-sig'`.
+#
+# No dependency for any of this: openpyxl would buy formatting nobody asked for,
+# and the app deliberately carries no library it does not use.
+CSV_DELIMITER = ';'
+# Written as an escape on purpose: the character itself is invisible in an
+# editor and in a diff, and is exactly the kind of thing a stray reformat drops
+# without anyone noticing until a file opens as mojibake.
+CSV_BOM = '\ufeff'
+
+
+def _csv_number(value, decimal_pos, blank=''):
+    """A Decimal as the page renders it — comma separator, fixed decimals.
+
+    `None` is *unknown*, not zero (a machine whose usage rows all predate the
+    `tons` column, an unpriced machine), and the tables show it as a dash. A
+    dash in a spreadsheet cell is text that breaks a column of numbers, so it
+    comes out blank instead — which Excel leaves out of a SUM rather than
+    counting as nothing. Callers that mean a real zero pass one in.
+    """
+    if value is None:
+        return blank
+    # number_format, not an f-string: the rest of the app shows 9,5 and a
+    # spreadsheet that shows 9.5 under `cs` would be read as nine and a half
+    # thousand or as text, depending on where it is opened.
+    return number_format(value, decimal_pos=decimal_pos)
+
+
+def _csv_response(stem, header, rows):
+    """`rows` as a downloadable CSV named `<stem>-<today>.csv`.
+
+    The date is in the filename because these are snapshots of a filtered
+    report: a manager exporting the same page twice a month apart otherwise
+    gets two files with the same name in one downloads folder.
+    """
+    response = HttpResponse(content_type='text/csv; charset=utf-8')
+    filename = f'{stem}-{timezone.localdate().isoformat()}.csv'
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    response.write(CSV_BOM)
+    # Explicit CRLF: the default is the same, but Excel is the target reader and
+    # nothing here should depend on a csv module default staying put.
+    writer = csv.writer(response, delimiter=CSV_DELIMITER, lineterminator='\r\n')
+    writer.writerow(header)
+    writer.writerows(rows)
+    return response
+
+
+@role_required(*REVIEWER_ROLES)
+def machine_dashboard_export(request):
+    """„Stav strojů" as a CSV, over the filter the page was showing.
+
+    Built from the same `_filtered_machine_usages` / `_machine_summary` pair as
+    the page itself, so the download cannot disagree with the table it was
+    started from — including the empty file an invalid filter gets, for the same
+    reason the page shows an empty table rather than the whole fleet.
+    """
+    form, usages = _filtered_machine_usages(request)
+    return _csv_response(
+        'stav-stroju',
+        ['Stroj', 'Hodiny', 'Tuny', 'Sazba (Kč/hod)', 'Cena (Kč/t)'],
+        [
+            [
+                machine.name,
+                # A machine with no rows in range really did run zero hours,
+                # which is the same `default:"0"` the template applies.
+                _csv_number(machine.filtered_hours or Decimal('0'), 1),
+                _csv_number(machine.filtered_tons, 2),
+                _csv_number(machine.hourly_rate, 2),
+                _csv_number(machine.rate_per_ton, 2),
+            ]
+            for machine in _machine_summary(usages, form)
+        ],
+    )
+
+
+@role_required(*REVIEWER_ROLES)
+def material_dashboard_export(request):
+    """„Souhrn materiálů" as a CSV, over the filter the page was showing.
+
+    Zeros here are real zeros, not the unknown `tons` is on Stroje — a material
+    with no rows in range was consumed and produced nothing — so all three
+    columns fall back to 0 rather than to a blank cell.
+    """
+    form, movements = _filtered_material_movements(request)
+    return _csv_response(
+        'souhrn-materialu',
+        ['Materiál', 'Spotřebováno (t)', 'Vyrobeno (t)', 'Rozdíl (t)'],
+        [
+            [
+                material.name,
+                _csv_number(material.filtered_consumed or Decimal('0'), 2),
+                _csv_number(material.filtered_produced or Decimal('0'), 2),
+                _csv_number(material.filtered_net, 2),
+            ]
+            for material in _material_summary(movements, form)
+        ],
+    )
+
+
+@login_required
+def time_worked_export(request):
+    """The „Souhrn" table on Hodiny as a CSV, over the filter the page was showing.
+
+    The only export a plain worker can reach, and it is scoped by the same
+    `_time_worked_scope` the page uses — so a worker downloads the one row the
+    page shows them, not the depot's. Scoping in the shared helper rather than
+    here is what keeps the two from drifting apart.
+    """
+    _, _, summary = _time_worked_scope(request)
+    return _csv_response(
+        'souhrn-hodin',
+        ['Pracovník', 'Hodiny', 'Zakázek'],
+        [[row['user'].username, _csv_number(row['hours'], 1), row['orders']] for row in summary],
+    )
+
+
 def _participation_filter(user):
     """A user "worked on" a job if they submitted it or were named a collaborator."""
     return Q(created_by=user) | Q(collaborators=user)
@@ -657,8 +786,16 @@ def _time_worked_summary(work_orders):
     return rows
 
 
-@login_required
-def time_worked(request):
+def _time_worked_scope(request):
+    """The Hodiny filter form, the jobs it allows, and the per-person summary.
+
+    All three in one helper because the page and its CSV export must answer the
+    same question — an export that scoped a worker differently from the table
+    they started it from would hand them the whole depot's hours. `Stroje` and
+    `Materiál` get this for free from `_filtered_*` plus `_*_summary`; Hodiny
+    scopes by participation as well as by the filter, which is the part worth
+    having in exactly one place.
+    """
     form = TimeWorkedFilterForm(request.GET or None, user=request.user)
     # Approved jobs only: hours a manager has not signed off yet are not
     # reportable, so they do not show up here for anyone, not even their author.
@@ -690,7 +827,12 @@ def time_worked(request):
         # A collaborated job was created by someone else, so it would otherwise
         # put that person's total on a worker's screen.
         summary = [row for row in summary if row['user'] == request.user]
+    return form, scoped, summary
 
+
+@login_required
+def time_worked(request):
+    form, scoped, summary = _time_worked_scope(request)
     detail = (
         scoped.annotate(total_hours=Sum('worker_hours__hours'))
         .select_related('created_by')

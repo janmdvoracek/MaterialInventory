@@ -1,3 +1,5 @@
+import csv
+import io
 import re
 from datetime import date, timedelta
 from decimal import Decimal
@@ -1463,6 +1465,161 @@ class TimeWorkedTests(TestCase):
         self.client.force_login(self.worker)
         response = self.client.get(reverse('time_worked'))
         self.assertEqual([o.pk for o in response.context['page_obj'].object_list], [own.pk])
+
+
+class SummaryExportTests(TestCase):
+    """The „Stáhnout do CSV / Excelu" download under each summary table.
+
+    Three things to hold: the file opens in Excel on a Czech machine (BOM,
+    semicolons, comma decimals), it carries exactly the table the filter was
+    showing, and it is gated like the page it hangs off — a worker must not be
+    able to fetch a report the page itself would refuse them.
+    """
+
+    def setUp(self):
+        self.worker = User.objects.create_user(username='worker', password='pw', role=User.Role.WORKER)
+        self.other_worker = User.objects.create_user(username='other', password='pw', role=User.Role.WORKER)
+        self.manager = User.objects.create_user(username='manager', password='pw', role=User.Role.MANAGER)
+        self.machine = Machine.objects.create(name='Crusher A', hourly_rate=Decimal('83'))
+        self.raw = Material.objects.create(sku='RAW', name='Štěrk')
+        self.finished = Material.objects.create(sku='FIN', name='Frakce 8/16')
+
+    def _job(self, *, performed_on=None, status=WorkOrder.Status.APPROVED, hours=None, usage=None, quantity=None):
+        """One approved job carrying whichever of the three record types a test needs."""
+        work_order = WorkOrder.objects.create(created_by=self.worker, description='job', status=status)
+        if performed_on is not None:
+            WorkOrder.objects.filter(pk=work_order.pk).update(performed_on=performed_on)
+        for user, worked in hours or []:
+            WorkerHours.objects.create(work_order=work_order, user=user, hours=worked)
+        if usage is not None:
+            machine_hours, tons = usage
+            MachineUsage.objects.create(work_order=work_order, machine=self.machine, hours=machine_hours, tons=tons)
+        if quantity is not None:
+            StockMovement.objects.create(
+                material=self.raw,
+                quantity=-quantity,
+                movement_type=StockMovement.MovementType.TRANSFORM_CONSUME,
+                work_order=work_order,
+                created_by=self.worker,
+            )
+            StockMovement.objects.create(
+                material=self.finished,
+                quantity=quantity,
+                movement_type=StockMovement.MovementType.TRANSFORM_PRODUCE,
+                work_order=work_order,
+                created_by=self.worker,
+            )
+        return work_order
+
+    def _rows(self, response):
+        """The downloaded file parsed the way Excel reads it — BOM dropped, split on `;`."""
+        text = response.content.decode('utf-8-sig')
+        return list(csv.reader(io.StringIO(text), delimiter=';'))
+
+    def test_export_is_a_utf8_bom_csv_attachment(self):
+        # The BOM is what makes Excel read the file as UTF-8 rather than showing
+        # „Štěrk" as mojibake, and the date in the name keeps two exports of the
+        # same report from colliding in one downloads folder.
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('material_dashboard_export'))
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response['Content-Type'].startswith('text/csv'))
+        self.assertTrue(response.content.startswith(b'\xef\xbb\xbf'))
+        self.assertEqual(
+            response['Content-Disposition'],
+            f'attachment; filename="souhrn-materialu-{date.today().isoformat()}.csv"',
+        )
+
+    def test_numbers_use_the_czech_decimal_comma(self):
+        # A dot would be read as a thousands separator (or as text) by an Excel
+        # running under cs, so the file has to agree with what the page renders.
+        self._job(usage=(Decimal('12.5'), Decimal('20.5')))
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('machine_dashboard_export'))
+        self.assertIn('12,5;20,50;83,00', response.content.decode('utf-8-sig'))
+
+    def test_machine_export_carries_the_summary_table(self):
+        self._job(usage=(Decimal('12.5'), Decimal('20.5')))
+        self.client.force_login(self.manager)
+        rows = self._rows(self.client.get(reverse('machine_dashboard_export')))
+        self.assertEqual(rows[0], ['Stroj', 'Hodiny', 'Tuny', 'Sazba (Kč/hod)', 'Cena (Kč/t)'])
+        # The unset rate_per_ton is blank, not a dash: the page's „—" is text
+        # that would break a column of numbers, and blank stays out of a SUM.
+        self.assertEqual(rows[1], ['Crusher A', '12,5', '20,50', '83,00', ''])
+
+    def test_unknown_tonnage_exports_blank_but_idle_hours_export_zero(self):
+        # `tons` is nullable because rows predating the column mean *unknown*,
+        # while a machine with no rows in range really did run zero hours — the
+        # same distinction the page draws with a dash and a 0.
+        self._job(usage=(Decimal('3'), None))
+        self.client.force_login(self.manager)
+        rows = self._rows(self.client.get(reverse('machine_dashboard_export')))
+        self.assertEqual(rows[1][1:3], ['3,0', ''])
+
+    def test_material_export_carries_the_summary_table(self):
+        self._job(quantity=Decimal('12.5'))
+        self.client.force_login(self.manager)
+        rows = self._rows(self.client.get(reverse('material_dashboard_export')))
+        self.assertEqual(rows[0], ['Materiál', 'Spotřebováno (t)', 'Vyrobeno (t)', 'Rozdíl (t)'])
+        self.assertEqual(rows[1], ['Frakce 8/16', '0,00', '12,50', '12,50'])
+        # Consumed reads positive, like the page: the form asked for a positive
+        # number even though the row is stored negative.
+        self.assertEqual(rows[2], ['Štěrk', '12,50', '0,00', '-12,50'])
+
+    def test_hours_export_carries_the_summary_table(self):
+        self._job(hours=[(self.worker, Decimal('2.5'))])
+        self._job(hours=[(self.worker, Decimal('1.5'))])
+        self.client.force_login(self.manager)
+        rows = self._rows(self.client.get(reverse('time_worked_export')))
+        self.assertEqual(rows[0], ['Pracovník', 'Hodiny', 'Zakázek'])
+        self.assertEqual(rows[1], ['worker', '4,0', '2'])
+
+    def test_export_follows_the_filter_on_the_page(self):
+        # The link carries the page's querystring, so the file has to be the
+        # table that was on screen and not the unfiltered report.
+        self._job(usage=(Decimal('4'), Decimal('10')), performed_on=date.today() - timedelta(days=40))
+        self._job(usage=(Decimal('1.5'), Decimal('6')))
+        self.client.force_login(self.manager)
+        response = self.client.get(
+            reverse('machine_dashboard_export'), {'date_from': (date.today() - timedelta(days=7)).isoformat()}
+        )
+        self.assertEqual(self._rows(response)[1], ['Crusher A', '1,5', '6,00', '83,00', ''])
+
+    def test_unapproved_job_is_not_exported(self):
+        # A pending job is invisible in every report; the download is one.
+        self._job(usage=(Decimal('4'), Decimal('10')), status=WorkOrder.Status.PENDING)
+        self.client.force_login(self.manager)
+        self.assertEqual(self._rows(self.client.get(reverse('machine_dashboard_export')))[1][1:3], ['0,0', ''])
+
+    def test_invalid_filter_exports_a_header_and_nothing_else(self):
+        # Same rule as the page: an unusable filter must not fall through to
+        # handing back the whole report under the heading of a filtered one.
+        self._job(quantity=Decimal('5'))
+        self.client.force_login(self.manager)
+        rows = self._rows(self.client.get(reverse('material_dashboard_export'), {'date_from': 'not-a-date'}))
+        self.assertEqual(len(rows), 1)
+
+    def test_hours_export_is_scoped_to_the_worker_downloading_it(self):
+        # The one export a plain worker can reach, so it must be scoped exactly
+        # like their Hodiny page — not the depot's hours.
+        self._job(hours=[(self.worker, Decimal('2'))])
+        self._job(hours=[(self.other_worker, Decimal('8'))])
+        self.client.force_login(self.worker)
+        rows = self._rows(self.client.get(reverse('time_worked_export')))
+        self.assertEqual(rows[1:], [['worker', '2,0', '1']])
+
+    def test_worker_cannot_reach_the_manager_only_exports(self):
+        # Hiding the link is not access control; both are gated like their pages.
+        self.client.force_login(self.worker)
+        self.assertEqual(self.client.get(reverse('machine_dashboard_export')).status_code, 403)
+        self.assertEqual(self.client.get(reverse('material_dashboard_export')).status_code, 403)
+
+    def test_exports_require_login(self):
+        for name in ('time_worked_export', 'machine_dashboard_export', 'material_dashboard_export'):
+            with self.subTest(name=name):
+                response = self.client.get(reverse(name))
+                self.assertEqual(response.status_code, 302)
+                self.assertIn('/login/', response.url)
 
 
 class EmptyLabelTests(TestCase):

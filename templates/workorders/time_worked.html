@@ -53,6 +53,8 @@
         </tbody>
     </table>
     </div>
+    {# The filter goes with the download, so the file is the table above it. #}
+    <a class="btn" href="{% url 'time_worked_export' %}?{{ querystring }}">Stáhnout do CSV / Excelu</a>
 </div>
 <div class="card">
     <h2>Detail zakázek</h2>
