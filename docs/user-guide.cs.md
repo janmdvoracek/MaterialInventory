@@ -44,7 +44,7 @@ Ve spodní části obrazovky je menu, ze kterého se dostanete všude:
 | **Zpracování** | Z jednoho materiálu vznikl jiný — hlavní formulář |
 | **Hodiny** | Odpracované hodiny lidí |
 | **Přehled** | Všechna zapsaná zpracování ke schválení — vidí jen vedoucí |
-| **Stroje** | Celkové motohodiny, tuny a sazby strojů — vidí jen vedoucí |
+| **Stroje** | Motohodiny, tuny, sazby a cena strojů — vidí jen vedoucí |
 | **Materiál** | Kolik tun se kterého materiálu spotřebovalo a vyrobilo — vidí jen vedoucí |
 
 Po přihlášení se rovnou otevře **Zpracování**. Stejně tak se tam vrátíte
@@ -205,9 +205,29 @@ tonáž známá. Takové stroje mají ve sloupci **Celkem tun** pomlčku (—) �
 s nulou, ta by znamenala, že stroj nic nezpracoval.
 
 Vedle motohodin se zobrazují dvě sazby stroje: **Sazba (Kč/hod)** a
-**Cena (Kč/t)** za tunu zpracovaného materiálu. Obě jsou pouze orientační —
-nic se z nich nepočítá a v aplikaci se nezadávají, nastavuje je správce.
-Nevyplněná sazba se zobrazí jako pomlčka (—).
+**Cena (Kč/t)** za tunu zpracovaného materiálu. V aplikaci se nezadávají,
+nastavuje je správce; nevyplněná sazba se zobrazí jako pomlčka (—).
+
+Z těchto sazeb se počítají tři sloupce s penězi — vždy **za období, které máte
+nastavené filtrem**:
+
+| Sloupec | Jak vzniká |
+|---|---|
+| **Cena za hodiny (Kč)** | motohodiny × **Sazba (Kč/hod)** |
+| **Cena za tuny (Kč)** | zpracované tuny × **Cena (Kč/t)** |
+| **Celkem (Kč)** | součet toho, čím je stroj naceněný |
+
+**Nevyplněná sazba neznamená zadarmo, ale „takhle se stroj neúčtuje".** Proto
+je v takovém sloupci pomlčka (—) a do **Celkem** se nezapočítává: stroj
+naceněný jen po hodinách má v **Celkem** právě cenu za hodiny.
+
+Pomlčka je i v **Celkem**, a to ve dvou případech: stroj nemá vyplněnou žádnou
+sazbu, nebo je naceněný po tunách, ale u jeho starších záznamů se tonáž
+nezapisovala. Cenu tehdy opravdu nelze spočítat a číslo, které by z ní ukázalo
+jen polovinu, by bylo horší než pomlčka.
+
+Naopak **0,00** je odpověď: naceněný stroj, který v daném období neběžel, nic
+nestál.
 
 Stránka má stejnou stavbu jako **Hodiny**: nahoře **filtr**, pod ním tabulka
 **Stav strojů** a úplně dole **Detail používání strojů** — jednotlivé záznamy
@@ -319,7 +339,7 @@ pak klepněte na tlačítko.
 | Stránka | Co se stáhne |
 |---|---|
 | **Hodiny** | Tabulka **Souhrn** — pracovník, hodiny, počet zakázek |
-| **Stroje** | Tabulka **Stav strojů** — stroj, hodiny, tuny a obě sazby |
+| **Stroje** | Tabulka **Stav strojů** — stroj, hodiny, tuny, obě sazby a tři sloupce s cenou |
 | **Materiál** | Tabulka **Souhrn materiálů** — spotřebováno, vyrobeno, rozdíl |
 
 Stahuje se **souhrn**, ne dlouhý seznam jednotlivých záznamů pod ním.
@@ -327,9 +347,9 @@ Stahuje se **souhrn**, ne dlouhý seznam jednotlivých záznamů pod ním.
 Soubor se jmenuje například `souhrn-hodin-2026-09-06.csv` — datum ke konci je
 den, kdy jste ho stáhli, aby se dva soubory ve stažených nepřepsaly. Otevřete
 ho poklepáním; Excel ho rozdělí do sloupců sám a čísla v něm umí sečíst.
-Prázdná buňka ve sloupci **Tun** nebo u sazby znamená **není známo** (na
-stránce je na jejím místě pomlčka) — nulu tam schválně nepíšeme, aby vám
-nepokazila součet.
+Prázdná buňka ve sloupci **Tun**, u sazby nebo v některém ze sloupců s cenou
+znamená **není známo** (na stránce je na jejím místě pomlčka) — nulu tam
+schválně nepíšeme, aby vám nepokazila součet.
 
 Do souboru se dostane přesně to, co je na stránce: **jen schválené zakázky**,
 a pracovník si stáhne jenom své vlastní hodiny. Když je filtr špatně vyplněný

@@ -30,7 +30,7 @@ class Machine(models.Model):
         decimal_places=2,
         null=True,
         blank=True,
-        help_text='Kč/hod, pouze pro orientaci.',
+        help_text='Kč/hod. Ve Strojích se násobí motohodinami. Prázdné = stroj se po hodinách neúčtuje.',
         verbose_name='hodinová sazba',
     )
     rate_per_ton = models.DecimalField(
@@ -38,7 +38,7 @@ class Machine(models.Model):
         decimal_places=2,
         null=True,
         blank=True,
-        help_text='Kč za tunu zpracovaného materiálu, pouze pro orientaci.',
+        help_text='Kč za tunu zpracovaného materiálu. Ve Strojích se násobí tunami. Prázdné = stroj se po tunách neúčtuje.',
         verbose_name='cena za tunu',
     )
 

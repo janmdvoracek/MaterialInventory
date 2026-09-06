@@ -17,7 +17,7 @@
     <div class="table-scroll">
     <table>
         <thead>
-            <tr><th>Stroj</th><th>Hodin</th><th>Tun</th><th>Sazba (Kč/hod)</th><th>Cena (Kč/t)</th></tr>
+            <tr><th>Stroj</th><th>Hodin</th><th>Tun</th><th>Sazba (Kč/hod)</th><th>Cena (Kč/t)</th><th>Cena za hodiny (Kč)</th><th>Cena za tuny (Kč)</th><th>Celkem (Kč)</th></tr>
         </thead>
         <tbody>
         {% for machine in machines %}
@@ -27,9 +27,13 @@
                 <td>{{ machine.filtered_tons|floatformat:2|default:"—" }}</td>
                 <td>{{ machine.hourly_rate|floatformat:2|default:"—" }}</td>
                 <td>{{ machine.rate_per_ton|floatformat:2|default:"—" }}</td>
+                {# A dash is "not priced that way" / "tonnage unknown", never 0 Kč — see _machine_costs. #}
+                <td>{{ machine.filtered_hours_cost|floatformat:2|default:"—" }}</td>
+                <td>{{ machine.filtered_tons_cost|floatformat:2|default:"—" }}</td>
+                <td>{{ machine.filtered_total_cost|floatformat:2|default:"—" }}</td>
             </tr>
         {% empty %}
-            <tr><td colspan="5">Žádné stroje neodpovídají zadaným filtrům.</td></tr>
+            <tr><td colspan="8">Žádné stroje neodpovídají zadaným filtrům.</td></tr>
         {% endfor %}
         </tbody>
     </table>

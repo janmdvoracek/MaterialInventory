@@ -1056,9 +1056,80 @@ class MachineDashboardTests(TestCase):
 
     def test_dashboard_shows_dash_for_unset_rates(self):
         # Both rates are optional, so an unpriced machine must still render a
-        # row. Three dashes, not two: an unused machine has no tonnage either.
+        # row. Six dashes: an unused machine has no tonnage either, and the
+        # three money columns are unknown rather than zero for a machine that
+        # is not priced at all.
         response = self.client.get(reverse('machine_dashboard'))
-        self.assertContains(response, '—', count=3)
+        self.assertContains(response, '—', count=6)
+
+    def test_cost_columns_multiply_the_totals_by_the_rates(self):
+        self.machine_active.hourly_rate = Decimal('80')
+        self.machine_active.rate_per_ton = Decimal('35.50')
+        self.machine_active.save()
+        self._usage(Decimal('2.5'), tons=Decimal('10'))
+        machine = self.client.get(reverse('machine_dashboard')).context['machines'][0]
+        self.assertEqual(machine.filtered_hours_cost, Decimal('200.00'))
+        self.assertEqual(machine.filtered_tons_cost, Decimal('355.00'))
+        self.assertEqual(machine.filtered_total_cost, Decimal('555.00'))
+
+    def test_cost_columns_follow_the_filter(self):
+        # The money is the same data at a third zoom level: it has to be the
+        # cost of the rows the page is showing, not of the whole ledger.
+        self.machine_active.hourly_rate = Decimal('80')
+        self.machine_active.save()
+        old = self._usage(Decimal('4'))
+        WorkOrder.objects.filter(pk=old.work_order_id).update(performed_on=date.today() - timedelta(days=40))
+        self._usage(Decimal('1.5'))
+        response = self.client.get(
+            reverse('machine_dashboard'), {'date_from': (date.today() - timedelta(days=7)).isoformat()}
+        )
+        self.assertEqual(response.context['machines'][0].filtered_hours_cost, Decimal('120.00'))
+
+    def test_unpriced_side_is_unknown_and_drops_out_of_the_total(self):
+        # An unset rate means "not priced that way", not "free" — so that side
+        # is a dash, and the total is what the machine *is* priced on.
+        self.machine_active.hourly_rate = Decimal('80')
+        self.machine_active.save()
+        self._usage(Decimal('2'), tons=Decimal('10'))
+        machine = self.client.get(reverse('machine_dashboard')).context['machines'][0]
+        self.assertEqual(machine.filtered_hours_cost, Decimal('160.00'))
+        self.assertIsNone(machine.filtered_tons_cost)
+        self.assertEqual(machine.filtered_total_cost, Decimal('160.00'))
+
+    def test_priced_machine_that_did_not_run_costs_zero_not_unknown(self):
+        # The hours are a real zero, unlike a missing rate: a priced machine
+        # that sat idle last week cost nothing, and that is an answer.
+        self.machine_active.hourly_rate = Decimal('80')
+        self.machine_active.save()
+        machine = self.client.get(reverse('machine_dashboard')).context['machines'][0]
+        self.assertEqual(machine.filtered_hours_cost, Decimal('0'))
+        self.assertEqual(machine.filtered_total_cost, Decimal('0'))
+
+    def test_total_is_unknown_when_a_priced_side_is_unknown(self):
+        # Billed per tonne, but the usage rows predate the `tons` column: the
+        # real cost cannot be computed, and printing only the hours half under
+        # „Celkem" would understate the bill.
+        self.machine_active.hourly_rate = Decimal('80')
+        self.machine_active.rate_per_ton = Decimal('35.50')
+        self.machine_active.save()
+        self._usage(Decimal('2'), tons=None)
+        machine = self.client.get(reverse('machine_dashboard')).context['machines'][0]
+        self.assertEqual(machine.filtered_hours_cost, Decimal('160.00'))
+        self.assertIsNone(machine.filtered_tons_cost)
+        self.assertIsNone(machine.filtered_total_cost)
+
+    def test_costs_ignore_unapproved_jobs(self):
+        self.machine_active.hourly_rate = Decimal('80')
+        self.machine_active.save()
+        self._usage(Decimal('4'), status=WorkOrder.Status.PENDING)
+        machine = self.client.get(reverse('machine_dashboard')).context['machines'][0]
+        self.assertEqual(machine.filtered_hours_cost, Decimal('0'))
+
+    def test_costs_render_with_the_czech_comma(self):
+        self.machine_active.hourly_rate = Decimal('80')
+        self.machine_active.save()
+        self._usage(Decimal('2.5'))
+        self.assertContains(self.client.get(reverse('machine_dashboard')), '200,00')
 
 
 class MachineUsageDetailTests(TestCase):
@@ -1542,10 +1613,34 @@ class SummaryExportTests(TestCase):
         self._job(usage=(Decimal('12.5'), Decimal('20.5')))
         self.client.force_login(self.manager)
         rows = self._rows(self.client.get(reverse('machine_dashboard_export')))
-        self.assertEqual(rows[0], ['Stroj', 'Hodiny', 'Tuny', 'Sazba (Kč/hod)', 'Cena (Kč/t)'])
+        self.assertEqual(
+            rows[0],
+            [
+                'Stroj',
+                'Hodiny',
+                'Tuny',
+                'Sazba (Kč/hod)',
+                'Cena (Kč/t)',
+                'Cena za hodiny (Kč)',
+                'Cena za tuny (Kč)',
+                'Celkem (Kč)',
+            ],
+        )
         # The unset rate_per_ton is blank, not a dash: the page's „—" is text
         # that would break a column of numbers, and blank stays out of a SUM.
-        self.assertEqual(rows[1], ['Crusher A', '12,5', '20,50', '83,00', ''])
+        # The machine is priced by the hour only, so „Celkem" is that side.
+        # No thousands separator: `USE_THOUSAND_SEPARATOR` is off, and the
+        # Czech one is a non-breaking space that Excel would not parse.
+        self.assertEqual(rows[1], ['Crusher A', '12,5', '20,50', '83,00', '', '1037,50', '', '1037,50'])
+
+    def test_unknown_cost_exports_blank_rather_than_zero(self):
+        # Billed per tonne with the tonnage unknown: „Celkem" is not computable,
+        # and a 0 Kč in a spreadsheet column would be summed as a free machine.
+        Machine.objects.filter(pk=self.machine.pk).update(rate_per_ton=Decimal('35.50'))
+        self._job(usage=(Decimal('2'), None))
+        self.client.force_login(self.manager)
+        rows = self._rows(self.client.get(reverse('machine_dashboard_export')))
+        self.assertEqual(rows[1][5:], ['166,00', '', ''])
 
     def test_unknown_tonnage_exports_blank_but_idle_hours_export_zero(self):
         # `tons` is nullable because rows predating the column mean *unknown*,
@@ -1583,7 +1678,8 @@ class SummaryExportTests(TestCase):
         response = self.client.get(
             reverse('machine_dashboard_export'), {'date_from': (date.today() - timedelta(days=7)).isoformat()}
         )
-        self.assertEqual(self._rows(response)[1], ['Crusher A', '1,5', '6,00', '83,00', ''])
+        # The money follows the filter too — it is the same rows, priced.
+        self.assertEqual(self._rows(response)[1], ['Crusher A', '1,5', '6,00', '83,00', '', '124,50', '', '124,50'])
 
     def test_unapproved_job_is_not_exported(self):
         # A pending job is invisible in every report; the download is one.

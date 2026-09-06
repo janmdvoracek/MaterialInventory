@@ -412,8 +412,53 @@ def machine_dashboard(request):
     )
 
 
+def _machine_costs(machine):
+    """Attach the three money columns to one summary row, and return it.
+
+    In Python rather than as annotations: the rule below is conditional, and a
+    `Case`/`When` over an aggregate would be much harder to read than a loop
+    over a table that is one row per active machine.
+
+    **An unset rate means the machine is not priced that way — it does not mean
+    free.** So that side of the bill is unknown and renders as a dash, the same
+    reading the rate column beside it already gets. `filtered_hours` is a real
+    zero, though (a priced machine that did not run last week cost nothing), so
+    a machine with an `hourly_rate` and no rows in range is `0 Kč` and not a
+    dash.
+
+    **„Celkem" adds up only the sides the machine is priced on, and is itself
+    unknown when any of them is.** A machine billed per tonne whose usage rows
+    predate the `tons` column has a real cost nobody can compute; printing the
+    hours half of it under a „Celkem" heading would understate the bill, which
+    is worse than admitting the number is not available.
+    """
+    hours_cost = None
+    if machine.hourly_rate is not None:
+        hours_cost = (machine.filtered_hours or Decimal('0')) * machine.hourly_rate
+    tons_cost = None
+    if machine.rate_per_ton is not None and machine.filtered_tons is not None:
+        tons_cost = machine.filtered_tons * machine.rate_per_ton
+    # Keyed off the *rates*, not off the two costs: an unset rate drops that
+    # side out of the total, while a rate with no tonnage behind it keeps the
+    # side in and makes the total unknown.
+    priced_sides = [
+        cost
+        for rate, cost in ((machine.hourly_rate, hours_cost), (machine.rate_per_ton, tons_cost))
+        if rate is not None
+    ]
+    machine.filtered_hours_cost = hours_cost
+    machine.filtered_tons_cost = tons_cost
+    machine.filtered_total_cost = sum(priced_sides, Decimal('0')) if priced_sides and None not in priced_sides else None
+    return machine
+
+
 def _machine_summary(usages, form):
-    """Hours and tonnage per machine over `usages`.
+    """Hours, tonnage and cost per machine over `usages`, as a list of rows.
+
+    A list and not a queryset, because the three money columns are computed per
+    row — see `_machine_costs`. Everything reading this only iterates or
+    indexes it, and the invalid-filter case is an empty list rather than an
+    empty queryset.
 
     A machine stores no totals of its own — these are summed from the usage
     rows on every render, over exactly the rows the page's own filter allows
@@ -430,19 +475,24 @@ def _machine_summary(usages, form):
     `tons` is nullable — rows written before the column existed mean *unknown*,
     not zero — and `Sum` skips NULLs, so a machine with no recorded tonnage sums
     to `None` and renders as a dash. `0 t` would claim it processed nothing.
+    That unknown propagates into the money columns; `_machine_costs` has the
+    rule.
     """
     if form.is_bound and not form.is_valid():
         # Same rule as the rows below: an unusable filter shows nothing, rather
         # than a fleet of zeros under a "these are your filtered results" head.
-        return Machine.objects.none()
+        return []
     machines = Machine.objects.filter(is_active=True)
     if form.is_bound and form.cleaned_data.get('machine'):
         machines = machines.filter(pk=form.cleaned_data['machine'].pk)
     in_scope = Q(usages__in=usages.values('pk'))
-    return machines.annotate(
-        filtered_hours=Sum('usages__hours', filter=in_scope),
-        filtered_tons=Sum('usages__tons', filter=in_scope),
-    ).order_by('name')
+    return [
+        _machine_costs(machine)
+        for machine in machines.annotate(
+            filtered_hours=Sum('usages__hours', filter=in_scope),
+            filtered_tons=Sum('usages__tons', filter=in_scope),
+        ).order_by('name')
+    ]
 
 
 def _filtered_machine_usages(request):
@@ -701,7 +751,16 @@ def machine_dashboard_export(request):
     form, usages = _filtered_machine_usages(request)
     return _csv_response(
         'stav-stroju',
-        ['Stroj', 'Hodiny', 'Tuny', 'Sazba (Kč/hod)', 'Cena (Kč/t)'],
+        [
+            'Stroj',
+            'Hodiny',
+            'Tuny',
+            'Sazba (Kč/hod)',
+            'Cena (Kč/t)',
+            'Cena za hodiny (Kč)',
+            'Cena za tuny (Kč)',
+            'Celkem (Kč)',
+        ],
         [
             [
                 machine.name,
@@ -711,6 +770,12 @@ def machine_dashboard_export(request):
                 _csv_number(machine.filtered_tons, 2),
                 _csv_number(machine.hourly_rate, 2),
                 _csv_number(machine.rate_per_ton, 2),
+                # The three money columns carry the page's dashes as blanks: an
+                # unpriced side is unknown, and a 0 Kč in a spreadsheet would be
+                # summed as a machine that cost nothing.
+                _csv_number(machine.filtered_hours_cost, 2),
+                _csv_number(machine.filtered_tons_cost, 2),
+                _csv_number(machine.filtered_total_cost, 2),
             ]
             for machine in _machine_summary(usages, form)
         ],

@@ -433,9 +433,45 @@ range simply drops out:
 - **Naming a machine in the filter narrows the table to it**, since the rest
   would be a column of zeros nobody asked for.
 
-An invalid filter returns `Machine.objects.none()` — the same rule the rows
-follow, and for the same reason: a fleet of zeros under a "these are your
-filtered results" heading reads as an answer.
+An invalid filter returns nothing — the same rule the rows follow, and for the
+same reason: a fleet of zeros under a "these are your filtered results" heading
+reads as an answer.
+
+#### What the machine hours and tonnes cost
+
+`Machine` carries two optional rates, `hourly_rate` (Kč/hod) and `rate_per_ton`
+(Kč/t). They were reference-only until the summary grew three money columns:
+
+| Column | Value |
+|---|---|
+| **Cena za hodiny** | `filtered_hours × hourly_rate` |
+| **Cena za tuny** | `filtered_tons × rate_per_ton` |
+| **Celkem** | the sides the machine is priced on, added up |
+
+`_machine_costs(machine)` computes them per row, which is why
+`_machine_summary` returns a **list** rather than a queryset: the rule below is
+conditional, and a `Case`/`When` over an aggregate would be much harder to read
+than a loop over a table of one row per active machine.
+
+Both rules come down to telling *unknown* from *zero* — the distinction a
+nullable `MachineUsage.tons` already forces on this page:
+
+- **An unset rate means the machine is not priced that way. It does not mean
+  free.** That side of the bill is unknown and renders as a dash, exactly as
+  the rate column beside it does. But `filtered_hours` is a real zero, so a
+  machine that *is* priced by the hour and did not run in range costs `0,00`,
+  not a dash.
+- **„Celkem" is unknown when any priced side is.** A machine billed per tonne
+  whose usage rows predate the `tons` column has a cost nobody can compute;
+  printing the hours half of it under a „Celkem" heading would understate the
+  bill, which is worse than admitting the number is unavailable. A machine
+  priced on one side only totals to that side — the unpriced side is out of the
+  sum, not zero in it.
+
+The money follows the page's filter like everything else on it: these are the
+filtered rows, priced. In the CSV export all three go through `_csv_number`, so
+an unknown is a blank cell rather than a `0` that Excel would sum as a machine
+that cost nothing.
 
 ### Materiál is the same page with `Material` in place of `Machine`
 
