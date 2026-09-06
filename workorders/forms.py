@@ -297,6 +297,30 @@ class MachineFilterForm(DateRangeFilterForm):
     )
 
 
+class MaterialFilterForm(DateRangeFilterForm):
+    """Filters the whole Materiál page — the per-material totals and the line
+    items underneath them, which are two views of the same set of rows.
+
+    Laid out like `MachineFilterForm` and manager/admin only for the same
+    reason, but without its `created_by`: who typed a job in is a review
+    question, not a material one.
+
+    The queryset is every material, not just the active ones. A retired
+    material still has history worth reading back, and the summary above is
+    what limits itself to `is_active=True` — narrowing to one retired material
+    here is the only way to see its rows at all.
+    """
+
+    field_order = ['material', 'date_from', 'date_to']
+
+    material = forms.ModelChoiceField(
+        queryset=Material.objects.all().order_by('name'),
+        required=False,
+        label='Materiál',
+        empty_label='Všechny materiály',
+    )
+
+
 class JobFilterForm(DateRangeFilterForm):
     """Filters for the manager dashboard. No worker variant: the whole view is
     manager/admin only, so nothing has to be hidden from anyone."""

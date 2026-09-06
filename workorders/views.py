@@ -7,6 +7,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Count, Q, Sum
+from django.db.models.functions import Abs, Coalesce
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.formats import localize
@@ -14,7 +15,7 @@ from django.views.decorators.http import require_POST
 
 from accounts.decorators import role_required
 from accounts.models import User
-from materials.models import Machine
+from materials.models import Machine, Material
 
 from .forms import (
     JOB_SECTIONS,
@@ -22,6 +23,7 @@ from .forms import (
     JobFilterForm,
     MachineFilterForm,
     MachineUsageFormSet,
+    MaterialFilterForm,
     ProducedFormSet,
     TimeWorkedFilterForm,
     WorkerHoursFormSet,
@@ -473,6 +475,100 @@ def _filtered_machine_usages(request):
     if data.get('date_to'):
         usages = usages.filter(work_order__performed_on__lte=data['date_to'])
     return form, usages
+
+
+@role_required(*REVIEWER_ROLES)
+def material_dashboard(request):
+    """Materiál: the filter, per-material tonnage under it, the line items below.
+
+    The same page as Stroje with `Material` in place of `Machine`, and for the
+    same reason — a total and the rows it is made of are one question at two
+    zoom levels, so one filter drives both. This is the only place the line
+    items a job records are read back across jobs; `job_detail` shows them one
+    job at a time, which does not answer "how much 8/16 did we make last month".
+    """
+    form, movements = _filtered_material_movements(request)
+    return render(
+        request,
+        'workorders/material_dashboard.html',
+        {
+            'form': form,
+            'materials': _material_summary(movements, form),
+            **_list_page_context(request, movements),
+        },
+    )
+
+
+def _material_summary(movements, form):
+    """Consumed, produced and net tonnage per material over `movements`.
+
+    Summed from the line items on every render, over exactly the rows the
+    page's own filter allows, which is what keeps a total and the detail rows
+    below it from ever disagreeing and is why both ignore a job still waiting
+    for a manager.
+
+    Quantities are stored signed — consumed negative, produced positive — so
+    the net is simply the unfiltered sum of a material's rows, no second query
+    and no subtraction. It is the useful column for a material that is both an
+    input and an output. `filtered_consumed` is wrapped in `Abs` for the same
+    reason `_job_line_items` takes `abs()`: the form asked for a positive
+    number and that is what the reader should see.
+
+    Every active material is listed, not just the ones with rows in range: a
+    material sitting at zero is the answer to "we made no 8/16 last month",
+    and an absent row cannot be told from one nobody ever seeded. Naming a
+    material in the filter narrows the list to it. Unlike the tonnage on Stroje
+    a zero here is a real zero rather than an unknown, so the net is
+    `Coalesce`d to 0 and the two sides render as 0 rather than a dash.
+    """
+    if form.is_bound and not form.is_valid():
+        # Same rule as the rows below: an unusable filter shows nothing, rather
+        # than a catalog of zeros under a "these are your filtered results" head.
+        return Material.objects.none()
+    materials = Material.objects.filter(is_active=True)
+    if form.is_bound and form.cleaned_data.get('material'):
+        materials = materials.filter(pk=form.cleaned_data['material'].pk)
+    in_scope = Q(movements__in=movements.values('pk'))
+    consumed = Q(movements__movement_type=StockMovement.MovementType.TRANSFORM_CONSUME)
+    produced = Q(movements__movement_type=StockMovement.MovementType.TRANSFORM_PRODUCE)
+    return materials.annotate(
+        filtered_consumed=Abs(Sum('movements__quantity', filter=in_scope & consumed)),
+        filtered_produced=Sum('movements__quantity', filter=in_scope & produced),
+        filtered_net=Coalesce(Sum('movements__quantity', filter=in_scope), Decimal('0')),
+    ).order_by('name')
+
+
+def _filtered_material_movements(request):
+    # No per-user scoping, for the same reason as `_filtered_machine_usages`:
+    # the view is `role_required(*REVIEWER_ROLES)`, so everyone who reaches it
+    # sees the whole depot.
+    form = MaterialFilterForm(request.GET or None)
+    # Unapproved jobs are proposals, not evidence — they stay out of the ledger
+    # until a manager signs them off.
+    # A line item has no date of its own — the job's `performed_on` is its date,
+    # and `-id` only breaks ties within a day.
+    movements = (
+        StockMovement.objects.filter(work_order__status=WorkOrder.Status.APPROVED)
+        .select_related('material', 'work_order', 'work_order__created_by')
+        .annotate(typed_quantity=Abs('quantity'))
+        .order_by('-work_order__performed_on', '-id')
+    )
+    if not form.is_bound:
+        # No filters submitted at all (initial page load) — show everything.
+        return form, movements
+    if not form.is_valid():
+        # A filter was submitted but is unusable. Return nothing rather than
+        # silently ignoring it, which would hand back the whole ledger and read
+        # as "these are your filtered results".
+        return form, movements.none()
+    data = form.cleaned_data
+    if data.get('material'):
+        movements = movements.filter(material=data['material'])
+    if data.get('date_from'):
+        movements = movements.filter(work_order__performed_on__gte=data['date_from'])
+    if data.get('date_to'):
+        movements = movements.filter(work_order__performed_on__lte=data['date_to'])
+    return form, movements
 
 
 def _date_preset_links(request):

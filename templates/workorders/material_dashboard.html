@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Materiál{% endblock %}
+{% block content %}
+<h1>Materiál</h1>
+{% if form.is_bound and not form.is_valid %}
+    <p class="messages error">Filtr je neplatný, proto se nezobrazují žádné výsledky. Opravte prosím zvýrazněná pole.</p>
+{% endif %}
+<div class="card">
+    {% include "workorders/_date_presets.html" %}
+    <form method="get">
+        {{ form.as_p }}
+        <button type="submit">Filtrovat</button>
+    </form>
+</div>
+<div class="card">
+    <h2>Souhrn materiálů</h2>
+    <div class="table-scroll">
+    <table>
+        <thead>
+            <tr><th>Materiál</th><th>Spotřebováno</th><th>Vyrobeno</th><th>Rozdíl</th></tr>
+        </thead>
+        <tbody>
+        {% for material in materials %}
+            <tr>
+                <td>{{ material.name }}</td>
+                <td>{{ material.filtered_consumed|default:"0"|floatformat:2 }} t</td>
+                <td>{{ material.filtered_produced|default:"0"|floatformat:2 }} t</td>
+                <td>{{ material.filtered_net|floatformat:2 }} t</td>
+            </tr>
+        {% empty %}
+            <tr><td colspan="4">Žádné materiály neodpovídají zadaným filtrům.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+<div class="card">
+    <h2>Detail položek</h2>
+    <div class="table-scroll">
+    <table>
+        <thead>
+            <tr><th>Provedeno</th><th>Materiál</th><th>Druh</th><th>Množství (t)</th><th>Zakázka</th><th>Kým</th></tr>
+        </thead>
+        <tbody>
+        {% for movement in page_obj %}
+            <tr>
+                <td>{{ movement.work_order.performed_on|date:"Y-m-d" }}</td>
+                <td>{{ movement.material.name }}</td>
+                <td>{{ movement.get_movement_type_display }}</td>
+                <td>{{ movement.typed_quantity|floatformat:2 }} t</td>
+                <td>{{ movement.work_order.description|default:"—" }}</td>
+                <td>{{ movement.work_order.created_by.username }}</td>
+            </tr>
+        {% empty %}
+            <tr><td colspan="6">Žádné položky neodpovídají zadaným filtrům.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+{% if page_obj.has_other_pages %}
+<p>
+    {% if page_obj.has_previous %}<a href="?{{ querystring }}&page={{ page_obj.previous_page_number }}">Předchozí</a>{% endif %}
+    Stránka {{ page_obj.number }} z {{ page_obj.paginator.num_pages }}
+    {% if page_obj.has_next %}<a href="?{{ querystring }}&page={{ page_obj.next_page_number }}">Další</a>{% endif %}
+</p>
+{% endif %}
+{% endblock %}

@@ -20,6 +20,7 @@ adrese, kterou vám dal správce, a přihlaste se uživatelským jménem a hesle
 - [Schvalování](#schvalování)
 - [Přehled zpracování (pro vedoucí)](#přehled-zpracování-pro-vedoucí)
 - [Stroje](#stroje)
+- [Materiál](#materiál)
 - [Hodiny](#hodiny)
 - [Časté potíže](#časté-potíže)
 
@@ -43,6 +44,7 @@ Ve spodní části obrazovky je menu, ze kterého se dostanete všude:
 | **Hodiny** | Odpracované hodiny lidí |
 | **Přehled** | Všechna zapsaná zpracování ke schválení — vidí jen vedoucí |
 | **Stroje** | Celkové motohodiny, tuny a sazby strojů — vidí jen vedoucí |
+| **Materiál** | Kolik tun se kterého materiálu spotřebovalo a vyrobilo — vidí jen vedoucí |
 
 Po přihlášení se rovnou otevře **Zpracování**. Stejně tak se tam vrátíte
 klepnutím na logo vlevo nahoře.
@@ -104,9 +106,10 @@ zpětně, přepište ho na den, kdy se práce skutečně dělala.
 - Zadává se jen **den**, ne čas.
 - Opravit datum může později vedoucí v úpravě zakázky.
 
-> Podle data provedení se řídí **všechny přehledy** — **Hodiny**, **Stroje**
-> i **Přehled**, jejich filtry, sloupce *Provedeno* i řazení. Zakázka zapsaná
-> dnes za práci z minulého měsíce se tedy započítá do minulého měsíce.
+> Podle data provedení se řídí **všechny přehledy** — **Hodiny**, **Stroje**,
+> **Materiál** i **Přehled**, jejich filtry, sloupce *Provedeno* i řazení.
+> Zakázka zapsaná dnes za práci z minulého měsíce se tedy započítá do minulého
+> měsíce.
 > V detailu zakázky najdete obě data: *Datum provedení* i *Zaznamenáno*.
 
 **3. Spotřeba a výroba**
@@ -211,22 +214,62 @@ Stránka má stejnou stavbu jako **Hodiny**: nahoře **filtr**, pod ním tabulka
 nahoře skládají. Filtr platí pro obě tabulky najednou, takže si můžete číslo
 přečíst a hned pod ním vidět, z čeho vzniklo.
 
-Filtrovat lze podle stroje, data a — u vedoucích — podle pracovníka. **Bez
-filtru vidíte všechny stroje.** Když vyberete konkrétní stroj, zůstane
-v tabulce jen on; když omezíte datum, stroje zůstanou všechny a čísla se
-přepočítají za dané období — stroj s **0 h** tedy znamená, že v tom období
-neběžel.
+Filtrovat lze podle stroje, data a podle toho, kdo zakázku zapsal
+(**Vytvořil**). **Bez filtru vidíte všechny stroje.** Když vyberete konkrétní
+stroj, zůstane v tabulce jen on; když omezíte datum, stroje zůstanou všechny
+a čísla se přepočítají za dané období — stroj s **0 h** tedy znamená, že v tom
+období neběžel.
 
-Běžný pracovník vidí v detailu pouze záznamy ze zakázek, které sám zapsal nebo
-na kterých je uvedený; tabulka Stav strojů je počítaná ze stejných řádků.
+Vidíte vždy záznamy celého provozu, ne jen své vlastní — na tuto stránku se
+běžný pracovník nedostane.
 
 > **Rychlé období.** Nad každým filtrem v aplikaci jsou čtyři tlačítka —
 > **Vše**, **Posledních 7 dní**, **Posledních 30 dní** a **Minulý měsíc**.
 > Klepnutím se datumy vyplní samy, zeleně svítí období, které je právě
 > nastavené, a **Vše** filtrování podle data zase zruší. Ostatní filtry
-> (pracovník, stroj, stav) zůstanou zachované.
+> (pracovník, stroj, materiál, stav) zůstanou zachované.
 
-Tuto sekci mají v menu pouze vedoucí.
+Tato sekce je jen pro vedoucí — běžný pracovník ji nemá v menu a stránka se mu
+neotevře, ani když si její adresu zadá ručně.
+
+## Materiál
+
+Odpověď na otázku **„kolik jsme toho vyrobili?"** — po materiálech a za zvolené
+období. Čísla se skládají z řádků, které se vyplňují ve **Zpracování**, takže
+nic navíc zapisovat nemusíte.
+
+Stránka má stejnou stavbu jako **Stroje**: nahoře **filtr**, pod ním tabulka
+**Souhrn materiálů** a dole **Detail položek** — jednotlivé řádky (datum,
+materiál, druh, množství, zakázka a kdo ji zapsal), ze kterých se čísla nahoře
+skládají. Filtr platí pro obě tabulky najednou.
+
+V souhrnu jsou u každého materiálu tři čísla:
+
+| Sloupec | Co znamená |
+|---|---|
+| **Spotřebováno** | Kolik tun toho materiálu se za dané období zpracovalo (vstup) |
+| **Vyrobeno** | Kolik tun toho materiálu za dané období vzniklo (výstup) |
+| **Rozdíl** | Vyrobeno mínus spotřebováno |
+
+**Rozdíl** má smysl hlavně u materiálu, který je jednou vstupem a podruhé
+výstupem: může vyjít i záporný, a to znamená, že se ho víc zpracovalo, než
+vyrobilo.
+
+Filtrovat lze podle materiálu a data. **Bez filtru vidíte všechny materiály.**
+Když vyberete konkrétní materiál, zůstane v tabulce jen on; když omezíte datum,
+materiály zůstanou všechny a čísla se přepočítají za dané období — materiál
+s **0,00 t** tedy znamená, že se v tom období nezpracovával. Nabídka filtru
+obsahuje i vyřazené materiály, aby se dalo dohledat, co se s nimi dělo dřív;
+v souhrnu se vyřazené materiály samy o sobě nezobrazují.
+
+Typický postup pro otázku „kolik jsme vyrobili frakce 8/16 minulý měsíc":
+klepněte na **Minulý měsíc**, vyberte materiál a přečtěte sloupec **Vyrobeno**.
+
+> Do čísel se počítají **jen schválené zakázky**, stejně jako v Hodinách
+> a Strojích. Zakázka, která čeká na schválení, se tu neobjeví.
+
+Tato sekce je jen pro vedoucí — běžný pracovník ji nemá v menu a stránka se mu
+neotevře, ani když si její adresu zadá ručně.
 
 ## Hodiny
 
@@ -252,8 +295,8 @@ jste je zapsali (nejnovější nahoře), ne podle data provedení — zpětně z
 zakázka se tak neztratí někde dole, když si chcete zkontrolovat, jestli už ji
 vedoucí schválil. Žlutě zvýrazněné a označené *Čeká
 na schválení* jsou ty, které vedoucí ještě neposoudil; *Schváleno* znamená, že
-se už započítávají do Hodin i Strojů. Je to tedy vysvětlení, proč vám hodiny
-v souhrnu pod tabulkou zatím chybí. Zakázka, kterou vedoucí smazal, ze seznamu
+se už započítávají do Hodin, Strojů i Materiálu. Je to tedy vysvětlení, proč
+vám hodiny v souhrnu pod tabulkou zatím chybí. Zakázka, kterou vedoucí smazal, ze seznamu
 zmizí.
 
 Jsou v ní jen zakázky, které jste zapsali vy — ne ty, na kterých vás někdo jen
@@ -290,11 +333,12 @@ hlášky jsou obě čísla. Sčítají se všechny řádky dohromady, takže chy
 řádek, nebo je někde překlep v množství. Dokud to nesedí, neuloží se ani hodiny
 a stroje.
 
-**Nevidím v menu Stroje ani Přehled.**
+**Nevidím v menu Stroje, Materiál ani Přehled.**
 Jsou jen pro vedoucí. Pokud je potřebujete, řekněte si správci o změnu role.
 
 **Zapsal jsem zakázku, ale v Hodinách ji nevidím.**
-Čeká na schválení vedoucím. Po schválení se v Hodinách i ve Strojích objeví.
+Čeká na schválení vedoucím. Po schválení se objeví v Hodinách, ve Strojích
+i v Materiálu.
 
 **Nevidím záznamy kolegů.**
 Běžný pracovník vidí své záznamy a zakázky, kde je uvedený jako spolupracovník.

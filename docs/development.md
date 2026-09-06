@@ -60,7 +60,7 @@ python manage.py test materials.tests.MaterialModelTests           # one class
 python manage.py test materials.tests.MaterialModelTests.test_material_str
 ```
 
-235 tests, roughly a minute and a half. Postgres must be reachable.
+250 tests, roughly three and a half minutes. Postgres must be reachable.
 
 ### How the tests are written
 

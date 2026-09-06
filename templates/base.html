@@ -41,6 +41,7 @@
         {% if user.is_manager_or_admin %}
             <a href="{% url 'job_dashboard' %}">Přehled</a>
             <a href="{% url 'machine_dashboard' %}">Stroje</a>
+            <a href="{% url 'material_dashboard' %}">Materiál</a>
         {% endif %}
     </nav>
     {% endif %}

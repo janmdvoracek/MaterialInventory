@@ -23,6 +23,7 @@ and code are in English.
 | **Transform** (*Zpracování*) | The main form, and the landing page. One job consumes some materials and produces others — crushing, sorting, cutting — logs the submitter's own hours, names collaborators with their hours, and records machine motohodiny and the tonnage each machine processed. |
 | **Review** (*Přehled*) | Every recorded job with everything that was typed into the form, filterable, with the ones awaiting a decision highlighted. A manager approves, corrects or deletes from here. Manager/Admin only. |
 | **Machines** (*Stroje*) | One filter over hours and tonnage per machine, its two reference rates (Kč/hod, Kč/t), and the individual usage rows behind those totals. Manager/Admin nav entry. |
+| **Materials** (*Materiál*) | Tonnage consumed, produced and net per material over a date range, and the individual line items behind those totals — "how much 8/16 did we make last month?". Manager/Admin only. |
 | **Hours** (*Hodiny*) | Hours worked per person, for payroll and job costing. For a worker, also their own last few jobs with the review status of each. |
 
 A job is written as a single transaction: its material line items, every
@@ -105,7 +106,7 @@ Full column reference: [docs/development.md](docs/development.md#seeding-data).
 ## Common commands
 
 ```bash
-python manage.py test                  # full suite (235 tests, needs Postgres)
+python manage.py test                  # full suite (250 tests, needs Postgres)
 python manage.py test workorders       # one app
 ruff check . && ruff format .          # lint and format
 docker compose up --build              # full stack
@@ -133,7 +134,7 @@ one of those URLs gets a 403 rather than a scoped-down page.
 config/       Django project — settings, root URLconf, WSGI/ASGI
 accounts/     Custom User model, roles, role_required decorator, Czech auth forms
 materials/    Material / Machine catalog + the seed_data command
-workorders/   Jobs and their StockMovement line items; Transform form, review dashboard, machine page, time-worked reporting, all URLs
+workorders/   Jobs and their StockMovement line items; Transform form, review dashboard, machine and material pages, time-worked reporting, all URLs
 inventory/    Migration history only — no code. Held StockMovement before it moved to workorders.
 templates/    All HTML; base.html holds the site CSS and bottom nav
 static/       Source static assets (tracked; NOT the collectstatic output)

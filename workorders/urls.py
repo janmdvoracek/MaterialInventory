@@ -7,6 +7,7 @@ urlpatterns = [
     # and it is where LOGIN_REDIRECT_URL and the header logo point.
     path('', views.transform_create, name='transform_create'),
     path('machines/', views.machine_dashboard, name='machine_dashboard'),
+    path('materials/', views.material_dashboard, name='material_dashboard'),
     path('hours/', views.time_worked, name='time_worked'),
     # Manager review of recorded jobs. Every view behind these is gated by
     # role_required, not just hidden from the nav.

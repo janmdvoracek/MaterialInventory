@@ -49,8 +49,8 @@ already is.
 | `created_by` | Who recorded it. |
 
 **A line item has no timestamp of its own.** Its date is its job's
-`performed_on`, and `Meta.ordering = ['id']` puts the rows of a job in the order
-they were typed. It used to carry both a `created_at` and a `recorded_at`, plus
+`performed_on`, which is what Materiál filters and sorts on, and
+`Meta.ordering = ['id']` puts the rows of a job in the order they were typed. It used to carry both a `created_at` and a `recorded_at`, plus
 a `notes` field no form ever wrote; migration `0007` dropped all three because
 nothing read them.
 
@@ -156,19 +156,20 @@ back-filled every existing row from `created_at`: before the field existed there
 was no way to record a job for any day but the one it was entered, so that date
 is the right answer for them.
 
-**Every report keys off `performed_on`.** The date filters on Hodiny, Stroje
-and Přehled compare it directly — it is a `DateField`, so a plain `__gte`/`__lte`
-with no `__date` lookup and no timezone conversion behind it — and each list's
-*Provedeno* column shows it. Ordering is `['-performed_on', '-created_at']` on
-all three lists and in `WorkOrder.Meta` (migration `0011`): the day the work
-happened, then entry order within a day.
+**Every report keys off `performed_on`.** The date filters on Hodiny, Stroje,
+Materiál and Přehled compare it directly — it is a `DateField`, so a plain
+`__gte`/`__lte` with no `__date` lookup and no timezone conversion behind it —
+and each list's *Provedeno* column shows it. Ordering is
+`['-performed_on', '-created_at']` on all four lists and in `WorkOrder.Meta`
+(migration `0011`): the day the work happened, then entry order within a day.
 
 Two consequences worth knowing:
 
-- **Machine-usage rows are dated by their job** (`work_order__performed_on`),
-  never by `MachineUsage.created_at`. `job_edit` deletes and rewrites every
-  usage row, so a corrected job would otherwise jump to the day it was
-  corrected.
+- **Machine-usage and line-item rows are dated by their job**
+  (`work_order__performed_on`), never by `MachineUsage.created_at`. `job_edit`
+  deletes and rewrites every usage row, so a corrected job would otherwise jump
+  to the day it was corrected. A `StockMovement` has no timestamp of its own at
+  all, so its job's date is the only one it could be shown under.
 - **`my_jobs` is the exception**, still ordered `-created_at`. It is a recency
   list of *submissions*: a job someone has just back-dated to last month has to
   appear at the top of it, because checking what became of a fresh submission is
@@ -218,8 +219,8 @@ only so the page can be re-rendered with its errors.
 A `WorkOrder` carries a `status` — `PENDING` or `APPROVED` — plus `reviewed_at`
 and `reviewed_by`.
 
-**A job counts only once it is approved.** Hodiny, Stroje and the machine-usage
-history all report `status=APPROVED` rows and nothing else, so a job a worker
+**A job counts only once it is approved.** Hodiny, Stroje and Materiál all
+report `status=APPROVED` rows and nothing else, so a job a worker
 submits is recorded immediately but stays out of the reports until a manager
 signs it off. A manager's or admin's own submission is written `APPROVED` with
 themselves as the reviewer — there is nobody above them to approve it, so
@@ -436,6 +437,47 @@ An invalid filter returns `Machine.objects.none()` — the same rule the rows
 follow, and for the same reason: a fleet of zeros under a "these are your
 filtered results" heading reads as an answer.
 
+### Materiál is the same page with `Material` in place of `Machine`
+
+`material_dashboard` is Stroje's shape applied to the line items: a filter, a
+per-material summary, and the `StockMovement` rows the summary is made of. It
+is **the only place the line items are read back across jobs** — `job_detail`
+shows them one job at a time, which cannot answer "how much 8/16 did we make
+last month?". Before this page existed, that question had to go through the
+Django admin.
+
+`_material_summary(movements, form)` totals the *filtered* rows
+(`movements__in=movements.values('pk')`) exactly as `_machine_summary` does,
+and inherits the same two rules: every **active** material is listed even at
+zero, and naming one in the filter narrows the table to it. An invalid filter
+returns `Material.objects.none()`.
+
+Three columns, and two of them fall out of how `quantity` is stored:
+
+| Column | Annotation |
+|---|---|
+| Spotřebováno | `Abs(Sum(...))` over the `TRANSFORM_CONSUME` rows |
+| Vyrobeno | `Sum(...)` over the `TRANSFORM_PRODUCE` rows |
+| Rozdíl | `Coalesce(Sum(...), 0)` over **all** the rows |
+
+Because `quantity` is signed, the net is simply the unfiltered sum — no
+subtraction and no second query. It is the column that matters for a material
+that is both an input and an output: gravel crushed into a fraction on one job
+and fed back in on another nets out to what actually accumulated. The `Abs` on
+the consumed side is the queryset equivalent of `_job_line_items`'s `abs()` —
+the form asked for a positive number, and that is what the reader should see.
+
+One difference from Stroje: **a zero here is a real zero**, not the unknown
+that a NULL `MachineUsage.tons` represents. So the net is `Coalesce`d to `0`
+and the two sides render through `|default:"0"`, and a material with no rows in
+range reads `0,00 t` rather than a dash.
+
+`MaterialFilterForm` deliberately has no `created_by`, unlike
+`MachineFilterForm`: who typed a job in is a review question, and Přehled
+answers it. Its queryset is every material rather than the active ones, because
+narrowing to a retired material is the only way to see its history — the
+summary above is what restricts itself to `is_active=True`.
+
 ## Pages and URLs
 
 All in `workorders`, all mounted at the **root** by `config/urls.py`. No other
@@ -447,6 +489,7 @@ app contributes a URL: `accounts` and `materials` are model-and-form only, and
 | `/` | `transform_create` | Zpracování — the form, and the landing page |
 | `/hours/` | `time_worked` | Hodiny |
 | `/machines/` | `machine_dashboard` | Stroje — filter, per-machine totals, usage rows |
+| `/materials/` | `material_dashboard` | Materiál — filter, per-material tonnage, line items |
 | `/jobs/` | `job_dashboard` | Přehled — every job, review state highlighted |
 | `/jobs/<pk>/` | `job_detail` | One job in full, with the review actions |
 | `/jobs/<pk>/upravit/` | `job_edit` | Correct a recorded job |
@@ -469,7 +512,7 @@ held nothing but `# Create your views here.` and were removed.
 | Role | `is_staff` / `is_superuser` | App access |
 |---|---|---|
 | `WORKER` | no | Zpracování, Hodiny; own records only; submissions await approval |
-| `MANAGER` | no | + Přehled (approve/edit/delete), + Stroje, + everyone's records |
+| `MANAGER` | no | + Přehled (approve/edit/delete), + Stroje, + Materiál, + everyone's records |
 | `ADMIN` | **yes / yes** | + Django admin |
 
 Two gates:
@@ -479,10 +522,10 @@ Two gates:
   not a bounce back to login, which would be a confusing dead end.
 - `User.is_manager_or_admin` for conditional UI and query scoping.
 
-**The `/jobs/` review views and `machine_dashboard` all use `role_required`** — a
-worker who types one of those URLs gets a 403, not a page. Hiding a link is not
-access control, so Stroje is gated in the view as well as kept out of a worker's
-nav.
+**The `/jobs/` review views, `machine_dashboard` and `material_dashboard` all
+use `role_required`** — a worker who types one of those URLs gets a 403, not a
+page. Hiding a link is not access control, so Stroje and Materiál are gated in
+the view as well as kept out of a worker's nav.
 
 The gate **replaced** Stroje's worker scoping rather than sitting on top of it.
 `_filtered_machine_usages` no longer narrows the rows to the viewer's own jobs,
@@ -543,8 +586,8 @@ and invited them to would put the creator's hours on their screen.
 
 ## Filter forms
 
-All three list views — Stroje, Hodiny and the job dashboard — follow one
-pattern, and the edge cases are the point:
+All four list views — Stroje, Materiál, Hodiny and the job dashboard — follow
+one pattern, and the edge cases are the point:
 
 | Request | Behaviour |
 |---|---|

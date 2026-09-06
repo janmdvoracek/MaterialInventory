@@ -903,6 +903,26 @@ class ReportsUsePerformedOnTests(TestCase):
         self.assertIsNone(machine.filtered_hours)
         self.assertEqual(len(response.context['page_obj'].object_list), 0)
 
+    def test_material_totals_follow_the_work(self):
+        self._back_dated_job()
+        response = self.client.get(reverse('material_dashboard'), self._that_month())
+        produced = next(row for row in response.context['materials'] if row == self.material_finished)
+        self.assertEqual(produced.filtered_produced, Decimal('5.000'))
+
+    def test_material_totals_stay_out_of_the_week_it_was_typed_in(self):
+        self._back_dated_job()
+        response = self.client.get(reverse('material_dashboard'), self._last_week())
+        produced = next(row for row in response.context['materials'] if row == self.material_finished)
+        self.assertIsNone(produced.filtered_produced)
+        self.assertEqual(len(response.context['page_obj'].object_list), 0)
+
+    def test_the_line_item_is_dated_by_its_job(self):
+        # A StockMovement has no timestamp of its own at all — its date is its
+        # job's, which is the date the page has to show.
+        self._back_dated_job()
+        response = self.client.get(reverse('material_dashboard'))
+        self.assertContains(response, self.long_ago.isoformat())
+
     def test_the_usage_row_is_dated_by_its_job(self):
         # MachineUsage.created_at is when the row was written, which job_edit
         # rewrites; the page shows the job's date instead.
@@ -1118,6 +1138,152 @@ class MachineUsageDetailTests(TestCase):
         self.assertEqual(len(response.context['page_obj'].object_list), 0)
 
 
+class MaterialDashboardTests(TestCase):
+    """Materiál: per-material tonnage and the line items behind it.
+
+    The jobs are built directly rather than posted through the form, so a row
+    can be back-dated or left unapproved without fighting the mass balance —
+    which the form enforces and which is covered by its own tests.
+    """
+
+    def setUp(self):
+        # Manager/admin-only page, so a manager reads it — but the jobs behind
+        # the numbers are a worker's.
+        self.worker = User.objects.create_user(username='worker', password='pw', role=User.Role.WORKER)
+        self.manager = User.objects.create_user(username='manager', password='pw', role=User.Role.MANAGER)
+        self.raw = Material.objects.create(sku='RAW', name='Štěrk')
+        self.finished = Material.objects.create(sku='FIN', name='Frakce 8/16')
+        self.retired = Material.objects.create(sku='OLD', name='Vyřazený písek', is_active=False)
+        self.client.force_login(self.manager)
+
+    def _job(self, consumed=None, produced=None, status=WorkOrder.Status.APPROVED, performed_on=None):
+        work_order = WorkOrder.objects.create(created_by=self.worker, description='job', status=status)
+        if performed_on is not None:
+            WorkOrder.objects.filter(pk=work_order.pk).update(performed_on=performed_on)
+        for material, quantity in consumed or []:
+            StockMovement.objects.create(
+                material=material,
+                # Consumed quantities are stored negative; the page has to show
+                # back the positive number the form asked for.
+                quantity=-quantity,
+                movement_type=StockMovement.MovementType.TRANSFORM_CONSUME,
+                work_order=work_order,
+                created_by=self.worker,
+            )
+        for material, quantity in produced or []:
+            StockMovement.objects.create(
+                material=material,
+                quantity=quantity,
+                movement_type=StockMovement.MovementType.TRANSFORM_PRODUCE,
+                work_order=work_order,
+                created_by=self.worker,
+            )
+        return work_order
+
+    def _row(self, response, material):
+        return next(row for row in response.context['materials'] if row == material)
+
+    def test_page_requires_login(self):
+        self.client.logout()
+        response = self.client.get(reverse('material_dashboard'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/login/', response.url)
+
+    def test_worker_gets_403(self):
+        # Keeping the nav entry out of a worker's menu is not access control.
+        self.client.force_login(self.worker)
+        self.assertEqual(self.client.get(reverse('material_dashboard')).status_code, 403)
+
+    def test_produced_tonnage_totals_across_jobs(self):
+        # The motivating question: how much 8/16 did we make?
+        self._job(consumed=[(self.raw, Decimal('5'))], produced=[(self.finished, Decimal('5'))])
+        self._job(consumed=[(self.raw, Decimal('3'))], produced=[(self.finished, Decimal('3'))])
+        response = self.client.get(reverse('material_dashboard'))
+        self.assertEqual(self._row(response, self.finished).filtered_produced, Decimal('8.000'))
+        self.assertContains(response, '8,00 t')
+
+    def test_consumed_tonnage_reads_positive(self):
+        self._job(consumed=[(self.raw, Decimal('12.5'))], produced=[(self.finished, Decimal('12.5'))])
+        response = self.client.get(reverse('material_dashboard'))
+        self.assertEqual(self._row(response, self.raw).filtered_consumed, Decimal('12.500'))
+        # Comma decimal separator: template output is localised under cs.
+        self.assertContains(response, '12,50 t')
+
+    def test_net_is_produced_minus_consumed(self):
+        # Sand crushed out of gravel on one job and fed back into another: the
+        # net is what the two directions leave behind.
+        self._job(consumed=[(self.raw, Decimal('10'))], produced=[(self.finished, Decimal('10'))])
+        self._job(consumed=[(self.finished, Decimal('4'))], produced=[(self.raw, Decimal('4'))])
+        response = self.client.get(reverse('material_dashboard'))
+        finished = self._row(response, self.finished)
+        self.assertEqual(finished.filtered_produced, Decimal('10.000'))
+        self.assertEqual(finished.filtered_consumed, Decimal('4.000'))
+        self.assertEqual(finished.filtered_net, Decimal('6.000'))
+        self.assertEqual(self._row(response, self.raw).filtered_net, Decimal('-6.000'))
+
+    def test_unapproved_job_counts_for_nothing(self):
+        # A pending job is a proposal, not evidence — invisible in every report.
+        self._job(
+            consumed=[(self.raw, Decimal('5'))],
+            produced=[(self.finished, Decimal('5'))],
+            status=WorkOrder.Status.PENDING,
+        )
+        response = self.client.get(reverse('material_dashboard'))
+        self.assertIsNone(self._row(response, self.finished).filtered_produced)
+        self.assertEqual(self._row(response, self.finished).filtered_net, Decimal('0'))
+        self.assertEqual(len(response.context['page_obj'].object_list), 0)
+
+    def test_material_with_no_movements_still_appears(self):
+        # "We made none last month" is an answer; a missing row is not.
+        response = self.client.get(reverse('material_dashboard'))
+        self.assertEqual(list(response.context['materials']), [self.finished, self.raw])
+        self.assertContains(response, '0,00 t')
+
+    def test_naming_a_material_narrows_the_table_to_it(self):
+        response = self.client.get(reverse('material_dashboard'), {'material': self.finished.pk})
+        self.assertEqual(list(response.context['materials']), [self.finished])
+
+    def test_retired_material_is_out_of_the_summary_but_still_filterable(self):
+        self._job(consumed=[(self.retired, Decimal('2'))], produced=[(self.finished, Decimal('2'))])
+        response = self.client.get(reverse('material_dashboard'))
+        self.assertNotIn(self.retired, list(response.context['materials']))
+        # Its history is still readable — that is what the filter is for.
+        self.assertIn(self.retired, response.context['form'].fields['material'].queryset)
+        narrowed = self.client.get(reverse('material_dashboard'), {'material': self.retired.pk})
+        self.assertEqual(len(narrowed.context['page_obj'].object_list), 1)
+
+    def test_totals_follow_the_date_filter(self):
+        self._job(
+            consumed=[(self.raw, Decimal('4'))],
+            produced=[(self.finished, Decimal('4'))],
+            performed_on=date.today() - timedelta(days=40),
+        )
+        self._job(consumed=[(self.raw, Decimal('1.5'))], produced=[(self.finished, Decimal('1.5'))])
+        response = self.client.get(
+            reverse('material_dashboard'), {'date_from': (date.today() - timedelta(days=7)).isoformat()}
+        )
+        self.assertEqual(self._row(response, self.finished).filtered_produced, Decimal('1.500'))
+        self.assertEqual(len(response.context['page_obj'].object_list), 2)
+
+    def test_an_invalid_filter_shows_nothing(self):
+        # A catalog of zeros under a "these are your filtered results" heading
+        # would read as an answer; it is not one.
+        self._job(consumed=[(self.raw, Decimal('5'))], produced=[(self.finished, Decimal('5'))])
+        response = self.client.get(reverse('material_dashboard'), {'date_from': 'not-a-date'})
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.context['form'].is_valid())
+        self.assertEqual(list(response.context['materials']), [])
+        self.assertEqual(len(response.context['page_obj'].object_list), 0)
+
+    def test_detail_rows_name_the_direction_and_the_author(self):
+        self._job(consumed=[(self.raw, Decimal('5'))], produced=[(self.finished, Decimal('5'))])
+        response = self.client.get(reverse('material_dashboard'))
+        self.assertEqual(len(response.context['page_obj'].object_list), 2)
+        self.assertContains(response, 'Zpracování – spotřeba')
+        self.assertContains(response, 'Zpracování – výroba')
+        self.assertContains(response, self.worker.username)
+
+
 class TimeWorkedTests(TestCase):
     def setUp(self):
         self.worker = User.objects.create_user(username='worker', password='pw', role=User.Role.WORKER)
@@ -1315,7 +1481,7 @@ class EmptyLabelTests(TestCase):
 
     def test_pages_have_no_english_placeholder(self):
         self.client.force_login(self.manager)
-        for name in ('transform_create', 'machine_dashboard', 'time_worked', 'job_dashboard'):
+        for name in ('transform_create', 'machine_dashboard', 'material_dashboard', 'time_worked', 'job_dashboard'):
             with self.subTest(view=name):
                 self.assertNotContains(self.client.get(reverse(name)), self.DJANGO_DEFAULT)
 
@@ -1331,6 +1497,7 @@ class EmptyLabelTests(TestCase):
     def test_filter_forms_offer_all_in_czech(self):
         self.client.force_login(self.manager)
         self.assertContains(self.client.get(reverse('machine_dashboard')), 'Všechny stroje')
+        self.assertContains(self.client.get(reverse('material_dashboard')), 'Všechny materiály')
         self.assertContains(self.client.get(reverse('time_worked')), 'Všichni pracovníci')
         response = self.client.get(reverse('job_dashboard'))
         self.assertContains(response, 'Všichni uživatelé')
@@ -1616,7 +1783,7 @@ class DatePresetTests(ReviewFixtureMixin, TestCase):
     """
 
     LABELS = ('Vše', 'Posledních 7 dní', 'Posledních 30 dní', 'Minulý měsíc')
-    PAGES = ('machine_dashboard', 'time_worked', 'job_dashboard')
+    PAGES = ('machine_dashboard', 'material_dashboard', 'time_worked', 'job_dashboard')
 
     def preset(self, response, key):
         return next(row for row in response.context['date_presets'] if row['key'] == key)
