@@ -172,7 +172,7 @@ CI (`.github/workflows/ci.yml`) runs `ruff check` and `ruff format --check` (mus
 
 Only the dev-oriented `docker-compose.yml` exists today (`runserver`, `DEBUG=True`, DB port exposed). A LAN-only production deployment to a company server is planned but not yet implemented — see [DEPLOYMENT_PLAN.md](DEPLOYMENT_PLAN.md) for the approach.
 
-Both blockers that plan identified are now **fixed** (its Context section records the reasoning; sections 3-6 — prod compose file, `.env.production.example`, backup script, runbook — are still to do).
+Both blockers that plan identified are now **fixed** (its Context section records the reasoning; sections 3-7 — prod compose file, `.env.production.example`, a `LOGGING` block so production 500s are logged at all, backup script, runbook — are still to do).
 
 Static files are the part most likely to trip you up, because the correct behaviour differs per environment:
 

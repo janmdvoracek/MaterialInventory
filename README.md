@@ -166,8 +166,10 @@ Not yet deployed. `docker-compose.yml` is **development only** — it runs
 
 The groundwork is in place: `collectstatic` runs as a Docker build step and
 serves hashed, compressed assets through WhiteNoise. Still outstanding are the
-production Compose file, `.env.production.example`, a database backup script,
-and the server runbook. See [DEPLOYMENT_PLAN.md](DEPLOYMENT_PLAN.md).
+production Compose file, `.env.production.example`, a `LOGGING` block (with
+`DEBUG=False` and no `ADMINS`, an unhandled 500 is currently logged nowhere), a
+database backup script, and the server runbook. See
+[DEPLOYMENT_PLAN.md](DEPLOYMENT_PLAN.md).
 
 ## License
 
