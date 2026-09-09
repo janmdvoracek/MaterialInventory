@@ -26,6 +26,16 @@ DEBUG = config('DEBUG', default=True, cast=bool)
 
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=Csv())
 
+# Empty by default, and it stays empty for the planned LAN deployment: over
+# plain HTTP Django compares the request's `Origin` against its own host, so
+# `ALLOWED_HOSTS` alone is enough. It is needed the moment something terminates
+# TLS in front of Django -- a tunnel (localtunnel, Cloudflare Tunnel, ngrok) or
+# a reverse proxy. The browser then sends `Origin: https://<host>` while Django,
+# reached over plain HTTP, expects `http://<host>`, and every POST fails CSRF
+# with "Origin checking failed". Entries must carry the scheme, and may use a
+# leading wildcard: `https://*.loca.lt`.
+CSRF_TRUSTED_ORIGINS = config('CSRF_TRUSTED_ORIGINS', default='', cast=Csv())
+
 
 # Application definition
 

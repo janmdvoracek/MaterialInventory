@@ -17,6 +17,7 @@ That is why the `Dockerfile`'s `ENV` lines win over a mounted `.env`.
 | `SECRET_KEY` | an insecure literal | **Must be set in production.** Generate with `python3 -c "import secrets; print(secrets.token_urlsafe(50))"`. |
 | `DEBUG` | `True` | Must be `False` in production. Also disables Django's static-file serving — see below. |
 | `ALLOWED_HOSTS` | `localhost,127.0.0.1` | Comma-separated. In production this is the server's LAN IP. |
+| `CSRF_TRUSTED_ORIGINS` | empty | Comma-separated, **each entry with a scheme** (`https://depot.example.com`); a leading wildcard is allowed (`https://*.loca.lt`). Leave empty for plain HTTP — see below. |
 | `DB_NAME` | `materialinventory` | |
 | `DB_USER` | `materialinventory` | |
 | `DB_PASSWORD` | `materialinventory` | Change in production. |
@@ -25,6 +26,52 @@ That is why the `Dockerfile`'s `ENV` lines win over a mounted `.env`.
 | `STATICFILES_BACKEND` | plain `StaticFilesStorage` | Set by the `Dockerfile`. See below. |
 
 `.env` is gitignored; `.env.example` is the committed template.
+
+## `CSRF_TRUSTED_ORIGINS` and TLS in front of Django
+
+Empty is correct for both supported setups — local `runserver` and the planned
+LAN deployment — because both are plain HTTP end to end. Django then compares a
+request's `Origin` header against its own host, and the `ALLOWED_HOSTS` entry is
+all the configuration CSRF needs.
+
+It stops being correct as soon as **something terminates TLS in front of
+Django** — a reverse proxy, or a tunnel used to reach a dev server from a phone
+(localtunnel, Cloudflare Tunnel, ngrok). The browser talks HTTPS to the tunnel,
+the tunnel talks plain HTTP to Django, so the browser sends
+`Origin: https://<host>` while Django builds `http://<host>` as the origin it
+expects. They differ by scheme, and **every POST fails with a 403 and "Origin
+checking failed"** — login included. Pages still load, which is what makes this
+look like a working setup at first.
+
+Adding the host to `ALLOWED_HOSTS` does not fix it: that setting only decides
+whether the request is answered at all (a miss is a `400 DisallowedHost`), and
+plays no part in the CSRF origin check.
+
+For localtunnel specifically:
+
+```bash
+ALLOWED_HOSTS=localhost,127.0.0.1,.loca.lt
+CSRF_TRUSTED_ORIGINS=https://*.loca.lt
+```
+
+The wildcards matter because localtunnel hands out a **new random subdomain on
+every run** unless it is started with `--subdomain <name>`; without them both
+lines go stale each restart. `ALLOWED_HOSTS` spells its wildcard as a leading
+dot, `CSRF_TRUSTED_ORIGINS` as a `*` after the scheme — the two settings do not
+share a syntax.
+
+Two things that are not configuration problems and cannot be fixed here:
+`.loca.lt` shows every first-time visitor an interstitial demanding the tunnel
+password (the tunnel host's public IP, from <https://loca.lt/mytunnelpassword>),
+so each phone hits that before reaching Django; and under Compose `env_file` is
+read when the container is **created**, so an edited `.env` needs
+`docker compose up -d` to recreate the container — `docker compose restart`
+keeps the old values.
+
+Do **not** reach for `SECURE_PROXY_SSL_HEADER` instead. It makes Django trust an
+`X-Forwarded-Proto` header, which is only safe behind a proxy that overwrites
+that header on every request; with `runserver` exposed through a tunnel anyone
+can forge it.
 
 ## Static files
 
