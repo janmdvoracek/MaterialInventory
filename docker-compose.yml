@@ -5,6 +5,12 @@ services:
       POSTGRES_DB: ${DB_NAME:-materialinventory}
       POSTGRES_USER: ${DB_USER:-materialinventory}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-materialinventory}
+      # Match production: without it the cluster sorts in byte order and `Š`
+      # lands after `Z`, which both catalogs order by name would show in every
+      # material dropdown. Read only when the volume is empty — an existing dev
+      # database keeps whatever collation it was created with until a
+      # `docker compose down -v` (which also destroys its data).
+      POSTGRES_INITDB_ARGS: "--locale-provider=icu --icu-locale=cs-CZ --encoding=UTF8"
     volumes:
       - db_data:/var/lib/postgresql/data
     ports:

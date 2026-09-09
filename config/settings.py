@@ -183,4 +183,41 @@ STORAGES = {
     },
 }
 
+# Django's own default routes `django.request` errors to `mail_admins` (which
+# only fires when DEBUG=False) and gives its console handler a
+# `require_debug_true` filter. With ADMINS empty and no mail backend — the state
+# of this project — that means an unhandled 500 in production is recorded
+# *nowhere*: gunicorn sees an ordinary response come back, so `docker compose
+# logs web` stays silent and a report from the depot starts with no traceback.
+#
+# One stdout handler is the whole fix; Docker captures stdout, and
+# docker-compose.prod.yml rotates it.
+#
+# ERROR rather than WARNING on purpose: `django.request` logs every 4xx at
+# WARNING, and the suite asserts a pile of 403s from `role_required` — at
+# WARNING those would spray through the test output.
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{asctime} {levelname} {name} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+    },
+    'loggers': {
+        'django.request': {
+            'handlers': ['console'],
+            'level': 'ERROR',
+            'propagate': False,
+        },
+    },
+}
+
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

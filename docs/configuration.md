@@ -27,6 +27,27 @@ That is why the `Dockerfile`'s `ENV` lines win over a mounted `.env`.
 
 `.env` is gitignored; `.env.example` is the committed template.
 
+### Deployment-only variables
+
+These are read by `docker-compose.prod.yml` and by gunicorn — not by
+`config/settings.py`, so they have no effect on `runserver`. The committed
+template is `.env.production.example`; the filled-in `.env.production` is
+gitignored and excluded from the image.
+
+| Variable | Default | Notes |
+|---|---|---|
+| `APP_BIND_IP` | `0.0.0.0` | Host interface the app is published on. Set it to the server's LAN IP: Docker's published ports are DNAT rules that bypass `ufw`, so `0.0.0.0` means "reachable from wherever this server is reachable from". |
+| `APP_PORT` | `8080` | Host port. The server already runs another web app; check `ss -tlnp` first. |
+| `WEB_CONCURRENCY` | `1` (gunicorn's own default) | Gunicorn worker count. One worker serializes every request, so production sets `3`. Read natively by gunicorn, which is why the `Dockerfile` `CMD` needs no override. |
+
+**`--env-file` is mandatory** for every command against
+`docker-compose.prod.yml`. A service's `env_file:` key populates the
+*container's* environment; it does not feed the `${...}` interpolation in the
+compose file itself, which reads only the shell environment and the project's
+default `.env`. Without the flag, `APP_PORT` expands empty and the database
+credentials come up blank — the `:?` guards on the `db` service turn that into a
+loud error rather than a mysterious one.
+
 ## `CSRF_TRUSTED_ORIGINS` and TLS in front of Django
 
 Empty is correct for both supported setups — local `runserver` and the planned
@@ -205,6 +226,52 @@ under `static/` gets published. `.dockerignore` keeps out `.env` (real secrets),
 deliberately re-including `seed_data/*.example.csv` — the deployment runbook
 copies those on the server.
 
+## Database collation
+
+Postgres decides its sort order when the cluster is **created**, and it cannot
+be changed afterwards without a dump, a fresh volume and a restore.
+
+`postgres:16-alpine` initialises in byte order by default, which is wrong for
+Czech: `Š` sorts after `Z`. Both catalogs order by name
+(`Material.Meta.ordering`, `Machine.Meta.ordering`), so this is visible in every
+material dropdown on the Zpracování form and in the Materiál table — measured
+against that image, the default gives
+
+```
+Olse | Olše | Struska | Zemina | Štěrk      <- byte order, wrong
+Olse | Olše | Struska | Štěrk | Zemina      <- ICU cs-CZ, correct
+```
+
+`docker-compose.prod.yml` therefore passes
+
+```yaml
+POSTGRES_INITDB_ARGS: "--locale-provider=icu --icu-locale=cs-CZ --encoding=UTF8"
+```
+
+ICU collations ship in the image, so this needs no extra packages. Verify it on
+a new cluster before any data goes in — `SELECT datlocprovider, daticulocale
+FROM pg_database WHERE datname = current_database();` should return `i|cs-CZ`.
+Step 6 of [DEPLOYMENT.md](../DEPLOYMENT.md) does exactly that.
+
+The development `docker-compose.yml` passes the same argument, but it only takes
+effect on a **fresh** volume: an existing dev database keeps the collation it
+was created with. If dev and production disagree about where `Štěrk` sorts, that
+is why — `docker compose down -v` re-creates it (and destroys the dev data).
+
+## Logging
+
+`config/settings.py` defines a `LOGGING` block with one stdout handler and
+`django.request` at `ERROR`.
+
+Without it, production 500s are recorded nowhere. Django's default sends
+`django.request` errors to `mail_admins` (which needs `ADMINS` and a mail
+backend, neither of which this project has) and filters its console handler to
+`require_debug_true`. Gunicorn only sees an ordinary response come back, so
+`docker compose logs web` would stay silent while users report errors.
+
+The level is `ERROR` and not `WARNING` on purpose: `django.request` logs every
+4xx at `WARNING`, and the suite asserts a great many 403s from `role_required`.
+
 ## Locale
 
 ```python
@@ -240,5 +307,5 @@ production. Worth aligning.
 |---|---|---|
 | `AUTH_USER_MODEL` | `accounts.User` | Custom user with `role`. Reference it as `settings.AUTH_USER_MODEL`, never by importing `User` into a model module. |
 | `LOGIN_URL` / `LOGIN_REDIRECT_URL` | `login` / `transform_create` | Zpracování is the landing page. |
-| `REST_FRAMEWORK` | session auth, `IsAuthenticated` | Configured but unused — there are no API routes. |
+| `LOGGING` | stdout, `django.request` at `ERROR` | Without it a production 500 is logged nowhere. See above. |
 | `DEFAULT_AUTO_FIELD` | `BigAutoField` | Job line items are never deleted, so the table grows indefinitely. |

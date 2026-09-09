@@ -17,3 +17,8 @@ static/xlsx/
 .DS_Store
 seed_data/*.csv
 !seed_data/*.example.csv
+
+# Filled-in production environment. `.env` above does not match this name.
+.env.production
+# Database dumps written by scripts/backup_db.sh — real company data.
+backups/

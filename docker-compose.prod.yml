@@ -1,0 +1,99 @@
+# Production Compose file — LAN-only deployment on the company server.
+# Runbook: DEPLOYMENT.md. Why it looks like this: DEPLOYMENT_PLAN.md.
+#
+# EVERY command against this file needs `--env-file .env.production`:
+#
+#   docker compose --env-file .env.production -f docker-compose.prod.yml up -d
+#
+# The `env_file:` key below supplies variables *inside the web container*. It
+# does NOT feed the ${...} interpolation in this file, which reads only the
+# shell environment and the project's default `.env`. Forget the flag and
+# APP_PORT expands empty and the DB credentials come up blank — hence the `:?`
+# guards, which turn that into a loud error instead of a broken container.
+#
+# This is a standalone file, not an override: `docker-compose.yml` is
+# development only (runserver, DEBUG=True, DB port published to the host).
+
+# Explicit, and deliberately NOT `materialinventory`. Compose derives a project
+# name from the directory when none is given, so `docker-compose.yml` in this
+# same checkout is project `materialinventory` — sharing that name would point
+# both files at the same `db_data` volume, and a `down -v` here would take the
+# development database with it.
+name: materialinventory-prod
+
+x-logging: &default-logging
+  # The json-file driver grows without bound by default, and this app shares a
+  # disk with another web app and another Postgres.
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  db:
+    # Pinned to a major version deliberately. Postgres refuses to start on a
+    # data directory written by a different major, so a Dependabot PR bumping
+    # this to 17 is not a merge — it is a planned dump/restore. See the
+    # "Upgrading Postgres" section of DEPLOYMENT.md.
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${DB_NAME:?set DB_NAME in .env.production — and pass --env-file .env.production}
+      POSTGRES_USER: ${DB_USER:?set DB_USER in .env.production — and pass --env-file .env.production}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env.production — and pass --env-file .env.production}
+      # Czech sorting. Without this the cluster comes up in byte order and
+      # `ORDER BY name` puts Štěrk *after* Zemina — both catalogs order by name
+      # (materials/models.py), so every dropdown and the Materiál table are
+      # affected. Verified against this exact image: the default sorts
+      # "Struska | Zemina | Štěrk", this sorts "Struska | Štěrk | Zemina".
+      #
+      # Read only when the data directory is empty, i.e. at first start. It
+      # cannot be applied to an existing cluster — that needs a dump, a fresh
+      # volume and a restore. DEPLOYMENT.md checks it before any data goes in.
+      POSTGRES_INITDB_ARGS: "--locale-provider=icu --icu-locale=cs-CZ --encoding=UTF8"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    # No `ports:` on purpose. The web container reaches Postgres over the
+    # internal Compose network at db:5432, and nothing outside needs it — which
+    # also sidesteps the other Postgres already running on this server.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    logging: *default-logging
+
+  web:
+    # Uses the Dockerfile as-is: it bakes `collectstatic` with the manifest
+    # backend and ends in `gunicorn config.wsgi:application --bind 0.0.0.0:8000`.
+    # No `command:` override — worker count comes from WEB_CONCURRENCY, which
+    # gunicorn reads natively (it defaults to 1, which serializes every request).
+    build: .
+    env_file:
+      - .env.production
+    environment:
+      # Wins over the value in .env.production; the DB is only reachable under
+      # its Compose service name.
+      DB_HOST: db
+    # Bind to the server's LAN IP, not every interface. Docker publishes ports
+    # by writing DNAT rules that sit *ahead* of ufw, so a host firewall does not
+    # contain this — if the box has a route in from outside, 0.0.0.0 publishes
+    # a plain-HTTP Django login to it. APP_BIND_IP is the one line that makes
+    # "LAN-only" true rather than assumed.
+    ports:
+      - "${APP_BIND_IP:-0.0.0.0}:${APP_PORT:-8080}:8000"
+    # The only bind-mount in production. `.dockerignore` keeps the real
+    # seed_data/*.csv out of the image on purpose (company data must not be
+    # baked into a layer), but `manage.py seed_data` reads seed_data/*.csv from
+    # the working directory. Without this the command prints "not found,
+    # skipping." and exits 0, leaving the catalog silently empty.
+    volumes:
+      - ./seed_data:/app/seed_data:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    logging: *default-logging
+
+volumes:
+  db_data:

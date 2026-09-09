@@ -27,40 +27,70 @@ class Command(BaseCommand):
             self.seed_machines(Path(options['machines_file']))
             self.seed_users(Path(options['users_file']))
 
-    def _read_csv(self, path):
+    def _read_csv(self, path, required=()):
         if not path.exists():
             self.stdout.write(self.style.WARNING(f'{path} not found, skipping.'))
             return []
         with path.open(newline='', encoding='utf-8') as f:
-            return list(csv.DictReader(f))
+            reader = csv.DictReader(f)
+            # Read the header inside the `with`: `fieldnames` is lazy, and on an
+            # empty file `list(reader)` never triggers it, so touching it
+            # afterwards raises "I/O operation on closed file".
+            fieldnames = reader.fieldnames
+            rows = list(reader)
+        if fieldnames is None:
+            # Empty file: nothing to seed, and nothing wrong either. Only a file
+            # that *has* a header can have the wrong one.
+            return []
+        # A header the command cannot read would otherwise skip every row and
+        # report "0 created" — which on the deployment runbook reads as "the
+        # catalog was already up to date" rather than "this file is wrong".
+        missing = [column for column in required if column not in fieldnames]
+        if missing:
+            raise CommandError(f'{path} is missing required column(s): {", ".join(missing)}.')
+        return rows
+
+    @staticmethod
+    def _cell(row, column, default=''):
+        """One CSV cell as a stripped string.
+
+        `csv.DictReader` fills the columns a *short row* never reached with
+        `None`, not `''` — so `machines.csv` written as `Bagr,10` under a
+        `name,hourly_rate,rate_per_ton` header hands back `rate_per_ton=None`
+        and a bare `.strip()` raises `AttributeError`. Trailing commas are easy
+        to leave out by hand, and a spreadsheet export drops them too, so treat
+        an unreached column exactly like an empty one.
+        """
+        value = row.get(column, default)
+        return (value if value is not None else default).strip()
 
     def seed_materials(self, path):
-        rows = self._read_csv(path)
+        rows = self._read_csv(path, required=('sku', 'name'))
         created = 0
         updated = 0
         for row in rows:
-            sku = row['sku'].strip()
+            sku = self._cell(row, 'sku')
             if not sku:
                 continue
-            defaults = {'name': row['name'].strip()}
+            defaults = {'name': self._cell(row, 'name')}
             _, was_created = Material.objects.update_or_create(sku=sku, defaults=defaults)
             created += was_created
             updated += not was_created
         self.stdout.write(self.style.SUCCESS(f'Materials: {created} created, {updated} updated.'))
 
     def seed_machines(self, path):
-        rows = self._read_csv(path)
+        rows = self._read_csv(path, required=('name',))
         created = 0
         updated = 0
         for row in rows:
-            name = row['name'].strip()
+            name = self._cell(row, 'name')
             if not name:
                 continue
             # Only touch the rate columns when they carry a value, so re-seeding
             # never silently wipes a rate set by hand in the admin.
             defaults = {}
             for column in ('hourly_rate', 'rate_per_ton'):
-                raw = row.get(column, '').strip()
+                raw = self._cell(row, column)
                 if raw:
                     defaults[column] = Decimal(raw)
             _, was_created = Machine.objects.update_or_create(name=name, defaults=defaults)
@@ -69,17 +99,17 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(f'Machines: {created} created, {updated} updated.'))
 
     def seed_users(self, path):
-        rows = self._read_csv(path)
+        rows = self._read_csv(path, required=('username',))
         valid_roles = {choice for choice, _ in User.Role.choices}
         created_users = []
         for row in rows:
-            username = row['username'].strip()
+            username = self._cell(row, 'username')
             if not username:
                 continue
             if User.objects.filter(username=username).exists():
                 self.stdout.write(f'User "{username}" already exists, skipped.')
                 continue
-            role = row.get('role', User.Role.WORKER).strip().upper()
+            role = self._cell(row, 'role', User.Role.WORKER).upper()
             if role not in valid_roles:
                 raise CommandError(
                     f'Invalid role "{role}" for user "{username}". Must be one of {sorted(valid_roles)}.'
@@ -88,9 +118,9 @@ class Command(BaseCommand):
             is_admin = role == User.Role.ADMIN
             User.objects.create_user(
                 username=username,
-                first_name=row.get('first_name', '').strip(),
-                last_name=row.get('last_name', '').strip(),
-                email=row.get('email', '').strip(),
+                first_name=self._cell(row, 'first_name'),
+                last_name=self._cell(row, 'last_name'),
+                email=self._cell(row, 'email'),
                 role=role,
                 password=password,
                 is_staff=is_admin,

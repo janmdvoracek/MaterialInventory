@@ -60,7 +60,7 @@ python manage.py test materials.tests.MaterialModelTests           # one class
 python manage.py test materials.tests.MaterialModelTests.test_material_str
 ```
 
-270 tests, roughly three and a half minutes. Postgres must be reachable.
+274 tests, roughly three and a half minutes. Postgres must be reachable.
 
 ### How the tests are written
 
@@ -148,6 +148,20 @@ are committed. Each file path can be overridden, e.g.
 
 `sku` and `name` are the match keys, so re-running updates in place rather than
 duplicating. The whole command is one transaction.
+
+A row **shorter than the header is fine** — `Bagr,10` under
+`name,hourly_rate,rate_per_ton` is read as an unset `rate_per_ton`, exactly like
+a blank cell. `csv.DictReader` hands back `None` rather than `''` for a column
+the row never reached, which used to crash the command with an
+`AttributeError`; trailing commas are easy to leave off by hand and a
+spreadsheet export drops them, so the real `machines.csv` hit it.
+
+A **missing required column** (`sku`/`name` for materials, `name` for machines,
+`username` for users) aborts with a `CommandError` naming the file and the
+column. Without that check a mistyped header skips every row and reports
+`0 created`, which reads as "already up to date" rather than "this file is
+wrong". Extra columns are still ignored, so an older CSV carrying retired ones
+keeps working.
 
 **Optional columns are only written when the cell actually holds a value.**
 Omitting the column, or leaving the cell blank, *preserves* what is already in

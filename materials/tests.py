@@ -159,6 +159,36 @@ class SeedDataCommandTests(TestCase):
         with self.assertRaises(CommandError):
             self._run(users='username,first_name,last_name,email,role\nbad1,B,One,b1@example.com,SUPERVISOR\n')
 
+    def test_seed_machines_accepts_short_rows(self):
+        # `Bagr,10` under a three-column header: csv.DictReader fills the
+        # column the row never reached with None, not ''. This is the shape a
+        # hand-edited machines.csv actually has — trailing commas get dropped.
+        self._run(machines='name,hourly_rate,rate_per_ton\nWarrior,83,35\nBagr,10\nKladivo\n')
+        self.assertEqual(Machine.objects.get(name='Warrior').rate_per_ton, Decimal('35'))
+        bagr = Machine.objects.get(name='Bagr')
+        self.assertEqual(bagr.hourly_rate, Decimal('10'))
+        self.assertIsNone(bagr.rate_per_ton)
+        kladivo = Machine.objects.get(name='Kladivo')
+        self.assertIsNone(kladivo.hourly_rate)
+        self.assertIsNone(kladivo.rate_per_ton)
+
+    def test_seed_materials_accepts_short_rows(self):
+        self._run(materials='sku,name,track_stock\nSKU1,Steel Bar\n')
+        self.assertEqual(Material.objects.get(sku='SKU1').name, 'Steel Bar')
+
+    def test_seed_users_accepts_short_rows(self):
+        self._run(users='username,first_name,last_name,email,role\nworker.one\n')
+        worker = User.objects.get(username='worker.one')
+        self.assertEqual(worker.role, User.Role.WORKER)
+        self.assertEqual(worker.email, '')
+        self.assertFalse(worker.is_staff)
+
+    def test_missing_required_column_raises_command_error(self):
+        # A wrong header would otherwise skip every row and report "0 created",
+        # which reads as "already up to date" rather than "this file is wrong".
+        with self.assertRaises(CommandError):
+            self._run(machines='machine_name,hourly_rate\nWarrior,83\n')
+
     def test_missing_csv_files_are_skipped_gracefully(self):
         call_command(
             'seed_data',

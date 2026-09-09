@@ -1,0 +1,4 @@
+# Shell scripts must keep LF endings: this repo is developed on Windows and
+# deployed on Linux, and a CRLF script dies with
+#   /usr/bin/env: bash\r: No such file or directory
+*.sh text eol=lf

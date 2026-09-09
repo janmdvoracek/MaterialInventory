@@ -110,7 +110,7 @@ Full column reference: [docs/development.md](docs/development.md#seeding-data).
 ## Common commands
 
 ```bash
-python manage.py test                  # full suite (270 tests, needs Postgres)
+python manage.py test                  # full suite (274 tests, needs Postgres)
 python manage.py test workorders       # one app
 ruff check . && ruff format .          # lint and format
 docker compose up --build              # full stack
@@ -156,20 +156,28 @@ docs/         Documentation (see below)
 | [docs/configuration.md](docs/configuration.md) | Every environment variable and the settings that need explaining. |
 | [docs/localization.md](docs/localization.md) | The Czech locale's consequences for numbers, dates and forms. Non-obvious; read it before touching either. |
 | [docs/user-guide.cs.md](docs/user-guide.cs.md) | End-user manual, in Czech, for depot staff. |
-| [DEPLOYMENT_PLAN.md](DEPLOYMENT_PLAN.md) | The plan for the LAN-only company-server deployment. Partly implemented. |
+| [DEPLOYMENT.md](DEPLOYMENT.md) | Runbook for the LAN-only company-server deployment — the steps you run on the server. |
+| [DEPLOYMENT_PLAN.md](DEPLOYMENT_PLAN.md) | Why that deployment is shaped the way it is. Every section has landed. |
 | [CLAUDE.md](CLAUDE.md) | Working notes for AI coding assistants. Overlaps the docs above but is written as instructions, not explanation. |
 
 ## Deployment
 
-Not yet deployed. `docker-compose.yml` is **development only** — it runs
-`runserver` with `DEBUG=True` and exposes the database port to the host.
+Not yet deployed, but everything needed to deploy is in the repo.
 
-The groundwork is in place: `collectstatic` runs as a Docker build step and
-serves hashed, compressed assets through WhiteNoise. Still outstanding are the
-production Compose file, `.env.production.example`, a `LOGGING` block (with
-`DEBUG=False` and no `ADMINS`, an unhandled 500 is currently logged nowhere), a
-database backup script, and the server runbook. See
-[DEPLOYMENT_PLAN.md](DEPLOYMENT_PLAN.md).
+`docker-compose.yml` is **development only** — `runserver`, `DEBUG=True`, the
+database port published to the host. The LAN-only production stack is
+`docker-compose.prod.yml`: gunicorn from the built image, hashed assets served
+by WhiteNoise, no published database port, `restart: unless-stopped`.
+
+```bash
+cp .env.production.example .env.production   # then fill it in
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+```
+
+Follow [DEPLOYMENT.md](DEPLOYMENT.md) on the server rather than those two lines
+— the ordering matters in a couple of places, in particular checking the
+database collation before any data exists. [DEPLOYMENT_PLAN.md](DEPLOYMENT_PLAN.md)
+records why the setup looks the way it does.
 
 ## License
 

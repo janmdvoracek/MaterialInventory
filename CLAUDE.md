@@ -170,9 +170,19 @@ CI (`.github/workflows/ci.yml`) runs `ruff check` and `ruff format --check` (mus
 
 ## Deployment
 
-Only the dev-oriented `docker-compose.yml` exists today (`runserver`, `DEBUG=True`, DB port exposed). A LAN-only production deployment to a company server is planned but not yet implemented — see [DEPLOYMENT_PLAN.md](DEPLOYMENT_PLAN.md) for the approach.
+**There are two compose files and they are not interchangeable.** `docker-compose.yml` is development only (`runserver`, `DEBUG=True`, DB port published to the host, manifest storage turned back off). `docker-compose.prod.yml` is the LAN-only company-server deployment: gunicorn from the baked image, no published DB port, `restart: unless-stopped`, log rotation. [DEPLOYMENT.md](DEPLOYMENT.md) is the runbook you follow on the server; [DEPLOYMENT_PLAN.md](DEPLOYMENT_PLAN.md) is why it all looks like this. Everything in the repo is ready; only the on-server steps remain.
 
-Both blockers that plan identified are now **fixed** (its Context section records the reasoning; sections 3-7 — prod compose file, `.env.production.example`, a `LOGGING` block so production 500s are logged at all, backup script, runbook — are still to do).
+Five things about the prod file that are easy to break:
+
+- **Every command against it needs `--env-file .env.production`.** A service's `env_file:` key populates the *container's* environment and does **not** feed the `${...}` interpolation in the compose file itself, which reads only the shell environment and the project's default `.env`. Without the flag the published port and the DB credentials expand empty — the `:?` guards on `db` turn that into a named error rather than a silent misconfiguration. Note the guards only fire when nothing else supplies the variable: a stray `.env` in the directory would quietly hand the prod stack the *dev* credentials.
+- **The project name is `materialinventory-prod`, deliberately.** Compose derives a project name from the directory, so the bare name would collide with the dev file in the same checkout — same `db_data` volume, and the runbook's `down -v` would destroy the development database.
+- **`POSTGRES_INITDB_ARGS` sets an ICU `cs-CZ` locale, and it is read only when the volume is empty.** A default `postgres:16-alpine` cluster sorts in byte order, putting `Š` after `Z`; both catalogs order by name, so that is visible in every material dropdown and in the Materiál table. It cannot be changed on an existing cluster without a dump/restore, which is why runbook step 6 checks it before `migrate`. The dev file passes the same argument, but an already-created dev volume keeps byte order.
+- **`APP_BIND_IP` exists because Docker's published ports bypass `ufw`.** Binding to `0.0.0.0` means "reachable from wherever the server is reachable from"; binding to the LAN IP is what makes LAN-only true rather than assumed.
+- **The one bind-mount is `./seed_data:/app/seed_data:ro`.** `.dockerignore` keeps the real CSVs out of the image on purpose, and without the mount `seed_data` prints `not found, skipping.` and exits 0 with an empty catalog.
+
+`config/settings.py` carries a `LOGGING` block for the same class of reason: with `DEBUG=False`, no `ADMINS` and no mail backend, Django's default records an unhandled 500 **nowhere**, and gunicorn only sees an ordinary response. It logs `django.request` to stdout at `ERROR` — `ERROR` and not `WARNING`, because 4xx are logged at `WARNING` and the suite asserts a great many 403s.
+
+`scripts/backup_db.sh` is `pg_dump | gzip` into `backups/` (gitignored) with 30-day retention, installed as a cron entry by hand. `.gitattributes` pins `*.sh` to LF: the repo is edited on Windows and run on Linux, where a CRLF script dies with `/usr/bin/env: bash\r`. Note `.gitignore`'s `.env` line does **not** match `.env.production` — that needed its own entry.
 
 Static files are the part most likely to trip you up, because the correct behaviour differs per environment:
 
