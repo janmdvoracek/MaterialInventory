@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
+from datetime import timedelta
 from pathlib import Path
 
 from decouple import Csv, config
@@ -37,6 +38,55 @@ ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=Csv(
 CSRF_TRUSTED_ORIGINS = config('CSRF_TRUSTED_ORIGINS', default='', cast=Csv())
 
 
+# HTTPS. Only the public deployment turns any of this on; see DEPLOYMENT.md.
+#
+# Everything below defaults to *off*, and that is not laziness — it is the same
+# trap STATICFILES_BACKEND carries further down, for the same reason. Django's
+# test runner forces DEBUG=False, so a hardcoded `SECURE_SSL_REDIRECT = True`
+# would turn every `self.client.get()` in the suite into a 301 and fail
+# essentially every test in the project. Production opts in through
+# `.env.production`; dev, CI and `runserver` never see these.
+#
+# SECURE_PROXY_SSL_HEADER is the one exception, set unconditionally, because it
+# does nothing at all unless an `X-Forwarded-Proto` header is actually present.
+# It is only *safe* because of two things that must stay true together:
+# docker-compose.prod.yml publishes no host port for `web`, so the proxy is the
+# only thing that can reach gunicorn; and Caddy overwrites that header on every
+# request rather than passing a client's through. Re-publish the web port and
+# this becomes a forgeable "pretend I am on HTTPS" switch — which is exactly why
+# docs/configuration.md tells you *not* to set it on a `runserver` behind a dev
+# tunnel, where anyone can send the header directly.
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+SECURE_SSL_REDIRECT = config('SECURE_SSL_REDIRECT', default=False, cast=bool)
+
+# One variable drives both cookies deliberately. No deployment wants one and not
+# the other, and a half-set pair fails as "login works but every form comes back
+# 403" — which reads like a CSRF bug and sends you looking in the wrong file.
+SESSION_COOKIE_SECURE = config('SECURE_COOKIES', default=False, cast=bool)
+CSRF_COOKIE_SECURE = config('SECURE_COOKIES', default=False, cast=bool)
+
+# HSTS tells a browser to refuse plain HTTP for this host until the max-age
+# expires. It is the one setting here that cannot be walked back by editing a
+# file: a browser that has seen the header keeps honouring it for the full
+# duration no matter what the server later sends. Hence a deliberately short
+# starting value in .env.production.example, raised once renewal has survived a
+# cycle.
+#
+# INCLUDE_SUBDOMAINS is safe on a *subdomain* deployment (it covers
+# `inventar.firma.cz` and anything under it, and does not propagate upward to
+# `firma.cz`). Deploy at the apex instead and it commits the company's every
+# other subdomain to HTTPS — read that as a policy decision, not a checkbox.
+SECURE_HSTS_SECONDS = config('SECURE_HSTS_SECONDS', default=0, cast=int)
+SECURE_HSTS_INCLUDE_SUBDOMAINS = config('SECURE_HSTS_INCLUDE_SUBDOMAINS', default=False, cast=bool)
+
+# Left off, and `manage.py check --deploy` will say so (W021). Preloading means
+# submitting the domain to a list compiled into browsers themselves; removal
+# takes months and reaches users only as they update. It is a decision about the
+# company's domain, not about this app. See step 12 of DEPLOYMENT.md.
+SECURE_HSTS_PRELOAD = config('SECURE_HSTS_PRELOAD', default=False, cast=bool)
+
+
 # Application definition
 
 INSTALLED_APPS = [
@@ -55,6 +105,10 @@ INSTALLED_APPS = [
     # breaks `migrate` on a fresh database.
     'inventory',
     'workorders',
+    # Login rate limiting. The app is on the public internet and Django ships
+    # nothing for this; see the AXES_* block below for the policy and
+    # DEPLOYMENT.md for how to unlock an account.
+    'axes',
 ]
 
 MIDDLEWARE = [
@@ -66,9 +120,29 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    # Last, and it has to be: it inspects the *response* from the login view and
+    # swaps in the lockout page when the backend flagged the request. It also
+    # needs the session and auth middleware above it to have run.
+    'axes.middleware.AxesMiddleware',
 ]
 
 AUTH_USER_MODEL = 'accounts.User'
+
+# `AxesStandaloneBackend` must come first — it does not authenticate anybody, it
+# only refuses a request that is already locked out, and returning `None` lets
+# `ModelBackend` behind it do the real work.
+#
+# It deliberately does *not* subclass `ModelBackend` and defines no `get_user`.
+# That is what keeps the test suite working: `Client.force_login()` picks the
+# first backend that *has* a `get_user`, so all ~130 `force_login` calls in the
+# suite resolve to `ModelBackend` and never touch axes. (`Client.login()` would
+# be a different story — it calls `authenticate()` with no request, which axes
+# rejects outright. There is not one `client.login()` in this project; keep it
+# that way.)
+AUTHENTICATION_BACKENDS = [
+    'axes.backends.AxesStandaloneBackend',
+    'django.contrib.auth.backends.ModelBackend',
+]
 
 LOGIN_URL = 'login'
 LOGIN_REDIRECT_URL = 'transform_create'
@@ -126,6 +200,73 @@ AUTH_PASSWORD_VALIDATORS = [
         'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
     },
 ]
+
+
+# django-axes — login rate limiting.
+#
+# Django ships nothing for this, and the LAN deployment did not need it: an
+# attacker had to be in the building. On a public domain the login form takes
+# unlimited silent guesses against every seeded account, so this is the one
+# thing the old perimeter was doing that had to be replaced with code.
+
+# Lock the *account*, not the address. This is the important choice here and the
+# default (`['ip_address']`) would have been actively harmful: depot staff reach
+# the app from a handful of shared egress addresses — the office NAT, a mobile
+# carrier — and behind the reverse proxy every request that axes has not been
+# told about looks like it came from the proxy container. Locking by IP would
+# therefore let one worker mistyping their password lock out the whole depot,
+# while barely inconveniencing an attacker with a list of addresses.
+#
+# The trade-off is real and worth knowing: someone who learns a username can
+# lock that person out on purpose. That is a nuisance bounded by the cool-off
+# below, and it is the cheaper of the two failure modes.
+AXES_LOCKOUT_PARAMETERS = ['username']
+
+# Five, not the library's default of three. These are phone keyboards, Czech
+# passwords and gloved hands; three is a support call waiting to happen.
+AXES_FAILURE_LIMIT = 5
+
+# Long enough to make guessing pointless, short enough that a locked-out worker
+# is not finished for the shift. An admin can clear it immediately — see the
+# `axes_reset_username` command in DEPLOYMENT.md.
+#
+# `templates/registration/lockout.html` quotes this figure in Czech prose
+# ("přibližně za 30 minut"), because a worker who cannot tell 5 minutes from 5
+# hours just phones their manager. The lockout context does carry the value, but
+# only as a `timedelta` that renders "0:30:00". **Change both together.**
+AXES_COOLOFF_TIME = timedelta(minutes=30)
+
+# A correct password clears the counter, so four typos over a week do not add up
+# to a lockout on a fifth unrelated day.
+AXES_RESET_ON_SUCCESS = True
+
+# Czech, like every other user-facing string in this project, and hardcoded for
+# the same reason (see CLAUDE.md — app copy does not go through i18n).
+AXES_LOCKOUT_TEMPLATE = 'registration/lockout.html'
+AXES_COOLOFF_MESSAGE = 'Účet je dočasně uzamčen po opakovaných neúspěšných přihlášeních. Zkuste to prosím později.'
+AXES_PERMALOCK_MESSAGE = 'Účet je uzamčen po opakovaných neúspěšných přihlášeních. Obraťte se na správce.'
+
+# Axes ships catalogs for ar/de/fa/fr/id/pl/ru/tr and **no Czech**, so its admin
+# section and both its models would render English — the only English in an
+# admin this project keeps Czech through three separate mechanisms. The attempts
+# are still recorded; they are read with `manage.py axes_list_attempts`.
+# `AdminIndexTests` in accounts/tests.py asserts the section stays out.
+AXES_ENABLE_ADMIN = False
+
+# Which address to record. Behind Caddy, `REMOTE_ADDR` is the proxy container
+# and the client is in `X-Forwarded-For`, so without this every attempt in the
+# log is attributed to the proxy and the log tells you nothing about where the
+# guessing came from. It does not affect *who* gets locked out — that is the
+# username — which is why getting it wrong is a lost audit trail rather than an
+# outage.
+#
+# Off by default because there is no proxy in dev, in CI or under `runserver`,
+# and trusting `X-Forwarded-For` where anything can reach Django directly means
+# trusting a header the client wrote.
+BEHIND_PROXY = config('BEHIND_PROXY', default=False, cast=bool)
+if BEHIND_PROXY:
+    AXES_IPWARE_PROXY_COUNT = 1
+    AXES_IPWARE_META_PRECEDENCE_ORDER = ('HTTP_X_FORWARDED_FOR', 'REMOTE_ADDR')
 
 
 # Internationalization

@@ -1,5 +1,7 @@
-# Production Compose file — LAN-only deployment on the company server.
-# Runbook: DEPLOYMENT.md. Why it looks like this: DEPLOYMENT_PLAN.md.
+# Production Compose file — public deployment on a VPS, behind the company
+# domain over HTTPS.
+# Runbook: DEPLOYMENT.md. Why it looks like this: DEPLOYMENT_PLAN_PUBLIC.md
+# (and DEPLOYMENT_PLAN.md for the LAN-only design this replaced).
 #
 # EVERY command against this file needs `--env-file .env.production`:
 #
@@ -7,12 +9,14 @@
 #
 # The `env_file:` key below supplies variables *inside the web container*. It
 # does NOT feed the ${...} interpolation in this file, which reads only the
-# shell environment and the project's default `.env`. Forget the flag and
-# APP_PORT expands empty and the DB credentials come up blank — hence the `:?`
-# guards, which turn that into a loud error instead of a broken container.
+# shell environment and the project's default `.env`. Forget the flag and the
+# domain and the DB credentials expand empty — hence the `:?` guards, which turn
+# that into a loud error instead of a broken container.
 #
 # This is a standalone file, not an override: `docker-compose.yml` is
 # development only (runserver, DEBUG=True, DB port published to the host).
+# NEVER bring the dev file up on this server — it publishes Postgres, and on a
+# VPS "published" means published to the internet.
 
 # Explicit, and deliberately NOT `materialinventory`. Compose derives a project
 # name from the directory when none is given, so `docker-compose.yml` in this
@@ -22,8 +26,8 @@
 name: materialinventory-prod
 
 x-logging: &default-logging
-  # The json-file driver grows without bound by default, and this app shares a
-  # disk with another web app and another Postgres.
+  # The json-file driver grows without bound by default, and a small VPS runs
+  # out of disk quietly.
   driver: json-file
   options:
     max-size: "10m"
@@ -52,9 +56,11 @@ services:
       POSTGRES_INITDB_ARGS: "--locale-provider=icu --icu-locale=cs-CZ --encoding=UTF8"
     volumes:
       - db_data:/var/lib/postgresql/data
-    # No `ports:` on purpose. The web container reaches Postgres over the
-    # internal Compose network at db:5432, and nothing outside needs it — which
-    # also sidesteps the other Postgres already running on this server.
+    # No `ports:` on purpose, and on a public host that is load-bearing rather
+    # than tidy: Docker publishes ports by writing DNAT rules that sit *ahead*
+    # of ufw, so a published 5432 here would be a Postgres on the open internet
+    # that the host firewall does not contain. The web container reaches it over
+    # the internal Compose network at db:5432 and nothing else needs to.
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"]
       interval: 5s
@@ -75,14 +81,24 @@ services:
       # Wins over the value in .env.production; the DB is only reachable under
       # its Compose service name.
       DB_HOST: db
-    # Bind to the server's LAN IP, not every interface. Docker publishes ports
-    # by writing DNAT rules that sit *ahead* of ufw, so a host firewall does not
-    # contain this — if the box has a route in from outside, 0.0.0.0 publishes
-    # a plain-HTTP Django login to it. APP_BIND_IP is the one line that makes
-    # "LAN-only" true rather than assumed.
-    ports:
-      - "${APP_BIND_IP:-0.0.0.0}:${APP_PORT:-8080}:8000"
-    # The only bind-mount in production. `.dockerignore` keeps the real
+      # Gunicorn discards X-Forwarded-* from any peer not listed here, and its
+      # default is 127.0.0.1 — which the proxy is not, being a separate
+      # container with its own address on the Compose network. Leave it at the
+      # default and the header never reaches Django, SECURE_PROXY_SSL_HEADER
+      # never fires, and SECURE_SSL_REDIRECT bounces every request to HTTPS
+      # forever: an infinite redirect loop that looks like a proxy fault.
+      #
+      # `*` is only acceptable because `web` publishes no host port (see below),
+      # so the proxy is the sole thing that can connect. Re-publish that port
+      # and this line has to be narrowed in the same edit.
+      FORWARDED_ALLOW_IPS: "*"
+    # No `ports:`. The proxy terminates TLS and is the only route in; gunicorn
+    # is reachable only on the Compose network. This replaced the LAN
+    # deployment's APP_BIND_IP/APP_PORT pair, which published gunicorn directly
+    # and bound it to the depot LAN interface to keep it off everything else.
+    expose:
+      - "8000"
+    # The only bind-mount for the app. `.dockerignore` keeps the real
     # seed_data/*.csv out of the image on purpose (company data must not be
     # baked into a layer), but `manage.py seed_data` reads seed_data/*.csv from
     # the working directory. Without this the command prints "not found,
@@ -95,5 +111,39 @@ services:
     restart: unless-stopped
     logging: *default-logging
 
+  proxy:
+    # Caddy rather than nginx+certbot because certificate issue and renewal are
+    # built in: no certbot container, no renewal cron entry, no reload hook, and
+    # nothing that expires silently 90 days after someone stops looking.
+    image: caddy:2-alpine
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?set APP_DOMAIN in .env.production — and pass --env-file .env.production}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in .env.production — and pass --env-file .env.production}
+    ports:
+      # 0.0.0.0 here is intentional and is the whole point of the deployment.
+      # Port 80 is not optional: it is redirected to HTTPS for users, but it is
+      # also how the ACME HTTP-01 challenge renews the certificate every 60
+      # days. Close it and the site keeps working until the cert expires.
+      - "80:80"
+      - "443:443"
+      # HTTP/3. Harmless if the network drops UDP; browsers fall back.
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates and the ACME account key. This volume is the difference
+      # between a renewal and a fresh issue — see the rate-limit note in
+      # Caddyfile before ever running `down -v`.
+      - caddy_data:/data
+      - caddy_config:/config
+    # Ordering only, no condition: `web` has no healthcheck (every cheap probe
+    # for it either trips SECURE_SSL_REDIRECT or needs a shell the slim image
+    # does not carry), and Caddy retries a cold upstream on its own.
+    depends_on:
+      - web
+    restart: unless-stopped
+    logging: *default-logging
+
 volumes:
   db_data:
+  caddy_data:
+  caddy_config:

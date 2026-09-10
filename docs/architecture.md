@@ -761,9 +761,11 @@ multiplies the `Sum` by the number of matched collaborators.
   and `widget_tweaks` were installed and never used — no template carried an
   `hx-*` attribute or loaded the tag library — so both are gone, along with the
   htmx middleware and the `<script src="https://unpkg.com/htmx.org">` tag in
-  `base.html`. That tag was worth removing on its own: the deployment is
-  LAN-only, and it made every page load reach for a CDN the depot may not be
-  able to see. The only script the app serves now is the admin's own.
+  `base.html`. That tag was worth removing on its own: the deployment was
+  LAN-only at the time, and it made every page load reach for a CDN the depot
+  may not have been able to see. (It is a public VPS now, so the CDN is
+  reachable again — which changes nothing, because nothing uses htmx.) The only
+  script the app serves is the admin's own.
 - **No CSS framework, and no per-template CSS.** All styling is one file,
   `static/css/app.css`, loaded by `base.html`. No template carries an inline
   `style=` attribute or a `<style>` block. Colours are custom properties

@@ -1,13 +1,24 @@
 # Deploy to the company server (LAN-only) — plan
 
-**Every section of this plan has landed.** Sections 1-7 below record what was
-built and why; the steps that can only be run on the server itself are in the
-runbook, [DEPLOYMENT.md](DEPLOYMENT.md), which is what you actually follow to
-deploy. This file is the reasoning behind that runbook, kept because most of it
-is not recoverable from the files it describes.
+> **Partly superseded.** Hosting moved to a public VPS behind the company domain
+> over HTTPS; see [DEPLOYMENT_PLAN_PUBLIC.md](DEPLOYMENT_PLAN_PUBLIC.md) and the
+> rewritten runbook, [DEPLOYMENT.md](DEPLOYMENT.md).
+>
+> **Stale here:** everything about the LAN — plain HTTP, the DHCP reservation,
+> `APP_BIND_IP`/`APP_PORT` (both removed), the "HTTPS is deliberately absent"
+> paragraph and its four expected `check --deploy` warnings (now one), and the
+> [Remote access](#remote-access-off-lan) section, whose whole purpose was
+> reaching a LAN-only app from outside.
+>
+> **Still current, and the reason this file is kept:** sections 1 and 2 and the
+> Context above them — the `collectstatic`/`STATICFILES_BACKEND` pairing, the
+> `.gitignore` `static/` versus `staticfiles/` correction, the `--env-file`
+> double-pass, the Compose project name, the Postgres collation, seeding and
+> backups. None of that changed.
 
-What is left is the deployment itself — steps 1-14 of the runbook, on the
-server. Nothing in the repo is blocking it.
+**Every section of this plan has landed.** Sections 1-7 below record what was
+built and why. This file is the reasoning behind the runbook, kept because most
+of it is not recoverable from the files it describes.
 
 ## Context
 

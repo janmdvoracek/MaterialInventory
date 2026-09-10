@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.core.exceptions import PermissionDenied
 from django.http import HttpResponse
 from django.test import RequestFactory, TestCase
@@ -122,9 +123,10 @@ class AdminLinkTests(TestCase):
 class AdminIndexTests(TestCase):
     """What the admin index does *not* offer.
 
-    Both entries below were dropped because they looked like features and were
-    not: one duplicated what the job page already edits, the other could not
-    have any effect at all.
+    The first two were dropped because they looked like features and were not:
+    one duplicated what the job page already edits, the other could not have any
+    effect at all. The third is kept out for a different reason — it would be
+    the only English in a Czech admin.
     """
 
     def setUp(self):
@@ -147,6 +149,17 @@ class AdminIndexTests(TestCase):
         self.assertNotIn('Autentizace a autorizace', html)
         with self.assertRaises(NoReverseMatch):
             reverse('admin:auth_group_changelist')
+
+    def test_axes_is_not_in_the_admin(self):
+        # AXES_ENABLE_ADMIN = False. Axes ships no Czech catalog, so its section
+        # and both its models would render English in an admin this project
+        # keeps Czech through three separate mechanisms. The attempts are still
+        # recorded — `manage.py axes_list_attempts` reads them.
+        html = self.client.get(reverse('admin:index')).content.decode()
+        self.assertNotIn('Access attempts', html)
+        self.assertNotIn('Axes', html)
+        with self.assertRaises(NoReverseMatch):
+            reverse('admin:axes_accessattempt_changelist')
 
 
 class AdminCzechTests(TestCase):
@@ -248,3 +261,70 @@ class RoleRequiredDecoratorTests(TestCase):
         self.assertEqual(request.user.role, User.Role.WORKER)
         response = _dummy_view(request)
         self.assertEqual(response.status_code, 200)
+
+
+class LoginRateLimitTests(TestCase):
+    """django-axes, configured to lock the *account* rather than the address.
+
+    The app is on the public internet and Django ships no brute-force
+    protection, so this is the one thing the old LAN perimeter was doing that
+    had to be replaced with code. The policy lives in `config/settings.py`.
+    """
+
+    def setUp(self):
+        self.password = 'correct-horse-battery'
+        self.user = User.objects.create_user(username='worker', password=self.password)
+        self.url = reverse('login')
+
+    def _attempt(self, username='worker', password='wrong'):
+        return self.client.post(self.url, {'username': username, 'password': password})
+
+    def test_failures_below_the_limit_just_re_render_the_login_page(self):
+        for _ in range(settings.AXES_FAILURE_LIMIT - 1):
+            response = self._attempt()
+            self.assertEqual(response.status_code, 200)
+        # Still not locked: the real password works on the last allowed try.
+        # Note this posts to the login view rather than calling client.login(),
+        # which passes no request and which the axes backend rejects outright.
+        response = self._attempt(password=self.password)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(int(self.client.session['_auth_user_id']), self.user.pk)
+
+    def test_hitting_the_limit_locks_out_with_the_czech_page(self):
+        for _ in range(settings.AXES_FAILURE_LIMIT - 1):
+            self._attempt()
+        response = self._attempt()
+        self.assertEqual(response.status_code, 429)
+        self.assertContains(response, 'Účet je dočasně uzamčen', status_code=429)
+
+    def test_lockout_survives_the_correct_password(self):
+        # The point of the whole exercise: once locked, knowing the password is
+        # not enough until the cool-off expires.
+        for _ in range(settings.AXES_FAILURE_LIMIT):
+            self._attempt()
+        response = self._attempt(password=self.password)
+        self.assertEqual(response.status_code, 429)
+        self.assertNotIn('_auth_user_id', self.client.session)
+
+    def test_lockout_is_per_username_not_per_address(self):
+        # AXES_LOCKOUT_PARAMETERS = ['username']. Every request in this test
+        # comes from the same address, and behind the reverse proxy every
+        # request in production does too. Locking by IP would mean one worker
+        # mistyping their password took the whole depot offline.
+        other = User.objects.create_user(username='druhy', password=self.password)
+        for _ in range(settings.AXES_FAILURE_LIMIT):
+            self._attempt()
+        response = self.client.post(self.url, {'username': other.username, 'password': self.password})
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(int(self.client.session['_auth_user_id']), other.pk)
+
+    def test_a_successful_login_clears_the_counter(self):
+        # AXES_RESET_ON_SUCCESS. Four typos spread over a week must not add up
+        # to a lockout on an unrelated fifth day.
+        for _ in range(settings.AXES_FAILURE_LIMIT - 1):
+            self._attempt()
+        self.client.post(self.url, {'username': 'worker', 'password': self.password})
+        self.client.logout()
+        for _ in range(settings.AXES_FAILURE_LIMIT - 1):
+            response = self._attempt()
+            self.assertEqual(response.status_code, 200)

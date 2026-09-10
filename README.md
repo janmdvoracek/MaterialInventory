@@ -45,7 +45,8 @@ it off.
 
 Django 6.1, PostgreSQL 16, server-rendered Django templates. **No JavaScript at
 all** — not a build step, not a framework, not a CDN tag: every page is a plain
-form POST, which keeps the app working on a LAN with no internet. Even the
+form POST, so the app depends on no CDN and stays quick on a phone over patchy
+mobile data. Even the
 *„+ další řádek"* / *„− odebrat řádek"* buttons on the entry form are submits that
 come back with a resized form, not script.
 WhiteNoise serves static files; Gunicorn runs the app in production. Ruff
@@ -156,28 +157,40 @@ docs/         Documentation (see below)
 | [docs/configuration.md](docs/configuration.md) | Every environment variable and the settings that need explaining. |
 | [docs/localization.md](docs/localization.md) | The Czech locale's consequences for numbers, dates and forms. Non-obvious; read it before touching either. |
 | [docs/user-guide.cs.md](docs/user-guide.cs.md) | End-user manual, in Czech, for depot staff. |
-| [DEPLOYMENT.md](DEPLOYMENT.md) | Runbook for the LAN-only company-server deployment — the steps you run on the server. |
-| [DEPLOYMENT_PLAN.md](DEPLOYMENT_PLAN.md) | Why that deployment is shaped the way it is. Every section has landed. |
+| [DEPLOYMENT.md](DEPLOYMENT.md) | Runbook for the public VPS deployment — the steps you run on the server. |
+| [DEPLOYMENT_PLAN_PUBLIC.md](DEPLOYMENT_PLAN_PUBLIC.md) | Why that deployment is shaped the way it is: TLS, the proxy, the HTTPS settings, the security gaps the LAN used to cover. |
+| [DEPLOYMENT_PLAN.md](DEPLOYMENT_PLAN.md) | The superseded LAN plan. Still the authority on the image, static files, seeding, collation and backups, none of which changed. |
 | [CLAUDE.md](CLAUDE.md) | Working notes for AI coding assistants. Overlaps the docs above but is written as instructions, not explanation. |
 
 ## Deployment
 
-Not yet deployed, but everything needed to deploy is in the repo.
+Not yet deployed, but everything needed to deploy is in the repo. The target is
+a **public VPS behind the company domain, over HTTPS**.
 
 `docker-compose.yml` is **development only** — `runserver`, `DEBUG=True`, the
-database port published to the host. The LAN-only production stack is
-`docker-compose.prod.yml`: gunicorn from the built image, hashed assets served
-by WhiteNoise, no published database port, `restart: unless-stopped`.
+database port published to the host — and must never be brought up on the
+server, where a published port means a published-to-the-internet port. The
+production stack is `docker-compose.prod.yml`, three services: `db` and `web`
+(gunicorn from the built image, hashed assets served by WhiteNoise) both
+unpublished, and `proxy` (Caddy) owning 80/443 and obtaining its own Let's
+Encrypt certificate.
 
 ```bash
 cp .env.production.example .env.production   # then fill it in
+```
+
+```bash
 docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
 ```
 
-Follow [DEPLOYMENT.md](DEPLOYMENT.md) on the server rather than those two lines
-— the ordering matters in a couple of places, in particular checking the
-database collation before any data exists. [DEPLOYMENT_PLAN.md](DEPLOYMENT_PLAN.md)
-records why the setup looks the way it does.
+Follow [DEPLOYMENT.md](DEPLOYMENT.md) on the server rather than those two lines.
+Ordering matters in several places — the DNS record has to exist before the
+first `up` or there is no certificate, and the database collation has to be
+checked before any data exists. That runbook also opens with three security
+gaps the old LAN deployment closed with the network rather than with code; read
+them before pointing DNS at anything.
+[DEPLOYMENT_PLAN_PUBLIC.md](DEPLOYMENT_PLAN_PUBLIC.md) records why the setup
+looks the way it does.
 
 ## License
 

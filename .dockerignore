@@ -41,3 +41,7 @@ db.sqlite3
 # so docs/ needs listing separately.
 *.md
 docs/
+
+# Reverse-proxy config. Bind-mounted into the `proxy` service from the server
+# checkout, never needed inside the app image.
+Caddyfile
