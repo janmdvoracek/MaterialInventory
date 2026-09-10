@@ -397,7 +397,7 @@ POSTGRES_INITDB_ARGS: "--locale-provider=icu --icu-locale=cs-CZ --encoding=UTF8"
 ICU collations ship in the image, so this needs no extra packages. Verify it on
 a new cluster before any data goes in — `SELECT datlocprovider, daticulocale
 FROM pg_database WHERE datname = current_database();` should return `i|cs-CZ`.
-Step 8 of [DEPLOYMENT.md](../DEPLOYMENT.md) does exactly that.
+Step 8 of [DEPLOYMENT.md](deployment/DEPLOYMENT.md) does exactly that.
 
 The development `docker-compose.yml` passes the same argument, but it only takes
 effect on a **fresh** volume: an existing dev database keeps the collation it

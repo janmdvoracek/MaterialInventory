@@ -52,7 +52,7 @@ lists them or not. The rule set above protects the *host's own* services — SSH
 above all — and that is the job it can actually do here. The corollary matters
 more: any port a compose file publishes is on the internet regardless of the
 firewall, which is why neither `db` nor `web` publishes one, and why the
-development `docker-compose.yml` — which publishes Postgres — must never be
+development `../../docker-compose.yml` — which publishes Postgres — must never be
 brought up on this machine.
 
 Then install Docker and confirm the daemon starts on boot; that is what brings
@@ -224,10 +224,10 @@ dcp exec web python manage.py migrate
 
 The example files are committed and are **not equivalent**:
 
-- `seed_data/materials.example.csv` and `machines.example.csv` already carry the
+- `../../seed_data/materials.example.csv` and `machines.example.csv` already carry the
   real catalog — SKUs, machines, and the Kč rates. Copy them and spot-check the
   rates.
-- `seed_data/users.example.csv` is placeholder rows (`worker.one`,
+- `../../seed_data/users.example.csv` is placeholder rows (`worker.one`,
   `manager.one`, `admin.one`). Rewrite it with actual staff before using it.
 
 ```bash
@@ -241,7 +241,7 @@ dcp exec web python manage.py seed_data
 ```
 
 Read the output. `Materials: N created` is success. A line saying
-`seed_data/materials.csv not found, skipping.` means the read-only `./seed_data`
+`seed_data/materials.csv not found, skipping.` means the read-only `../../seed_data`
 mount is missing from the compose file — the command exits 0 either way, so it
 will not fail on its own.
 
@@ -433,7 +433,7 @@ Two things worth knowing before you change any of this. `manage.py check` prints
 `axes.W006` complaining that the lockout is not by IP — that is answered on
 purpose in `SILENCED_SYSTEM_CHECKS`, so it is silenced rather than ignored, and
 `check --deploy` still returns its single expected `W021`. And the lockout page
-(`templates/registration/lockout.html`) tells the worker "přibližně za 30 minut"
+(`../../templates/registration/lockout.html`) tells the worker "přibližně za 30 minut"
 in prose, so changing `AXES_COOLOFF_TIME` means changing the template too.
 
 ## Routine maintenance
@@ -449,7 +449,7 @@ in prose, so changing `AXES_COOLOFF_TIME` means changing the template too.
 
 ## Upgrading Postgres
 
-`docker-compose.prod.yml` pins `postgres:16-alpine`, and Dependabot will
+`../../docker-compose.prod.yml` pins `postgres:16-alpine`, and Dependabot will
 eventually open a PR bumping it. **That PR is not a merge, it is a planned
 maintenance window.** Postgres refuses to start on a data directory written by a
 different major version, so deploying it as an ordinary update takes the app
@@ -480,4 +480,4 @@ cluster re-reads `POSTGRES_INITDB_ARGS`, so step 8's check applies again.
 | Czech names sort after Z | The cluster was initialised without the ICU locale. See step 8. |
 | `db` in a restart loop after an image update | Postgres major version change. See [Upgrading Postgres](#upgrading-postgres). |
 | Containers gone after a reboot | The Docker daemon is not enabled at boot. See step 1. |
-| A 500 with no traceback anywhere | Should not happen — `config/settings.py` logs `django.request` at ERROR to stdout. Read it with `dcp logs web`. |
+| A 500 with no traceback anywhere | Should not happen — `../../config/settings.py` logs `django.request` at ERROR to stdout. Read it with `dcp logs web`. |

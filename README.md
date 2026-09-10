@@ -157,9 +157,9 @@ docs/         Documentation (see below)
 | [docs/configuration.md](docs/configuration.md) | Every environment variable and the settings that need explaining. |
 | [docs/localization.md](docs/localization.md) | The Czech locale's consequences for numbers, dates and forms. Non-obvious; read it before touching either. |
 | [docs/user-guide.cs.md](docs/user-guide.cs.md) | End-user manual, in Czech, for depot staff. |
-| [DEPLOYMENT.md](DEPLOYMENT.md) | Runbook for the public VPS deployment — the steps you run on the server. |
-| [DEPLOYMENT_PLAN_PUBLIC.md](DEPLOYMENT_PLAN_PUBLIC.md) | Why that deployment is shaped the way it is: TLS, the proxy, the HTTPS settings, the security gaps the LAN used to cover. |
-| [DEPLOYMENT_PLAN.md](DEPLOYMENT_PLAN.md) | The superseded LAN plan. Still the authority on the image, static files, seeding, collation and backups, none of which changed. |
+| [DEPLOYMENT.md](docs/deployment/DEPLOYMENT.md) | Runbook for the public VPS deployment — the steps you run on the server. |
+| [DEPLOYMENT_PLAN_PUBLIC.md](docs/deployment/DEPLOYMENT_PLAN_PUBLIC.md) | Why that deployment is shaped the way it is: TLS, the proxy, the HTTPS settings, the security gaps the LAN used to cover. |
+| [DEPLOYMENT_PLAN.md](docs/deployment/DEPLOYMENT_PLAN.md) | The superseded LAN plan. Still the authority on the image, static files, seeding, collation and backups, none of which changed. |
 | [CLAUDE.md](CLAUDE.md) | Working notes for AI coding assistants. Overlaps the docs above but is written as instructions, not explanation. |
 
 ## Deployment
@@ -183,13 +183,13 @@ cp .env.production.example .env.production   # then fill it in
 docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
 ```
 
-Follow [DEPLOYMENT.md](DEPLOYMENT.md) on the server rather than those two lines.
+Follow [DEPLOYMENT.md](docs/deployment/DEPLOYMENT.md) on the server rather than those two lines.
 Ordering matters in several places — the DNS record has to exist before the
 first `up` or there is no certificate, and the database collation has to be
 checked before any data exists. That runbook also opens with three security
 gaps the old LAN deployment closed with the network rather than with code; read
 them before pointing DNS at anything.
-[DEPLOYMENT_PLAN_PUBLIC.md](DEPLOYMENT_PLAN_PUBLIC.md) records why the setup
+[DEPLOYMENT_PLAN_PUBLIC.md](docs/deployment/DEPLOYMENT_PLAN_PUBLIC.md) records why the setup
 looks the way it does.
 
 ## License
