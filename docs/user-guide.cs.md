@@ -73,7 +73,10 @@ on. Kdo je tu uvedený, uvidí zakázku ve své historii a hodiny se mu započí
 
 - Sebe zde neuvádíte — vaše hodiny jsou už v poli *Moje hodiny*.
 - Když nikdo další nedělal, nechte řádky prázdné.
-- Když stejného člověka uvedete dvakrát, hodiny se mu sečtou.
+- **Každého člověka uveďte jen jednou.** Kdo už je vybraný v jiném řádku, ten
+  se v nabídce dalšího řádku neobjeví, a zakázku se stejným člověkem na dvou
+  řádcích aplikace neuloží. Odpracoval-li práci na dvakrát, sečtěte hodiny do
+  jednoho řádku.
 - Nestačí-li vám připravené řádky, klepněte pod nimi na **„+ další řádek"**.
   Stránka se načte znovu s jedním řádkem navíc a **všechno, co jste už vyplnili,
   v ní zůstane**. Nic se tím neukládá a nic se nekontroluje — přidat řádek můžete
@@ -126,6 +129,10 @@ zpětně, přepište ho na den, kdy se práce skutečně dělala.
   ale odebírat nemusíte — aplikace je při ukládání jednoduše přeskočí.
 - Vyplnit musíte buď celý řádek, nebo žádný — samotné množství bez materiálu
   aplikace odmítne.
+- **Stejný materiál uveďte v jedné části jen jednou.** Materiál vybraný v jiném
+  řádku se v nabídce dalšího řádku neobjeví a dva řádky se stejným materiálem
+  aplikace odmítne — sečtěte množství do jednoho řádku. Ve **spotřebě** i ve
+  **výrobě** zároveň týž materiál být může; to jsou dvě různá sdělení o něm.
 - Vyplněná musí být **alespoň jedna položka spotřeby a alespoň jedna položka
   výroby**. Samotná spotřeba bez výroby (ani naopak) se uložit nedá.
 - **Celkové množství spotřeby se musí rovnat celkovému množství výroby.**
@@ -142,8 +149,10 @@ zpětně, přepište ho na den, kdy se práce skutečně dělala.
 
 Vyplňte **Stroj**, počet **Hodin** (motohodin) a **Tuny**, které stroj
 zpracoval. Pokud šel materiál přes více strojů za sebou, použijte více řádků.
-Stejný stroj můžete uvést vícekrát; na další řádky se dostanete tlačítkem
-**„+ další řádek"** pod nimi a přebytečný odeberete tlačítkem
+**Každý stroj uveďte jen jednou** — vybraný stroj se v nabídce dalšího řádku
+neobjeví a dva řádky se stejným strojem aplikace odmítne; běžel-li na zakázce
+víckrát, sečtěte motohodiny i tuny do jednoho řádku. Na další řádky se dostanete
+tlačítkem **„+ další řádek"** pod nimi a přebytečný odeberete tlačítkem
 **„− odebrat řádek"**. Stroje jsou nepovinné — pokud se žádný nepoužil,
 nechte řádky prázdné. Jakmile ale řádek začnete vyplňovat, musí být vyplněný
 celý.

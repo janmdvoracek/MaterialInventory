@@ -121,10 +121,45 @@ fail a business rule — the balance check has already run by then — but the
 transaction stays: the line items, the hours and the machine usage are one job
 and must not land half-written.
 
-Formset rows are written **exactly as typed**. The view used to combine consumed
-rows for the same material so it could test them as a single quantity; with no
-such check left, two rows of 6 t are simply two line items that contribute 12 t
-to the consumed total.
+Formset rows are written **exactly as typed** — nothing is combined on the way
+in, because nothing needs to be: no section may name the same thing twice.
+
+### One row each
+
+**A material appears at most once per section, a machine at most once, a person
+at most once.** Two rows naming the same material are two halves of a quantity
+that should have been typed once, and a reader downstream cannot tell them apart
+from a job that really did handle it in two passes; two rows for one machine
+double it in the Stroje totals; two rows for one person used to be quietly added
+together, because the `UniqueConstraint` on `(work_order, user)` would otherwise
+have failed the write with a 500.
+
+The rule is **per section**, so one material may still be consumed *and*
+produced by a single job — those are two different statements about it, and the
+mass balance compares the two sides precisely because a material can cross them.
+
+`UniqueChoiceFormSet` in `workorders/forms.py` carries both halves, and each
+section subclasses it with the field it applies to and the Czech complaint:
+`MaterialRowFormSet`, `MachineRowFormSet`, `WorkerRowFormSet`.
+
+- **The rule** is `clean()`, on the POST. It puts the error on the *repeated*
+  row rather than as a non-form error, because the message names one row of
+  several and belongs where the reader can see which. Like the mass balance, it
+  refuses the whole job: nothing at all is written.
+- **The help** is `_hide_taken_choices()`, which drops what the other rows
+  already took out of a row's dropdown — so the duplicate is not offered in the
+  first place. It runs on **unbound** formsets only: a bound one is being
+  validated, and narrowing a queryset there would turn a duplicate into
+  „Vyberte platnou možnost." on whichever row lost the race instead of the
+  message above. Every row keeps its own choice, or it would have no option to
+  re-select and would render blank.
+
+The help can only be as fresh as the last render — there is no JavaScript in
+this app, so the list a row is showing was built when the page was. The renders
+that matter are the ones where a row is about to be filled in: „+ další řádek",
+which is the tap that asks for an empty row, and the edit form's spare row.
+Choosing the same thing twice between two renders is exactly what the rule is
+for. `DuplicateRowTests` in `workorders/tests.py` covers both halves.
 
 ### When a job happened
 
@@ -293,8 +328,8 @@ either.
 
 Each section carries two ordinary submit buttons, `add_<prefix>` and
 `remove_<prefix>`. The prefixes live in `JOB_SECTIONS` in `workorders/forms.py` —
-prefix and row form — and that tuple is the only place a fifth section would have
-to be registered. `_pressed_row_button` looks for either at the top of both
+prefix, row form and the formset class holding that section's no-duplicates rule
+— and that tuple is the only place a fifth section would have to be registered. `_pressed_row_button` looks for either at the top of both
 `transform_create` and `job_edit`, ahead of the submission branch, and reports
 which section and which direction as `(prefix, delta)`; `_resized_job_forms` then
 rebuilds every form on the page out of the raw POST, giving the named section one
@@ -361,8 +396,9 @@ Two unrelated numbers. Do not derive one from the other.
 - **`WorkerHours`** is labour: what a person typed for themselves. The
   submitter's own hours come from `WorkOrderForm.hours` (*„Moje hodiny"*, and it
   is required); each collaborator's come from a `WorkerHoursFormSet` row. A
-  `UniqueConstraint` allows one row per person per job, and naming the same
-  person on two rows sums their hours rather than tripping it.
+  `UniqueConstraint` allows one row per person per job, and the form refuses a
+  second row for someone already named rather than reaching it — see *One row
+  each* above.
 - **`MachineUsage.hours`** is motohodiny — machine runtime.
 
 The Hodiny report totals `WorkerHours` only, so it has no fixed relationship to

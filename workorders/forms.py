@@ -88,6 +88,102 @@ class WorkOrderForm(forms.Form):
         return cleaned_data
 
 
+class UniqueChoiceFormSet(forms.BaseFormSet):
+    """A job section whose rows must each name a different thing.
+
+    One material, machine or person belongs on one row of a section: two rows
+    naming the same one are two halves of a number that should have been typed
+    once, and nothing downstream can tell them apart afterwards. The rule is
+    per section, so the same material may still be consumed *and* produced by
+    one job — those are two different statements about it.
+
+    Two halves, and both are needed:
+
+    - `clean()` refuses a duplicate and says which one, on the offending row.
+      This is the rule; it is enforced on the POST and cannot be got around.
+    - `_hide_taken_choices()` drops what other rows already took out of a row's
+      dropdown, so on an unbound page the duplicate is not offered in the first
+      place. Presentation only, and it can only be as fresh as the last render:
+      there is no JavaScript in this app, so the list a row is showing was built
+      when the page was, and the page is rebuilt on „+ další řádek" (which is
+      the tap that asks for an empty row to fill) and on every re-render after
+      an error. Picking the same thing twice between two renders is exactly what
+      `clean()` is there for.
+
+    Only unbound formsets get the hiding. A bound one is being validated, and
+    narrowing a field's queryset there would turn a duplicate into
+    „Vyberte platnou možnost." on whichever row lost the race, instead of the
+    message below.
+    """
+
+    # The select the rule applies to, and the Czech complaint about a repeat.
+    unique_field = None
+    duplicate_error = None
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not self.is_bound:
+            self._hide_taken_choices()
+
+    def _row_choices(self):
+        """What each row currently names, as a pk string, `None` for an empty row.
+
+        Read off `initial` because this runs on unbound formsets only. The
+        values arrive as ints from `job_edit` (a stored `material_id`) and as
+        strings from a „+ další řádek" rebuild (raw POST), so they are
+        normalised to strings and anything that is not a pk is ignored.
+        """
+        choices = []
+        for form in self.forms:
+            value = form.initial.get(self.unique_field)
+            value = '' if value is None else str(value)
+            choices.append(value if value.isdigit() else None)
+        return choices
+
+    def _hide_taken_choices(self):
+        chosen = self._row_choices()
+        taken = {value for value in chosen if value}
+        if not taken:
+            return
+        for form, own in zip(self.forms, chosen):
+            # Every row keeps its own choice — it is the one that has to
+            # re-select an option when the row renders.
+            drop = taken - {own}
+            if drop:
+                field = form.fields[self.unique_field]
+                field.queryset = field.queryset.exclude(pk__in=drop)
+
+    def clean(self):
+        super().clean()
+        seen = set()
+        for form in self.forms:
+            # A row that failed its own validation has nothing to compare and is
+            # already carrying an error of its own.
+            value = form.cleaned_data.get(self.unique_field) if hasattr(form, 'cleaned_data') else None
+            if value is None:
+                continue
+            if value in seen:
+                # On the row, not as a non-form error: the message names one row
+                # of four and belongs where the reader can see which.
+                form.add_error(None, self.duplicate_error.format(name=value))
+            seen.add(value)
+
+
+class MaterialRowFormSet(UniqueChoiceFormSet):
+    unique_field = 'material'
+    duplicate_error = 'Materiál „{name}“ je v této sekci vybraný víckrát. Sečtěte množství do jednoho řádku.'
+
+
+class MachineRowFormSet(UniqueChoiceFormSet):
+    unique_field = 'machine'
+    duplicate_error = 'Stroj „{name}“ je vybraný víckrát. Sečtěte motohodiny a tuny do jednoho řádku.'
+
+
+class WorkerRowFormSet(UniqueChoiceFormSet):
+    unique_field = 'user'
+    duplicate_error = 'Pracovník „{name}“ je vybraný víckrát. Sečtěte hodiny do jednoho řádku.'
+
+
 class MovementItemForm(forms.Form):
     # required=False because a whole row may be left blank, but these are still
     # entry fields — the blank option is a prompt, not an "all" filter.
@@ -116,8 +212,8 @@ class MovementItemForm(forms.Form):
         return cleaned_data
 
 
-ConsumedFormSet = forms.formset_factory(MovementItemForm, extra=1)
-ProducedFormSet = forms.formset_factory(MovementItemForm, extra=1)
+ConsumedFormSet = forms.formset_factory(MovementItemForm, formset=MaterialRowFormSet, extra=1)
+ProducedFormSet = forms.formset_factory(MovementItemForm, formset=MaterialRowFormSet, extra=1)
 
 
 class MachineUsageForm(forms.Form):
@@ -157,7 +253,7 @@ class MachineUsageForm(forms.Form):
         return cleaned_data
 
 
-MachineUsageFormSet = forms.formset_factory(MachineUsageForm, extra=1)
+MachineUsageFormSet = forms.formset_factory(MachineUsageForm, formset=MachineRowFormSet, extra=1)
 
 
 class WorkerHoursForm(forms.Form):
@@ -194,23 +290,24 @@ class WorkerHoursForm(forms.Form):
         return cleaned_data
 
 
-WorkerHoursFormSet = forms.formset_factory(WorkerHoursForm, extra=1)
+WorkerHoursFormSet = forms.formset_factory(WorkerHoursForm, formset=WorkerRowFormSet, extra=1)
 
 
 # The four row sections of the job form, in the order `_job_form_fields.html`
 # renders them: the formset prefix — which is also the suffix of the
 # „+ další řádek" button that grows that section, `add_workers` and friends —
-# and the form a single row is made of. `_grown_job_forms` in views.py walks
-# this, so a fifth section needs adding here and nowhere else.
+# the form a single row is made of, and the formset class that holds the
+# section's no-duplicates rule. `_resized_job_forms` in views.py walks this, so
+# a fifth section needs adding here and nowhere else.
 JOB_SECTIONS = (
-    ('workers', WorkerHoursForm),
-    ('consumed', MovementItemForm),
-    ('produced', MovementItemForm),
-    ('machines', MachineUsageForm),
+    ('workers', WorkerHoursForm, WorkerRowFormSet),
+    ('consumed', MovementItemForm, MaterialRowFormSet),
+    ('produced', MovementItemForm, MaterialRowFormSet),
+    ('machines', MachineUsageForm, MachineRowFormSet),
 )
 
 
-def job_row_formset(row_form, *, prefix, rows, blank_rows, form_kwargs=None):
+def job_row_formset(row_form, base_formset, *, prefix, rows, blank_rows, form_kwargs=None):
     """One section of the job form holding exactly `rows`, plus `blank_rows` empty ones.
 
     The formset classes above pad a fixed number of blanks onto whatever they
@@ -221,10 +318,15 @@ def job_row_formset(row_form, *, prefix, rows, blank_rows, form_kwargs=None):
     rather than passed to the instance; `formset_factory` is a `type()` call and
     cheap enough to run per request.
 
+    Handing `formset_factory` the section's own `base_formset` is what keeps
+    the rebuilt page's dropdowns free of what the other rows already took — a
+    plain `BaseFormSet` here would leave the new row offering the material one
+    tap away from being a duplicate.
+
     The rows go in as `initial`, not `data`: the rebuilt page is unbound on
-    purpose. See `_grown_job_forms`.
+    purpose. See `_resized_job_forms`.
     """
-    formset_class = forms.formset_factory(row_form, extra=blank_rows)
+    formset_class = forms.formset_factory(row_form, formset=base_formset, extra=blank_rows)
     return formset_class(prefix=prefix, initial=rows, form_kwargs=form_kwargs or {})
 
 

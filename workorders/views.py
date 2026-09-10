@@ -1,5 +1,4 @@
 import csv
-from collections import defaultdict
 from datetime import timedelta
 from decimal import Decimal
 
@@ -66,17 +65,20 @@ DATE_PRESETS = (
 def _collect_rows(consumed_formset, produced_formset, machine_formset, worker_formset):
     """The filled-in rows of a submitted job, one collection per section.
 
-    Rows are taken exactly as typed — repeated material rows stay separate line
-    items. Only the worker rows are combined: naming the same person twice adds
-    their hours up rather than tripping `unique_worker_hours_per_work_order`.
+    Rows are taken exactly as typed. Every section refuses a repeat before this
+    runs — `UniqueChoiceFormSet` — so there is nothing here to combine or to
+    de-duplicate: each material, machine and person appears at most once per
+    section, and the worker mapping cannot collide with
+    `unique_worker_hours_per_work_order`.
     """
     consumed_rows = [f.cleaned_data for f in consumed_formset if f.cleaned_data.get('material')]
     produced_rows = [f.cleaned_data for f in produced_formset if f.cleaned_data.get('material')]
     machine_rows = [f.cleaned_data for f in machine_formset if f.cleaned_data.get('machine')]
-    worker_hours = defaultdict(Decimal)
-    for form in worker_formset:
-        if form.cleaned_data.get('user'):
-            worker_hours[form.cleaned_data['user']] += form.cleaned_data['hours']
+    worker_hours = {
+        form.cleaned_data['user']: form.cleaned_data['hours']
+        for form in worker_formset
+        if form.cleaned_data.get('user')
+    }
     return consumed_rows, produced_rows, machine_rows, worker_hours
 
 
@@ -152,8 +154,8 @@ def _write_job_rows(work_order, author, own_hours, consumed_rows, produced_rows,
 # What the two row buttons under each section post under. A submit button
 # reaches the server only when it is the one that was pressed, so the key being
 # there at all is the whole signal — there is no value to compare against.
-ADD_ROW_BUTTONS = {f'add_{prefix}': prefix for prefix, _ in JOB_SECTIONS}
-REMOVE_ROW_BUTTONS = {f'remove_{prefix}': prefix for prefix, _ in JOB_SECTIONS}
+ADD_ROW_BUTTONS = {f'add_{prefix}': prefix for prefix, *_ in JOB_SECTIONS}
+REMOVE_ROW_BUTTONS = {f'remove_{prefix}': prefix for prefix, *_ in JOB_SECTIONS}
 
 # Floor on the rows a section can be left with. „− odebrat řádek" stops here, and
 # so does a rebuild from a POST that claims fewer: a section with no rows at all
@@ -274,13 +276,14 @@ def _resized_job_forms(post_data, section, delta, *, author, viewer, order_form_
     # Assigned after construction because the field set is not known until then.
     order_form.initial = {name: post_data.get(name, '') for name in order_form.fields}
     formsets = {}
-    for prefix, row_form in JOB_SECTIONS:
+    for prefix, row_form, base_formset in JOB_SECTIONS:
         rows, blank_rows = _resized_section(
             _submitted_rows(post_data, row_form, prefix),
             delta if prefix == section else 0,
         )
         formsets[prefix] = job_row_formset(
             row_form,
+            base_formset,
             prefix=prefix,
             rows=rows,
             blank_rows=blank_rows,

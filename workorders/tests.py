@@ -116,9 +116,10 @@ class TransformCreateTests(TestCase):
         consumed = StockMovement.objects.get(movement_type=StockMovement.MovementType.TRANSFORM_CONSUME)
         self.assertEqual(consumed.quantity, Decimal('-9999'))
 
-    def test_repeated_material_rows_are_kept_as_separate_line_items(self):
-        # The view used to combine these to stock-check them as one. With no
-        # check left, each row is written as typed.
+    def test_the_same_material_twice_in_one_section_is_refused(self):
+        # One material belongs on one row: two rows naming it are two halves of
+        # a quantity that should have been typed once, and nothing downstream
+        # can tell them apart afterwards. See DuplicateRowTests for the rule.
         response = self._post(
             [
                 {'material': self.material_raw, 'quantity': Decimal('6')},
@@ -126,10 +127,9 @@ class TransformCreateTests(TestCase):
             ],
             [{'material': self.material_finished, 'quantity': Decimal('12')}],
         )
-        self.assertRedirects(response, reverse('transform_create'))
-        consumed = StockMovement.objects.filter(movement_type=StockMovement.MovementType.TRANSFORM_CONSUME)
-        self.assertEqual(consumed.count(), 2)
-        self.assertEqual(sum((m.quantity for m in consumed), Decimal('0')), Decimal('-12'))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(WorkOrder.objects.exists())
+        self.assertFalse(StockMovement.objects.exists())
 
     def test_transform_records_a_machine_row(self):
         response = self._post(
@@ -212,7 +212,10 @@ class TransformCreateTests(TestCase):
             [(self.machine_a, Decimal('2.00')), (self.machine_b, Decimal('1.50'))],
         )
 
-    def test_transform_same_machine_used_twice_writes_two_rows(self):
+    def test_transform_same_machine_used_twice_is_refused(self):
+        # A machine that ran twice on one job ran for the sum of the two, on one
+        # row. Two rows would double it in the Stroje totals with nothing to say
+        # which is which.
         response = self._post(
             [{'material': self.material_raw, 'quantity': Decimal('3')}],
             [{'material': self.material_finished, 'quantity': Decimal('3')}],
@@ -221,8 +224,9 @@ class TransformCreateTests(TestCase):
                 {'machine': self.machine_a, 'hours': Decimal('1')},
             ],
         )
-        self.assertRedirects(response, reverse('transform_create'))
-        self.assertEqual(MachineUsage.objects.filter(machine=self.machine_a).count(), 2)
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(WorkOrder.objects.exists())
+        self.assertFalse(MachineUsage.objects.exists())
 
     def test_empty_machine_formset_is_optional(self):
         response = self._post(
@@ -366,9 +370,10 @@ class TransformCreateTests(TestCase):
         self.assertFalse(work_order.collaborators.exists())
         self.assertEqual(list(work_order.worker_hours.values_list('user', flat=True)), [self.worker.pk])
 
-    def test_same_person_named_twice_has_their_hours_combined(self):
-        # Same rule as the consumed rows — combine rather than fail, which the
-        # unique constraint on (work_order, user) would otherwise do.
+    def test_same_person_named_twice_is_refused(self):
+        # This used to sum the two rows, because the unique constraint on
+        # (work_order, user) would otherwise have failed the write with a 500.
+        # It is refused on the form now, where the person can see it.
         response = self._post(
             [{'material': self.material_raw, 'quantity': Decimal('3')}],
             [{'material': self.material_finished, 'quantity': Decimal('3')}],
@@ -377,8 +382,9 @@ class TransformCreateTests(TestCase):
                 {'user': self.other_worker, 'hours': Decimal('1.5')},
             ],
         )
-        self.assertRedirects(response, reverse('transform_create'))
-        self.assertEqual(WorkerHours.objects.get(user=self.other_worker).hours, Decimal('4.50'))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(WorkOrder.objects.exists())
+        self.assertFalse(WorkerHours.objects.exists())
 
     def test_worker_row_missing_hours_rejected(self):
         response = self._post(
@@ -505,11 +511,13 @@ class TransformCreateTests(TestCase):
 
     def test_balance_compares_totals_not_individual_rows(self):
         # The normal case: one input crushed into several output fractions.
+        # Different fractions, because a section refuses the same material twice.
+        coarse = Material.objects.create(sku='FIN2', name='Frakce 16/32')
         response = self._post(
             [{'material': self.material_raw, 'quantity': Decimal('10')}],
             [
                 {'material': self.material_finished, 'quantity': Decimal('4')},
-                {'material': self.material_finished, 'quantity': Decimal('6')},
+                {'material': coarse, 'quantity': Decimal('6')},
             ],
         )
         self.assertRedirects(response, reverse('transform_create'))
@@ -518,14 +526,16 @@ class TransformCreateTests(TestCase):
         self.assertEqual(sum((m.quantity for m in produced), Decimal('0')), Decimal('10'))
 
     def test_balance_holds_across_many_rows_on_both_sides(self):
+        second_input = Material.objects.create(sku='RAW2', name='Výkopek')
+        coarse = Material.objects.create(sku='FIN2', name='Frakce 16/32')
         response = self._post(
             [
                 {'material': self.material_raw, 'quantity': Decimal('2.5')},
-                {'material': self.material_raw, 'quantity': Decimal('7.5')},
+                {'material': second_input, 'quantity': Decimal('7.5')},
             ],
             [
                 {'material': self.material_finished, 'quantity': Decimal('3.25')},
-                {'material': self.material_finished, 'quantity': Decimal('6.75')},
+                {'material': coarse, 'quantity': Decimal('6.75')},
             ],
         )
         self.assertRedirects(response, reverse('transform_create'))
@@ -2299,6 +2309,248 @@ class JobDeleteTests(ReviewFixtureMixin, TestCase):
         self.assertFalse(MachineUsage.objects.exists())
 
 
+class DuplicateRowTests(ReviewFixtureMixin, TestCase):
+    """No section of the job form may name the same thing on two rows.
+
+    Two rows naming one material are two halves of a quantity that should have
+    been typed once; two rows naming one machine double it in the Stroje totals;
+    two rows naming one person used to be silently added together, because the
+    unique constraint on (work_order, user) would otherwise have failed the
+    write. In every case the repeated row carries nothing the first one does
+    not, and nobody reading the job back can tell what was meant.
+
+    Two halves are tested here: the rule (`clean()`, on the POST) and the help
+    (an unbound page does not offer what another row already took). The second
+    is presentation and can only be as fresh as the last render — there is no
+    JavaScript in this app — which is exactly why the first exists.
+    """
+
+    def _submit(self, **kwargs):
+        self.client.force_login(self.worker)
+        return self.client.post(reverse('transform_create'), job_payload(**kwargs))
+
+    # -------------------------------------------------------------- the rule
+
+    def test_the_same_material_twice_on_the_consumed_side_is_refused(self):
+        response = self._submit(
+            consumed_rows=[
+                {'material': self.material_raw, 'quantity': Decimal('2')},
+                {'material': self.material_raw, 'quantity': Decimal('3')},
+            ],
+            produced_rows=[{'material': self.material_finished, 'quantity': Decimal('5')}],
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(WorkOrder.objects.exists())
+
+    def test_the_same_material_twice_on_the_produced_side_is_refused(self):
+        response = self._submit(
+            consumed_rows=[{'material': self.material_raw, 'quantity': Decimal('5')}],
+            produced_rows=[
+                {'material': self.material_finished, 'quantity': Decimal('2')},
+                {'material': self.material_finished, 'quantity': Decimal('3')},
+            ],
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(WorkOrder.objects.exists())
+
+    def test_the_complaint_names_the_material_and_is_czech(self):
+        response = self._submit(
+            consumed_rows=[
+                {'material': self.material_raw, 'quantity': Decimal('2')},
+                {'material': self.material_raw, 'quantity': Decimal('3')},
+            ],
+            produced_rows=[{'material': self.material_finished, 'quantity': Decimal('5')}],
+        )
+        self.assertContains(response, 'je v této sekci vybraný víckrát')
+        self.assertContains(response, str(self.material_raw))
+
+    def test_the_complaint_sits_on_the_repeated_row_not_the_first_one(self):
+        """It names one row of several, so it has to render next to that row."""
+        response = self._submit(
+            consumed_rows=[
+                {'material': self.material_raw, 'quantity': Decimal('2')},
+                {'material': self.material_raw, 'quantity': Decimal('3')},
+            ],
+            produced_rows=[{'material': self.material_finished, 'quantity': Decimal('5')}],
+        )
+        formset = response.context['consumed_formset']
+        self.assertEqual(formset.forms[0].non_field_errors(), [])
+        self.assertEqual(len(formset.forms[1].non_field_errors()), 1)
+
+    def test_one_material_may_still_be_consumed_and_produced_by_one_job(self):
+        """The rule is per section: those are two statements about a material,
+        not one typed twice."""
+        response = self._submit(
+            consumed_rows=[{'material': self.material_raw, 'quantity': Decimal('5')}],
+            produced_rows=[{'material': self.material_raw, 'quantity': Decimal('5')}],
+        )
+        self.assertRedirects(response, reverse('transform_create'))
+        self.assertEqual(StockMovement.objects.filter(material=self.material_raw).count(), 2)
+
+    def test_different_materials_on_one_side_are_still_fine(self):
+        response = self._submit(
+            consumed_rows=[{'material': self.material_raw, 'quantity': Decimal('5')}],
+            produced_rows=[
+                {'material': self.material_finished, 'quantity': Decimal('3')},
+                {'material': self.material_raw, 'quantity': Decimal('2')},
+            ],
+        )
+        self.assertRedirects(response, reverse('transform_create'))
+        self.assertEqual(WorkOrder.objects.get().movements.count(), 3)
+
+    def test_the_same_machine_twice_is_refused(self):
+        response = self._submit(
+            consumed_rows=[{'material': self.material_raw, 'quantity': Decimal('5')}],
+            produced_rows=[{'material': self.material_finished, 'quantity': Decimal('5')}],
+            machine_rows=[
+                {'machine': self.machine_a, 'hours': Decimal('1')},
+                {'machine': self.machine_a, 'hours': Decimal('2')},
+            ],
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'je vybraný víckrát')
+        self.assertFalse(MachineUsage.objects.exists())
+
+    def test_chained_machines_are_still_fine(self):
+        response = self._submit(
+            consumed_rows=[{'material': self.material_raw, 'quantity': Decimal('5')}],
+            produced_rows=[{'material': self.material_finished, 'quantity': Decimal('5')}],
+            machine_rows=[
+                {'machine': self.machine_a, 'hours': Decimal('1')},
+                {'machine': self.machine_b, 'hours': Decimal('2')},
+            ],
+        )
+        self.assertRedirects(response, reverse('transform_create'))
+        self.assertEqual(MachineUsage.objects.count(), 2)
+
+    def test_the_same_collaborator_twice_is_refused(self):
+        response = self._submit(
+            consumed_rows=[{'material': self.material_raw, 'quantity': Decimal('5')}],
+            produced_rows=[{'material': self.material_finished, 'quantity': Decimal('5')}],
+            worker_rows=[
+                {'user': self.other_worker, 'hours': Decimal('3')},
+                {'user': self.other_worker, 'hours': Decimal('1.5')},
+            ],
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'je vybraný víckrát')
+        self.assertFalse(WorkerHours.objects.exists())
+
+    def test_a_duplicate_row_refuses_the_whole_job(self):
+        """Same rule as the mass balance: nothing at all is written."""
+        self._submit(
+            consumed_rows=[
+                {'material': self.material_raw, 'quantity': Decimal('2')},
+                {'material': self.material_raw, 'quantity': Decimal('3')},
+            ],
+            produced_rows=[{'material': self.material_finished, 'quantity': Decimal('5')}],
+            machine_rows=[{'machine': self.machine_a, 'hours': Decimal('1')}],
+            worker_rows=[{'user': self.other_worker, 'hours': Decimal('1')}],
+        )
+        self.assertFalse(WorkOrder.objects.exists())
+        self.assertFalse(StockMovement.objects.exists())
+        self.assertFalse(MachineUsage.objects.exists())
+        self.assertFalse(WorkerHours.objects.exists())
+
+    def test_a_manager_correcting_a_job_is_held_to_the_same_rule(self):
+        work_order = self.submit_job(self.worker)
+        self.client.force_login(self.manager)
+        response = self.client.post(
+            reverse('job_edit', args=[work_order.pk]),
+            job_payload(
+                [
+                    {'material': self.material_raw, 'quantity': Decimal('2')},
+                    {'material': self.material_raw, 'quantity': Decimal('3')},
+                ],
+                [{'material': self.material_finished, 'quantity': Decimal('5')}],
+            ),
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'je v této sekci vybraný víckrát')
+        # The job still holds what it held before the refused correction.
+        self.assertEqual(work_order.movements.count(), 2)
+
+    # ------------------------------------------------ not offered a second time
+
+    def test_a_new_row_is_not_offered_what_another_row_took(self):
+        """„+ další řádek" re-renders the page, which is when the list is built."""
+        self.client.force_login(self.worker)
+        data = job_payload(
+            [{'material': self.material_raw, 'quantity': Decimal('5')}],
+            [{'material': self.material_finished, 'quantity': Decimal('5')}],
+        )
+        data['add_consumed'] = ''
+        response = self.client.post(reverse('transform_create'), data)
+        new_row = response.context['consumed_formset'].forms[1]
+        self.assertNotIn(self.material_raw, new_row.fields['material'].queryset)
+        self.assertIn(self.material_finished, new_row.fields['material'].queryset)
+
+    def test_the_row_that_took_it_keeps_it(self):
+        """Otherwise the option it has to re-select would not be in its own list,
+        and the row would come back blank."""
+        self.client.force_login(self.worker)
+        data = job_payload(
+            [{'material': self.material_raw, 'quantity': Decimal('5')}],
+            [{'material': self.material_finished, 'quantity': Decimal('5')}],
+        )
+        data['add_consumed'] = ''
+        response = self.client.post(reverse('transform_create'), data)
+        first_row = response.context['consumed_formset'].forms[0]
+        self.assertIn(self.material_raw, first_row.fields['material'].queryset)
+        self.assertContains(response, f'value="{self.material_raw.pk}" selected')
+
+    def test_the_two_material_sections_do_not_hide_from_each_other(self):
+        self.client.force_login(self.worker)
+        data = job_payload(
+            [{'material': self.material_raw, 'quantity': Decimal('5')}],
+            [{'material': self.material_finished, 'quantity': Decimal('5')}],
+        )
+        data['add_produced'] = ''
+        response = self.client.post(reverse('transform_create'), data)
+        new_row = response.context['produced_formset'].forms[1]
+        self.assertIn(self.material_raw, new_row.fields['material'].queryset)
+
+    def test_a_new_machine_row_is_not_offered_the_machine_already_running(self):
+        self.client.force_login(self.worker)
+        data = job_payload(
+            [{'material': self.material_raw, 'quantity': Decimal('5')}],
+            [{'material': self.material_finished, 'quantity': Decimal('5')}],
+            machine_rows=[{'machine': self.machine_a, 'hours': Decimal('2')}],
+        )
+        data['add_machines'] = ''
+        response = self.client.post(reverse('transform_create'), data)
+        new_row = response.context['machine_formset'].forms[1]
+        self.assertNotIn(self.machine_a, new_row.fields['machine'].queryset)
+        self.assertIn(self.machine_b, new_row.fields['machine'].queryset)
+
+    def test_a_new_worker_row_is_not_offered_someone_already_named(self):
+        self.client.force_login(self.worker)
+        data = job_payload(
+            [{'material': self.material_raw, 'quantity': Decimal('5')}],
+            [{'material': self.material_finished, 'quantity': Decimal('5')}],
+            worker_rows=[{'user': self.other_worker, 'hours': Decimal('2')}],
+        )
+        data['add_workers'] = ''
+        response = self.client.post(reverse('transform_create'), data)
+        new_row = response.context['worker_formset'].forms[1]
+        self.assertNotIn(self.other_worker, new_row.fields['user'].queryset)
+
+    def test_the_edit_forms_blank_row_hides_what_the_job_already_uses(self):
+        work_order = self.submit_job(self.worker)
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('job_edit', args=[work_order.pk]))
+        formset = response.context['consumed_formset']
+        self.assertIn(self.material_raw, formset.forms[0].fields['material'].queryset)
+        self.assertNotIn(self.material_raw, formset.forms[1].fields['material'].queryset)
+
+    def test_a_fresh_form_hides_nothing(self):
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('transform_create'))
+        choices = response.context['consumed_formset'].forms[0].fields['material'].queryset
+        self.assertIn(self.material_raw, choices)
+        self.assertIn(self.material_finished, choices)
+
+
 class RowButtonTests(ReviewFixtureMixin, TestCase):
     """„+ další řádek" and „− odebrat řádek" resize one section of the job form.
 
@@ -2345,12 +2597,15 @@ class RowButtonTests(ReviewFixtureMixin, TestCase):
     def test_the_new_row_is_reachable_in_the_rendered_form(self):
         """The point of the whole feature: a fourth row the browser can post."""
         self.client.force_login(self.worker)
+        # Three different fractions: a section refuses the same material twice,
+        # which is the shape a real four-row job has anyway.
+        third = Material.objects.create(sku='FIN2', name='Frakce 16/32')
         data = job_payload(
             [{'material': self.material_raw, 'quantity': Decimal('5')}],
             [
                 {'material': self.material_finished, 'quantity': Decimal('2')},
-                {'material': self.material_finished, 'quantity': Decimal('2')},
-                {'material': self.material_finished, 'quantity': Decimal('1')},
+                {'material': third, 'quantity': Decimal('2')},
+                {'material': self.material_raw, 'quantity': Decimal('1')},
             ],
         )
         data['add_produced'] = ''
