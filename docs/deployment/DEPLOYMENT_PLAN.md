@@ -12,7 +12,7 @@
 >
 > **Still current, and the reason this file is kept:** sections 1 and 2 and the
 > Context above them — the `collectstatic`/`STATICFILES_BACKEND` pairing, the
-> `../../.gitignore` `../../static` versus `staticfiles/` correction, the `--env-file`
+> `.gitignore` `static/` versus `staticfiles/` correction, the `--env-file`
 > double-pass, the Compose project name, the Postgres collation, seeding and
 > backups. None of that changed.
 
@@ -22,50 +22,50 @@ of it is not recoverable from the files it describes.
 
 ## Context
 
-The app currently only runs via the dev-oriented `../../docker-compose.yml` (Django `runserver`, `DEBUG=True`, DB port exposed to the host). We have a company server available and want the app running there for real use, reachable over the depot's LAN by IP (no domain/TLS for now — that can come later). The server already runs another Postgres instance and another web app, so the deployment must not collide with either.
+The app currently only runs via the dev-oriented `docker-compose.yml` (Django `runserver`, `DEBUG=True`, DB port exposed to the host). We have a company server available and want the app running there for real use, reachable over the depot's LAN by IP (no domain/TLS for now — that can come later). The server already runs another Postgres instance and another web app, so the deployment must not collide with either.
 
-While investigating, two concrete issues turned up that would block a naive deploy and need fixing as part of this work, not left to discover the hard way. **Both are now fixed** — kept here because the reasoning explains why the Dockerfile and `../../.gitignore` look the way they do.
+While investigating, two concrete issues turned up that would block a naive deploy and need fixing as part of this work, not left to discover the hard way. **Both are now fixed** — kept here because the reasoning explains why the Dockerfile and `.gitignore` look the way they do.
 
-1. ~~**`collectstatic` has never been run**~~ — **fixed**, but the original diagnosis was wrong in an instructive way. The symptom was real and reproduced: with `DEBUG=False`, `GET /login/` rendered `200` while `GET /static/img/logo.png` returned **404**, so every asset was broken in production. The stated cause — whitenoise's `CompressedManifestStaticFilesStorage` needing a manifest — was not, because **that backend was never active**. `../../config/settings.py` selected it via `STATICFILES_STORAGE`, a setting Django *removed in 5.1*; on Django 6.1 the line was silently ignored and the effective backend was plain `StaticFilesStorage`. The 404 was simply `DEBUG=False` turning off Django's own static serving with nothing collected into `STATIC_ROOT` for `WhiteNoiseMiddleware` to serve.
+1. ~~**`collectstatic` has never been run**~~ — **fixed**, but the original diagnosis was wrong in an instructive way. The symptom was real and reproduced: with `DEBUG=False`, `GET /login/` rendered `200` while `GET /static/img/logo.png` returned **404**, so every asset was broken in production. The stated cause — whitenoise's `CompressedManifestStaticFilesStorage` needing a manifest — was not, because **that backend was never active**. `config/settings.py` selected it via `STATICFILES_STORAGE`, a setting Django *removed in 5.1*; on Django 6.1 the line was silently ignored and the effective backend was plain `StaticFilesStorage`. The 404 was simply `DEBUG=False` turning off Django's own static serving with nothing collected into `STATIC_ROOT` for `WhiteNoiseMiddleware` to serve.
 
    Three things were needed, not one: move the backend into the `STORAGES` dict so the choice actually takes effect; add the `collectstatic` build step; and make sure the two agree about whether a manifest exists (see section 1). Manifest storage is now **opt-in per environment** rather than global — `manage.py test` forces `DEBUG=False`, and `DEBUG` is what makes hashed-URL lookup short-circuit, so a global default would have failed every template test until someone ran `collectstatic`.
 
-2. ~~**`../../.gitignore` line 3 (`../../seed_data`) blanket-excludes the whole directory**~~ — **fixed**. The blanket line is gone; the specific `seed_data/*.csv` + `!seed_data/*.example.csv` pair now works as intended and all three `*.example.csv` files (`materials`, `machines`, `users`) are committed, so a `git clone`/`pull` on the server brings the catalog templates along. (There were four until `locations.csv` went with the `Location` model.)
+2. ~~**`.gitignore` line 3 (`seed_data/`) blanket-excludes the whole directory**~~ — **fixed**. The blanket line is gone; the specific `seed_data/*.csv` + `!seed_data/*.example.csv` pair now works as intended and all three `*.example.csv` files (`materials`, `machines`, `users`) are committed, so a `git clone`/`pull` on the server brings the catalog templates along. (There were four until `locations.csv` went with the `Location` model.)
 
-   The same class of bug was found a second time and also fixed: `../../.gitignore` ignored **`../../static`**, the hand-maintained source directory in `STATICFILES_DIRS`, when the generated directory is `STATIC_ROOT` = **`staticfiles/`**. `../../templates/base.html` referenced `img/background.jpg`, which existed only on one developer's machine and had never been committed — a fresh clone or `docker build` produced a site with no background. The rule now ignores `staticfiles/`, and `../../static/img/background.jpg` is tracked.
+   The same class of bug was found a second time and also fixed: `.gitignore` ignored **`static/`**, the hand-maintained source directory in `STATICFILES_DIRS`, when the generated directory is `STATIC_ROOT` = **`staticfiles/`**. `templates/base.html` referenced `img/background.jpg`, which existed only on one developer's machine and had never been committed — a fresh clone or `docker build` produced a site with no background. The rule now ignores `staticfiles/`, and `static/img/background.jpg` is tracked.
 
 ## Approach
 
-**Deployment model:** git-based (not rsync) — with the `../../.gitignore` fix landed, everything needed is trackable. The server does `git clone`/`git pull` from the existing GitHub remote; `.env.production` and the real `seed_data/*.csv` files (actual company data) are created directly on the server and never committed, same pattern already used for `../../.env` and `seed_data/*.csv` in dev.
+**Deployment model:** git-based (not rsync) — with the `.gitignore` fix landed, everything needed is trackable. The server does `git clone`/`git pull` from the existing GitHub remote; `.env.production` and the real `seed_data/*.csv` files (actual company data) are created directly on the server and never committed, same pattern already used for `.env` and `seed_data/*.csv` in dev.
 
 **Port strategy:** since another Postgres and another web app already run on that server, avoid the conflict structurally instead of guessing free ports:
 - Postgres is **not exposed to the host at all** in prod — the `web` container reaches it over the internal Compose network at `db:5432`, nothing external needs it. This sidesteps the other-Postgres conflict entirely without needing to know what port it uses.
 - The app's own web port is configurable via an `APP_PORT` env var (default `8080`, clearly *not* 80/443/8000) so it's a one-line change in `.env.production` if that's also taken. First runbook step is checking what's actually free on the server.
-- The prod compose file sets a top-level **`name: materialinventory-prod`**. Without it Compose derives the project name from the directory, and that name prefixes the container names *and* the `db_data` volume — so a differently-cloned path addresses a different volume by accident, and the dev `../../docker-compose.yml` in the same checkout addresses the *same* one. The `-prod` suffix is not cosmetic: runbook step 6 tells you to run `down -v` on a bad cluster, and under the bare name that command would take the development database with it.
+- The prod compose file sets a top-level **`name: materialinventory-prod`**. Without it Compose derives the project name from the directory, and that name prefixes the container names *and* the `db_data` volume — so a differently-cloned path addresses a different volume by accident, and the dev `docker-compose.yml` in the same checkout addresses the *same* one. The `-prod` suffix is not cosmetic: runbook step 6 tells you to run `down -v` on a bad cluster, and under the bare name that command would take the development database with it.
 
-**`.env.production` has to be passed twice, and that is not a mistake.** Compose reads two different things from two different places: `env_file:` on a service supplies variables *inside the container*, while `${APP_PORT}`-style **interpolation in the compose file itself** only ever reads the shell environment and the project's default `../../.env`. A `${APP_PORT}` in `ports:` therefore does **not** pick up `APP_PORT` from an `env_file:` entry — it silently expands to empty. So every command in the runbook carries `--env-file .env.production` *as well as* the service-level `env_file:`, and step 4 sets up a shell alias so nobody has to remember. This is the easiest thing here to get wrong, and it fails as a container bound to the wrong port or a `db` coming up with blank credentials, not as an error message.
+**`.env.production` has to be passed twice, and that is not a mistake.** Compose reads two different things from two different places: `env_file:` on a service supplies variables *inside the container*, while `${APP_PORT}`-style **interpolation in the compose file itself** only ever reads the shell environment and the project's default `.env`. A `${APP_PORT}` in `ports:` therefore does **not** pick up `APP_PORT` from an `env_file:` entry — it silently expands to empty. So every command in the runbook carries `--env-file .env.production` *as well as* the service-level `env_file:`, and step 4 sets up a shell alias so nobody has to remember. This is the easiest thing here to get wrong, and it fails as a container bound to the wrong port or a `db` coming up with blank credentials, not as an error message.
 
 **Network stability:** users connect over plain HTTP at `http://<server-lan-ip>:<APP_PORT>` — there's no domain name yet, so that IP *is* the address everyone bookmarks/memorizes. Two things have to hold for that to keep working:
 - **The server's LAN IP must not change.** If it's on regular DHCP, the address can drift on lease renewal or reboot, silently breaking every saved URL with no obvious error. Get a DHCP reservation (or a static IP) for the server's MAC address from whoever manages the office network *before* handing out the URL — this is a prerequisite, not a nice-to-have.
-- **The app must survive a server reboot on its own.** `../../docker-compose.prod.yml` sets `restart: unless-stopped` on both services (see below), which tells the Docker daemon to bring the containers back up whenever it (re)starts. That only self-heals if the Docker daemon itself is enabled to start on boot — true by default on a standard install, but worth confirming explicitly (`systemctl is-enabled docker`) rather than assuming. Data isn't a concern either way: Postgres's named volume persists across container and host restarts, so a reboot means a short outage while things come back up, not data loss.
+- **The app must survive a server reboot on its own.** `docker-compose.prod.yml` sets `restart: unless-stopped` on both services (see below), which tells the Docker daemon to bring the containers back up whenever it (re)starts. That only self-heals if the Docker daemon itself is enabled to start on boot — true by default on a standard install, but worth confirming explicitly (`systemctl is-enabled docker`) rather than assuming. Data isn't a concern either way: Postgres's named volume persists across container and host restarts, so a reboot means a short outage while things come back up, not data loss.
 
 **HTTPS is deliberately absent, and one check will complain about it.** `manage.py check --deploy` warns about `SECURE_HSTS_SECONDS` (W004), `SECURE_SSL_REDIRECT` (W008), `SESSION_COOKIE_SECURE` (W012) and `CSRF_COOKIE_SECURE` (W016) — verified against the built image: exactly those four, "4 issues (0 silenced)". On a plain-HTTP LAN deployment all four are correct as they stand — setting either `_SECURE` cookie flag would stop the session and CSRF cookies being sent at all, and nobody could log in. Run the check for the *other* findings (a weak `SECRET_KEY`, `DEBUG` left on) and expect those four. **CSRF needs no extra configuration either**: over plain HTTP Django compares the request's `Origin` against its own host, so the entry in `ALLOWED_HOSTS` is sufficient and `CSRF_TRUSTED_ORIGINS` — which is now wired to an env var of the same name, defaulting to empty — is left empty. That stops being true the moment anything terminates TLS in front of Django, a reverse proxy or a dev tunnel alike, which brings `CSRF_TRUSTED_ORIGINS` and `SECURE_PROXY_SSL_HEADER` with it.
 
-### 1. `../../Dockerfile` — bake `collectstatic` into the image — **done**
-`RUN python manage.py collectstatic --noinput` sits after `COPY . .`, before the `CMD`. It needs no DB and no real secrets (`../../config/settings.py` has `python-decouple` defaults for everything), so it is safe at build time.
+### 1. `Dockerfile` — bake `collectstatic` into the image — **done**
+`RUN python manage.py collectstatic --noinput` sits after `COPY . .`, before the `CMD`. It needs no DB and no real secrets (`config/settings.py` has `python-decouple` defaults for everything), so it is safe at build time.
 
-The step it is paired with matters as much as the step itself: `ENV STATICFILES_BACKEND=whitenoise.storage.CompressedManifestStaticFilesStorage` immediately above it. Because `ENV` persists into the running container, the backend that *writes* the manifest during the build and the backend that *reads* it at runtime are the same by construction — the failure mode where an image is built with plain storage and then started with manifest storage (500 on every page, no manifest to read) cannot happen. `../../config/settings.py` defaults `STATICFILES_BACKEND` to the plain backend so a bare checkout and `manage.py test` need no `collectstatic`.
+The step it is paired with matters as much as the step itself: `ENV STATICFILES_BACKEND=whitenoise.storage.CompressedManifestStaticFilesStorage` immediately above it. Because `ENV` persists into the running container, the backend that *writes* the manifest during the build and the backend that *reads* it at runtime are the same by construction — the failure mode where an image is built with plain storage and then started with manifest storage (500 on every page, no manifest to read) cannot happen. `config/settings.py` defaults `STATICFILES_BACKEND` to the plain backend so a bare checkout and `manage.py test` need no `collectstatic`.
 
-Confirmed this doesn't affect dev: `../../docker-compose.yml` bind-mounts `.:/app`, shadowing the image's baked `staticfiles/`, **and** overrides `STATICFILES_BACKEND` back to plain storage in its `environment:` block — the mount alone isn't enough, because the test runner forces `DEBUG=False` and would then look for a manifest that the mount just hid.
+Confirmed this doesn't affect dev: `docker-compose.yml` bind-mounts `.:/app`, shadowing the image's baked `staticfiles/`, **and** overrides `STATICFILES_BACKEND` back to plain storage in its `environment:` block — the mount alone isn't enough, because the test runner forces `DEBUG=False` and would then look for a manifest that the mount just hid.
 
-A `../../.dockerignore` was added alongside, because `collectstatic` publishes whatever the build context leaves under `../../static`. It keeps `../../.env`, `../../.venv`, `.git/`, the real `seed_data/*.csv`, and a working spreadsheet at `static/xlsx/` out of the image — the last of which would otherwise have been served, unauthenticated, at `/static/xlsx/inventory-system-as-is.xlsx`.
+A `.dockerignore` was added alongside, because `collectstatic` publishes whatever the build context leaves under `static/`. It keeps `.env`, `.venv/`, `.git/`, the real `seed_data/*.csv`, and a working spreadsheet at `static/xlsx/` out of the image — the last of which would otherwise have been served, unauthenticated, at `/static/xlsx/inventory-system-as-is.xlsx`.
 
-### 2. `../../.gitignore` — drop the blanket `../../seed_data` line — **done**
-The blanket `../../seed_data` line is removed and the `seed_data/*.example.csv` files are committed. The `../../static` → `staticfiles/` correction described in Context #2 landed here too, together with `../../static/img/background.jpg` and an ignore for `static/xlsx/`.
+### 2. `.gitignore` — drop the blanket `seed_data/` line — **done**
+The blanket `seed_data/` line is removed and the `seed_data/*.example.csv` files are committed. The `static/` → `staticfiles/` correction described in Context #2 landed here too, together with `static/img/background.jpg` and an ignore for `static/xlsx/`.
 
 One line still to add, when section 6 lands: **`backups/`**, so a dump of real company data can never be committed by a careless `git add -A` on the server.
 
-### 3. `../../docker-compose.prod.yml` — **done**
+### 3. `docker-compose.prod.yml` — **done**
 Standalone (not an override), `db` + `web`, both `restart: unless-stopped` with
 json-file log rotation. Postgres is not published to the host at all; the web
 container reaches it at `db:5432`, which sidesteps the other Postgres on that
@@ -75,7 +75,7 @@ Four things in the file are worth knowing before editing it:
 
 - **The project name is `materialinventory-prod`, not `materialinventory`.** The
   plan originally said the latter, which is exactly the name Compose derives
-  from the directory for the *dev* `../../docker-compose.yml` in the same checkout —
+  from the directory for the *dev* `docker-compose.yml` in the same checkout —
   they would have shared the `db_data` volume, and a `down -v` here (step 6 of
   the runbook tells you to run one) would have destroyed the development
   database.
@@ -83,8 +83,8 @@ Four things in the file are worth knowing before editing it:
   `--env-file .env.production` is the easiest mistake against this file, and the
   `:?` guard turns it into a named error instead of a database that comes up
   with blank credentials. Note this only fires when nothing else supplies the
-  variable: Compose still reads a default `../../.env` if one exists in the directory,
-  so a stray `../../.env` on the server would quietly hand the prod stack the dev
+  variable: Compose still reads a default `.env` if one exists in the directory,
+  so a stray `.env` on the server would quietly hand the prod stack the dev
   credentials.
 - **`APP_BIND_IP` publishes on one interface**, defaulting to `0.0.0.0` only so
   the file parses without it. Docker publishes ports through DNAT rules that sit
@@ -92,7 +92,7 @@ Four things in the file are worth knowing before editing it:
   to the reserved LAN IP is what makes "LAN-only" true rather than assumed.
 - **`POSTGRES_INITDB_ARGS: "--locale-provider=icu --icu-locale=cs-CZ
   --encoding=UTF8"`** — see below.
-- **One bind-mount, `./seed_data:/app/seed_data:ro`**, because `../../.dockerignore`
+- **One bind-mount, `./seed_data:/app/seed_data:ro`**, because `.dockerignore`
   keeps the real CSVs out of the image on purpose while `manage.py seed_data`
   reads them from the working directory. Without it the command prints
   `not found, skipping.` and exits 0, leaving the catalog silently empty.
@@ -106,11 +106,11 @@ and restore. Measured against `postgres:16-alpine`, the default cluster sorts
 material dropdown on the Zpracování form and in the Materiál table. ICU
 collations ship in the image, so this costs nothing but has to be right *before*
 the first row is written — hence the check at runbook step 6, ahead of `migrate`.
-The dev `../../docker-compose.yml` passes the same argument, but only a fresh volume
+The dev `docker-compose.yml` passes the same argument, but only a fresh volume
 picks it up; an existing dev database keeps byte order until someone runs
 `down -v`.
 
-### 4. `../../.env.production.example` — **done**
+### 4. `.env.production.example` — **done**
 `DEBUG=False`, an empty `SECRET_KEY` to fill per deploy, `ALLOWED_HOSTS`
 seeded with a placeholder LAN IP plus `127.0.0.1,localhost` (so the app can be
 curled from the server itself while debugging), an empty `CSRF_TRUSTED_ORIGINS`
@@ -123,12 +123,12 @@ worker, which serializes every request, so one manager opening Stroje over a
 wide date range would block everyone else's page. Gunicorn reads the variable
 natively, so the baked `CMD` needs no override.
 
-Two things deliberately absent: `STATICFILES_BACKEND` (the `../../Dockerfile` `ENV`
+Two things deliberately absent: `STATICFILES_BACKEND` (the `Dockerfile` `ENV`
 owns it, and a second place to set it is a second place for it to drift), and
 any `$` in the sample values — Compose interpolates this file, so a `$` in a
 password would be read as a variable reference.
 
-### 5. `../../config/settings.py` — `LOGGING` — **done**
+### 5. `config/settings.py` — `LOGGING` — **done**
 One stdout `StreamHandler`, `django.request` at `ERROR` with
 `propagate: False`. Without it an unhandled 500 in production is recorded
 nowhere: Django's default routes those to `mail_admins` (no `ADMINS`, no mail
@@ -137,7 +137,7 @@ gunicorn only sees an ordinary response come back. `ERROR` and not `WARNING`
 because `django.request` logs every 4xx at `WARNING` and the suite asserts a
 great many 403s from `role_required`.
 
-### 6. `../../scripts/backup_db.sh` — **done**
+### 6. `scripts/backup_db.sh` — **done**
 `pg_dump | gzip` into `backups/`, with a 30-day `find -delete`, under
 `set -euo pipefail`. The wrapper is the point: `pipefail` (without it a dump
 that dies mid-stream still exits 0 through gzip, leaving a truncated archive
@@ -203,26 +203,26 @@ All landed. Grouped by what they are, since the list is now a map of the
 deployment rather than a to-do:
 
 **Build and image**
-- `../../Dockerfile` — `collectstatic` build step, paired with the `STATICFILES_BACKEND` `ENV`
-- `../../.dockerignore` — keeps `../../.env`, `.git/`, the real `seed_data/*.csv` and `static/xlsx/` out of the image
-- `../../config/settings.py` — static backend moved into `STORAGES`; `LOGGING` block added
+- `Dockerfile` — `collectstatic` build step, paired with the `STATICFILES_BACKEND` `ENV`
+- `.dockerignore` — keeps `.env`, `.git/`, the real `seed_data/*.csv` and `static/xlsx/` out of the image
+- `config/settings.py` — static backend moved into `STORAGES`; `LOGGING` block added
 
 **Running it**
-- `../../docker-compose.prod.yml` — the production stack
-- `../../.env.production.example` — the template; the filled-in file lives only on the server
-- `../../scripts/backup_db.sh` — nightly dump, installed as a cron entry by hand
+- `docker-compose.prod.yml` — the production stack
+- `.env.production.example` — the template; the filled-in file lives only on the server
+- `scripts/backup_db.sh` — nightly dump, installed as a cron entry by hand
 
 **Guard rails that are easy to overlook**
-- `../../.gitignore` — no blanket `../../seed_data`; ignores `staticfiles/` not `../../static`; plus `.env.production` (the existing `../../.env` line does **not** match it) and `backups/`
+- `.gitignore` — no blanket `seed_data/`; ignores `staticfiles/` not `static/`; plus `.env.production` (the existing `.env` line does **not** match it) and `backups/`
 - `.gitattributes` — `*.sh text eol=lf`, so a Windows checkout cannot produce a CRLF script that Linux refuses to run
-- `../../docker-compose.yml` — the dev file also got `POSTGRES_INITDB_ARGS`, so a fresh dev database sorts Czech like production
+- `docker-compose.yml` — the dev file also got `POSTGRES_INITDB_ARGS`, so a fresh dev database sorts Czech like production
 
 **Documentation**
 - `DEPLOYMENT.md` — the runbook
-- `../configuration.md` — deployment-only variables, database collation, logging
+- `docs/configuration.md` — deployment-only variables, database collation, logging
 
 **Found while verifying, not planned**
-- `../../materials/management/commands/seed_data.py` — a short CSV row (`Bagr,10` under a three-column header) crashed the command with an `AttributeError`, because `csv.DictReader` fills unreached columns with `None`. The real `machines.csv` has exactly that shape, so runbook step 8 would have failed on the server. Fixed, with a missing-required-column `CommandError` alongside it and four tests.
+- `materials/management/commands/seed_data.py` — a short CSV row (`Bagr,10` under a three-column header) crashed the command with an `AttributeError`, because `csv.DictReader` fills unreached columns with `None`. The real `machines.csv` has exactly that shape, so runbook step 8 would have failed on the server. Fixed, with a missing-required-column `CommandError` alongside it and four tests.
 
 ## Verification
 

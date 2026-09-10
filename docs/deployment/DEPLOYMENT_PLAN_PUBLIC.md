@@ -2,7 +2,7 @@
 
 Supersedes the network half of [DEPLOYMENT_PLAN.md](DEPLOYMENT_PLAN.md), which
 planned a LAN-only deployment on an office server reached by IP over plain HTTP.
-That plan's reasoning about the image, static files, `../../.gitignore`, seeding,
+That plan's reasoning about the image, static files, `.gitignore`, seeding,
 collation, logging and backups is all still current and is not repeated here —
 only what the move to a public VPS and a real domain changes.
 
@@ -63,7 +63,7 @@ stays `False`, and `SECURE_SSL_REDIRECT` redirects every already-HTTPS request
 back to HTTPS forever. The symptom is an infinite redirect loop that looks like
 a proxy misconfiguration, and the fix is in neither the proxy nor Django.
 
-**The HTTPS settings are env-driven and default to off.** `../../config/settings.py`
+**The HTTPS settings are env-driven and default to off.** `config/settings.py`
 gains `SECURE_SSL_REDIRECT`, `SESSION_COOKIE_SECURE`, `CSRF_COOKIE_SECURE`,
 `SECURE_HSTS_SECONDS`, `SECURE_HSTS_INCLUDE_SUBDOMAINS` and
 `SECURE_HSTS_PRELOAD`, every one of them reading `python-decouple` with an
@@ -78,7 +78,7 @@ and `runserver` never see them.
 it is inert unless the header is actually present.
 
 **`CSRF_TRUSTED_ORIGINS` stops being optional**, exactly as
-`../../config/settings.py` and [docs/configuration.md](../configuration.md) already
+`config/settings.py` and [docs/configuration.md](../configuration.md) already
 predicted it would the moment anything terminated TLS in front of Django. The
 browser sends `Origin: https://<domain>`; Django, reached over plain HTTP by the
 proxy, expects `http://<domain>`; they differ by scheme and **every POST fails
@@ -91,7 +91,7 @@ step that happens to pass.
 that cannot be undone by editing a file: a browser that has seen the header
 refuses plain HTTP for the host until the max-age expires, regardless of what
 the server later sends. A year of that on a domain whose certificate has broken
-is a year of an unreachable app. `../../.env.production.example` ships `3600` with a
+is a year of an unreachable app. `.env.production.example` ships `3600` with a
 note to raise it to `31536000` after a renewal has actually happened.
 
 `SECURE_HSTS_INCLUDE_SUBDOMAINS` is on and is safe **because the app sits on a
@@ -176,9 +176,9 @@ matters once the login form is public:
 4. **No password reset and no email backend.** Unchanged from the LAN plan, and
    still workable — an admin resets, or `changepassword` over SSH — but the
    second admin account (runbook step 11) stops being a nicety.
-5. **Everything under `../../static` is now unauthenticated *to the internet*, not to
+5. **Everything under `static/` is now unauthenticated *to the internet*, not to
    the depot.** No new hole; `static/xlsx/` is already excluded from both
-   `../../.gitignore` and `../../.dockerignore`. The consequence of getting it wrong is
+   `.gitignore` and `.dockerignore`. The consequence of getting it wrong is
    simply larger now.
 
 ## Files
@@ -186,32 +186,32 @@ matters once the login form is public:
 **New**
 - `Caddyfile` — the reverse proxy and TLS config; bind-mounted, not baked into
   the image
-- `../../templates/registration/lockout.html` — the Czech lockout page
+- `templates/registration/lockout.html` — the Czech lockout page
 - `DEPLOYMENT_PLAN_PUBLIC.md` — this file
 
 **Changed**
-- `../../config/settings.py` — the HTTPS block described above, plus the axes block,
+- `config/settings.py` — the HTTPS block described above, plus the axes block,
   `AUTHENTICATION_BACKENDS` and `SILENCED_SYSTEM_CHECKS`
-- `../../requirements.txt` — `django-axes==8.3.1` (no transitive dependencies)
-- `../../accounts/tests.py` — `LoginRateLimitTests`, plus one case in
+- `requirements.txt` — `django-axes==8.3.1` (no transitive dependencies)
+- `accounts/tests.py` — `LoginRateLimitTests`, plus one case in
   `AdminIndexTests` for the section that stays out
-- `../../docker-compose.prod.yml` — `proxy` service added; `web` loses `ports:`, gains
+- `docker-compose.prod.yml` — `proxy` service added; `web` loses `ports:`, gains
   `expose:` and `FORWARDED_ALLOW_IPS`; `caddy_data`/`caddy_config` volumes
-- `../../.env.production.example` — `APP_BIND_IP`/`APP_PORT` out; `APP_DOMAIN`,
+- `.env.production.example` — `APP_BIND_IP`/`APP_PORT` out; `APP_DOMAIN`,
   `ACME_EMAIL` and the four HTTPS variables in; `CSRF_TRUSTED_ORIGINS` now
   filled rather than empty
-- `../../.dockerignore` — excludes `Caddyfile`
+- `.dockerignore` — excludes `Caddyfile`
 - `DEPLOYMENT.md` — rewritten for the VPS; 16 steps, HTTPS verification, the
   pre-DNS security section, `down -v` replaced throughout
-- `../configuration.md`, `../../CLAUDE.md`, `DEPLOYMENT_PLAN.md` — kept in step
+- `docs/configuration.md`, `CLAUDE.md`, `DEPLOYMENT_PLAN.md` — kept in step
 
 **Deliberately unchanged**
 - Every app, model, view and URL of this project's own — the only code added is
   the axes wiring, its lockout template and its tests
-- `../../Dockerfile` — `collectstatic` and the `STATICFILES_BACKEND` `ENV` pairing is
+- `Dockerfile` — `collectstatic` and the `STATICFILES_BACKEND` `ENV` pairing is
   correct as it stands, and WhiteNoise serving `/static/` from inside the image
   behind a proxy needs nothing added
-- `../../scripts/backup_db.sh` — the script is right; what changed is the advice about
+- `scripts/backup_db.sh` — the script is right; what changed is the advice about
   where the copies live
 
 ## Verification

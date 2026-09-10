@@ -1,4 +1,5 @@
-# Reverse proxy and TLS terminator for the public deployment. See DEPLOYMENT.md.
+# Reverse proxy and TLS terminator for the public deployment.
+# See docs/deployment/DEPLOYMENT.md.
 #
 # Bind-mounted read-only into the `proxy` service by docker-compose.prod.yml and
 # deliberately NOT baked into the app image (.dockerignore excludes it), so an

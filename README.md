@@ -186,7 +186,7 @@ docker compose --env-file .env.production -f docker-compose.prod.yml up -d --bui
 Follow [DEPLOYMENT.md](docs/deployment/DEPLOYMENT.md) on the server rather than those two lines.
 Ordering matters in several places — the DNS record has to exist before the
 first `up` or there is no certificate, and the database collation has to be
-checked before any data exists. That runbook also opens with three security
+checked before any data exists. That runbook also opens with two security
 gaps the old LAN deployment closed with the network rather than with code; read
 them before pointing DNS at anything.
 [DEPLOYMENT_PLAN_PUBLIC.md](docs/deployment/DEPLOYMENT_PLAN_PUBLIC.md) records why the setup

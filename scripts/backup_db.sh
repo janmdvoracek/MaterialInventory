@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #
-# Daily database backup for the LAN deployment. See DEPLOYMENT.md.
+# Daily database backup for the production deployment.
+# See docs/deployment/DEPLOYMENT.md.
 #
 # Not wired up automatically — install it as a cron entry on the server:
 #   15 2 * * * /srv/MaterialInventory/scripts/backup_db.sh >> /srv/MaterialInventory/backups/backup.log 2>&1

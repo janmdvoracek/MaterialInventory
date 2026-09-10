@@ -38,7 +38,8 @@ ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=Csv(
 CSRF_TRUSTED_ORIGINS = config('CSRF_TRUSTED_ORIGINS', default='', cast=Csv())
 
 
-# HTTPS. Only the public deployment turns any of this on; see DEPLOYMENT.md.
+# HTTPS. Only the public deployment turns any of this on; see
+# docs/deployment/DEPLOYMENT.md.
 #
 # Everything below defaults to *off*, and that is not laziness — it is the same
 # trap STATICFILES_BACKEND carries further down, for the same reason. Django's
@@ -83,7 +84,8 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = config('SECURE_HSTS_INCLUDE_SUBDOMAINS', defaul
 # Left off, and `manage.py check --deploy` will say so (W021). Preloading means
 # submitting the domain to a list compiled into browsers themselves; removal
 # takes months and reaches users only as they update. It is a decision about the
-# company's domain, not about this app. See step 12 of DEPLOYMENT.md.
+# company's domain, not about this app. See step 12 of
+# docs/deployment/DEPLOYMENT.md.
 SECURE_HSTS_PRELOAD = config('SECURE_HSTS_PRELOAD', default=False, cast=bool)
 
 
@@ -107,7 +109,7 @@ INSTALLED_APPS = [
     'workorders',
     # Login rate limiting. The app is on the public internet and Django ships
     # nothing for this; see the AXES_* block below for the policy and
-    # DEPLOYMENT.md for how to unlock an account.
+    # docs/deployment/DEPLOYMENT.md for how to unlock an account.
     'axes',
 ]
 
@@ -227,7 +229,7 @@ AXES_LOCKOUT_PARAMETERS = ['username']
 # general and wrong for this deployment, for the reason directly above, so it is
 # answered here rather than left to be scrolled past — an ignored warning stops
 # being read, and `check --deploy` is supposed to come back with exactly one
-# known warning (see DEPLOYMENT.md step 12).
+# known warning (see docs/deployment/DEPLOYMENT.md step 12).
 #
 # What we give up is real and worth stating: an attacker gets AXES_FAILURE_LIMIT
 # guesses per account per cool-off from as many addresses as they like. What
@@ -242,7 +244,7 @@ AXES_FAILURE_LIMIT = 5
 
 # Long enough to make guessing pointless, short enough that a locked-out worker
 # is not finished for the shift. An admin can clear it immediately — see the
-# `axes_reset_username` command in DEPLOYMENT.md.
+# `axes_reset_username` command in docs/deployment/DEPLOYMENT.md.
 #
 # `templates/registration/lockout.html` quotes this figure in Czech prose
 # ("přibližně za 30 minut"), because a worker who cannot tell 5 minutes from 5
@@ -318,7 +320,8 @@ STATICFILES_DIRS = [BASE_DIR / 'static']
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # Django 5.1 removed STATICFILES_STORAGE; the backend lives in STORAGES now, so
-# the old setting sat here being silently ignored (see DEPLOYMENT_PLAN.md).
+# the old setting sat here being silently ignored (see
+# docs/deployment/DEPLOYMENT_PLAN.md).
 #
 # The default stays the plain backend on purpose. Whitenoise's manifest storage
 # rewrites every {% static %} URL to a hashed filename looked up in the

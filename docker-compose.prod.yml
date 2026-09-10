@@ -1,7 +1,8 @@
 # Production Compose file — public deployment on a VPS, behind the company
 # domain over HTTPS.
-# Runbook: DEPLOYMENT.md. Why it looks like this: DEPLOYMENT_PLAN_PUBLIC.md
-# (and DEPLOYMENT_PLAN.md for the LAN-only design this replaced).
+# Runbook: docs/deployment/DEPLOYMENT.md. Why it looks like this:
+# docs/deployment/DEPLOYMENT_PLAN_PUBLIC.md (and DEPLOYMENT_PLAN.md beside it,
+# for the LAN-only design this replaced).
 #
 # EVERY command against this file needs `--env-file .env.production`:
 #
@@ -38,7 +39,7 @@ services:
     # Pinned to a major version deliberately. Postgres refuses to start on a
     # data directory written by a different major, so a Dependabot PR bumping
     # this to 17 is not a merge — it is a planned dump/restore. See the
-    # "Upgrading Postgres" section of DEPLOYMENT.md.
+    # "Upgrading Postgres" section of docs/deployment/DEPLOYMENT.md.
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: ${DB_NAME:?set DB_NAME in .env.production — and pass --env-file .env.production}
@@ -52,7 +53,8 @@ services:
       #
       # Read only when the data directory is empty, i.e. at first start. It
       # cannot be applied to an existing cluster — that needs a dump, a fresh
-      # volume and a restore. DEPLOYMENT.md checks it before any data goes in.
+      # volume and a restore. docs/deployment/DEPLOYMENT.md checks it before
+      # any data goes in.
       POSTGRES_INITDB_ARGS: "--locale-provider=icu --icu-locale=cs-CZ --encoding=UTF8"
     volumes:
       - db_data:/var/lib/postgresql/data
