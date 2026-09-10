@@ -222,6 +222,20 @@ AUTH_PASSWORD_VALIDATORS = [
 # below, and it is the cheaper of the two failure modes.
 AXES_LOCKOUT_PARAMETERS = ['username']
 
+# Axes objects to that choice with `axes.W006` ("does not contain 'ip_address'")
+# on every `manage.py check`, `migrate` and `test` run. The objection is fair in
+# general and wrong for this deployment, for the reason directly above, so it is
+# answered here rather than left to be scrolled past — an ignored warning stops
+# being read, and `check --deploy` is supposed to come back with exactly one
+# known warning (see DEPLOYMENT.md step 12).
+#
+# What we give up is real and worth stating: an attacker gets AXES_FAILURE_LIMIT
+# guesses per account per cool-off from as many addresses as they like. What
+# including 'ip_address' would cost is worse — the depot reaches the app through
+# one office NAT address, so a single mistyped password would lock out everyone
+# behind it.
+SILENCED_SYSTEM_CHECKS = ['axes.W006']
+
 # Five, not the library's default of three. These are phone keyboards, Czech
 # passwords and gloved hands; three is a support call waiting to happen.
 AXES_FAILURE_LIMIT = 5

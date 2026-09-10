@@ -8,28 +8,26 @@ Steps 1–16 are the first install and run once. After that you only need
 [Deploying an update](#deploying-an-update) and
 [Routine maintenance](#routine-maintenance).
 
-**What this deployment still does not have:** no email backend, no
-password-reset flow, and **no login rate limiting**. On the LAN those were
-reasonable — an attacker had to be in the building. On a public domain the login
-form is reachable by anyone, so read
-[Before you point DNS at it](#before-you-point-dns-at-it) **before** step 2, not
-after step 16.
+**What this deployment still does not have:** no email backend and no
+password-reset flow. Login rate limiting *is* in place — `django-axes`, see
+[Lockouts](#lockouts) — but two gaps the LAN perimeter used to cover are still
+open, so read [Before you point DNS at it](#before-you-point-dns-at-it)
+**before** step 2, not after step 16.
 
 ---
 
 ## Before you point DNS at it
 
-Three gaps that the old LAN deployment closed with the network rather than with
-code. None of them blocks the steps below, and all three are cheaper to decide
-now than after the URL has been handed out.
+Two gaps that the old LAN deployment closed with the network rather than with
+code. Neither blocks the steps below, and both are cheaper to decide now than
+after the URL has been handed out.
 
 | Gap | Consequence once public | Options |
 |---|---|---|
-| **No login rate limiting** | Unlimited password guesses against every account, silently. Django ships nothing for this. | `django-axes` (a dependency, middleware and a migration), or `fail2ban` on the host reading Caddy's access log. |
 | **Seeded temporary passwords** | `seed_data` prints one random password per user; if they were handed out and never changed, they are now internet-facing credentials. | Reset every account before go-live, and require a change at first login. |
-| **`/admin/` publicly reachable** | The superuser surface is on the open internet. | Restrict it by source IP in `Caddyfile` — a commented `route` block is already there — or keep admin access on a VPN. |
+| **`/admin/` publicly reachable** | The superuser surface is on the open internet, and the only page where guessing a password is worth an attacker's time. | Restrict it by source IP in `Caddyfile` — a commented `route` block is already there — or keep admin access on a VPN. |
 
-The first one is the one worth acting on. The other two are judgement calls.
+Both are judgement calls rather than blockers.
 
 ## 1. Provision and lock down the VPS
 
@@ -123,9 +121,9 @@ Edit `.env.production` and fill in:
 | `ACME_EMAIL` | a monitored mailbox, not a personal one |
 | `DB_PASSWORD` | a strong password — **no `$` in it**, Compose interpolates this file |
 
-Leave `SECURE_SSL_REDIRECT`, `SECURE_COOKIES` and the two HSTS lines as the
-template has them. The comments in the file explain each; the one to read twice
-is `SECURE_HSTS_SECONDS`, which starts at an hour on purpose.
+Leave `SECURE_SSL_REDIRECT`, `SECURE_COOKIES`, `BEHIND_PROXY` and the two HSTS
+lines as the template has them. The comments in the file explain each; the one
+to read twice is `SECURE_HSTS_SECONDS`, which starts at an hour on purpose.
 
 Then set up the alias every following step uses:
 
@@ -405,6 +403,39 @@ guarantees it has been applied to *this* database.
 The proxy is left alone unless its config changed, so an ordinary update does
 not touch the certificate.
 
+## Lockouts
+
+Login rate limiting is `django-axes`. **Five failed logins lock the account for
+30 minutes**, and one successful login clears the counter.
+
+It locks the *username*, not the address — deliberately. The depot reaches the
+app through one office NAT address, and behind Caddy every request looks like it
+came from the proxy container, so locking by IP would let one worker mistyping
+their password take the whole depot offline. The trade-off is that an attacker
+gets five guesses per account per cool-off from as many addresses as they like.
+
+To unlock someone who is locked out and cannot wait:
+
+```bash
+dcp exec web python manage.py axes_reset_username <username>
+```
+
+To see what has been tried:
+
+```bash
+dcp exec web python manage.py axes_list_attempts
+```
+
+That command is how you read the log, because the axes admin section is turned
+off: it ships no Czech translation and would be the only English in the admin.
+
+Two things worth knowing before you change any of this. `manage.py check` prints
+`axes.W006` complaining that the lockout is not by IP — that is answered on
+purpose in `SILENCED_SYSTEM_CHECKS`, so it is silenced rather than ignored, and
+`check --deploy` still returns its single expected `W021`. And the lockout page
+(`templates/registration/lockout.html`) tells the worker "přibližně za 30 minut"
+in prose, so changing `AXES_COOLOFF_TIME` means changing the template too.
+
 ## Routine maintenance
 
 | How often | Command | Why |
@@ -434,6 +465,9 @@ cluster re-reads `POSTGRES_INITDB_ARGS`, so step 8's check applies again.
 
 | Symptom | Cause |
 |---|---|
+| `500` on login or logout, `relation "axes_accessattempt" does not exist` | `migrate` was not run after a pull that added `django-axes`. It brings two models of its own. `dcp exec web python manage.py migrate`. |
+| A worker says they cannot log in and the password is right | They are locked out; five failures locks an account for 30 minutes. See [Lockouts](#lockouts) to clear it. |
+| Every login attempt in `axes_list_attempts` shows the same IP | `BEHIND_PROXY=True` is missing from `.env.production`, so axes is recording the proxy container instead of the client. Costs the audit trail only — lockouts are by username and still correct. |
 | Login, or any form, returns `403` "Origin checking failed" | `CSRF_TRUSTED_ORIGINS` is missing or lacks the `https://` scheme. Pages load fine, which is what makes this look like a working deployment. |
 | Every request is an infinite redirect loop | `X-Forwarded-Proto` is not reaching Django, so `SECURE_SSL_REDIRECT` keeps redirecting an already-HTTPS request. Check `FORWARDED_ALLOW_IPS` is still `*` on the `web` service and that nothing re-published its port. |
 | `400 Bad Request` / `DisallowedHost` | The host in the URL is not in `ALLOWED_HOSTS`. Restart with `dcp up -d` after editing — `restart` keeps the old environment. |

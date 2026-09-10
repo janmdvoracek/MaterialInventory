@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% comment %}
+Rendered by django-axes (AXES_LOCKOUT_TEMPLATE) with HTTP 429 when an account
+has hit AXES_FAILURE_LIMIT failed logins. Context comes from axes and is
+`username`, `failure_limit`, `cooloff_time` (an ISO-8601 string) and
+`cooloff_timedelta`.
+
+The "30 minut" below is AXES_COOLOFF_TIME written out in Czech — the timedelta
+in the context renders as "0:30:00", which is not something to show a depot
+worker. config/settings.py carries the matching note; change both together.
+{% endcomment %}
+{% block title %}Účet dočasně uzamčen{% endblock %}
+{% block content %}
+<div class="card">
+    <h1>Účet je dočasně uzamčen</h1>
+    <p>
+        Po {{ failure_limit }} neúspěšných pokusech o přihlášení
+        {% if username %}byl účet <strong>{{ username }}</strong> dočasně uzamčen{% else %}byl účet dočasně uzamčen{% endif %}.
+    </p>
+    <p>Zkuste to prosím znovu přibližně za 30 minut.</p>
+    <p>Pokud potřebujete přístup dříve nebo jste heslo zapomněli, obraťte se na správce.</p>
+    <p><a href="{% url 'login' %}">Zpět na přihlášení</a></p>
+</div>
+{% endblock %}

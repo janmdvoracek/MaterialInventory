@@ -23,6 +23,7 @@ That is why the `Dockerfile`'s `ENV` lines win over a mounted `.env`.
 | `SECURE_HSTS_SECONDS` | `0` | HSTS max-age. Not reversible by editing this file — read the section below before raising it. |
 | `SECURE_HSTS_INCLUDE_SUBDOMAINS` | `False` | Safe on a subdomain deployment; a policy decision at the apex. |
 | `SECURE_HSTS_PRELOAD` | `False` | Left off deliberately; `check --deploy` reports `W021` and that is expected. |
+| `BEHIND_PROXY` | `False` | Makes django-axes read the client address from `X-Forwarded-For` instead of `REMOTE_ADDR`. See [Login rate limiting](#login-rate-limiting). |
 | `DB_NAME` | `materialinventory` | |
 | `DB_USER` | `materialinventory` | |
 | `DB_PASSWORD` | `materialinventory` | Change in production. |
@@ -175,6 +176,69 @@ covers `inventar.firma.cz` and anything beneath it and does not propagate up to
 one warning (`W021`) rather than none. Preloading submits the domain to a list
 compiled into browsers themselves; removal takes months and reaches users only
 as they update.
+
+## Login rate limiting
+
+`django-axes`, added when the app moved off the LAN. Django ships no
+brute-force protection, and the perimeter used to stand in for it.
+
+**Five failed logins lock the account for 30 minutes**, and a successful login
+clears the counter (`AXES_RESET_ON_SUCCESS`). The failure limit is five rather
+than the library's three because these are phone keyboards and gloved hands.
+
+### It locks the username, not the address
+
+`AXES_LOCKOUT_PARAMETERS = ['username']`. The library's default is
+`['ip_address']`, and here that would have been actively harmful: depot staff
+reach the app through a handful of shared egress addresses — the office NAT, a
+mobile carrier — and behind the reverse proxy every request that axes has not
+been told about looks like it came from the proxy container. Locking by IP would
+therefore let one worker mistyping their password lock out the whole depot,
+while barely inconveniencing an attacker with a list of addresses.
+
+The trade-off is real: an attacker gets five guesses per account per cool-off
+from as many addresses as they like, and someone who learns a username can lock
+that person out on purpose. Both are bounded by the 30-minute cool-off, and both
+are cheaper than the alternative.
+
+Axes objects with **`axes.W006`** on every `check`, `migrate` and `test`. That
+is answered in `SILENCED_SYSTEM_CHECKS` with the reasoning, on purpose rather
+than by scrolling past it — an ignored warning stops being read, and
+`check --deploy` is meant to come back with exactly one known warning.
+
+### `BEHIND_PROXY`
+
+Behind Caddy, `REMOTE_ADDR` is the proxy container and the real client is in
+`X-Forwarded-For`. `BEHIND_PROXY=True` sets `AXES_IPWARE_PROXY_COUNT` and
+`AXES_IPWARE_META_PRECEDENCE_ORDER` so the recorded address is the client's.
+
+It does **not** change who gets locked out — that is the username — so getting
+it wrong costs the audit trail, not availability. It is off by default because
+there is no proxy in dev, in CI or under `runserver`, and trusting
+`X-Forwarded-For` anywhere Django is directly reachable means trusting a header
+the client wrote.
+
+### Things that surprise people
+
+- **It adds two models, so a pull that includes it needs `migrate`.** Without
+  it there is no startup error and no broken page — the first **login or
+  logout** returns a 500 with `relation "axes_accessattempt" does not exist`,
+  because the signal handlers reach the table before anything else does.
+- **The admin section is off** (`AXES_ENABLE_ADMIN = False`). Axes ships
+  catalogs for ar/de/fa/fr/id/pl/ru/tr and **no Czech**, so its section and both
+  its models would render English in an admin this project keeps Czech through
+  three separate mechanisms. Read the log with
+  `manage.py axes_list_attempts`, and clear a lockout with
+  `manage.py axes_reset_username <username>`.
+- **The lockout page quotes the cool-off in prose.**
+  `templates/registration/lockout.html` says "přibližně za 30 minut" because the
+  value in the template context is a `timedelta` that renders `0:30:00`. Change
+  `AXES_COOLOFF_TIME` and the template together.
+- **`Client.login()` must not appear in the test suite.** It calls
+  `authenticate()` with no request, which the axes backend rejects outright. The
+  suite uses `force_login` ~130 times instead, and that keeps working because
+  `AxesStandaloneBackend` defines no `get_user` — so `force_login` skips it and
+  picks `ModelBackend`.
 
 ## Static files
 
