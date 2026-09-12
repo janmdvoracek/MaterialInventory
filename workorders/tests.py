@@ -2309,6 +2309,45 @@ class JobDeleteTests(ReviewFixtureMixin, TestCase):
         self.assertFalse(MachineUsage.objects.exists())
 
 
+class AdminJobDeleteTests(ReviewFixtureMixin, TestCase):
+    """The admin deletes a job with everything on it, like `job_delete` does.
+
+    The line items' FK used to be PROTECT, so the admin refused to delete any
+    job that had materials — every real job — on both of its delete paths.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.work_order = self.submit_job(
+            self.worker,
+            machine_rows=[{'machine': self.machine_a, 'hours': '3'}],
+            worker_rows=[{'user': self.other_worker, 'hours': '2'}],
+        )
+        self.admin_user = User.objects.create_superuser(username='admin', password='pw', role=User.Role.ADMIN)
+        self.client.force_login(self.admin_user)
+
+    def assertJobGone(self):
+        self.assertFalse(WorkOrder.objects.filter(pk=self.work_order.pk).exists())
+        self.assertFalse(StockMovement.objects.exists())
+        self.assertFalse(WorkerHours.objects.exists())
+        self.assertFalse(MachineUsage.objects.exists())
+
+    def test_delete_page(self):
+        url = reverse('admin:workorders_workorder_delete', args=[self.work_order.pk])
+        self.assertNotContains(self.client.get(url), 'chráněn')
+        response = self.client.post(url, {'post': 'yes'})
+        self.assertRedirects(response, reverse('admin:workorders_workorder_changelist'))
+        self.assertJobGone()
+
+    def test_delete_selected_action(self):
+        response = self.client.post(
+            reverse('admin:workorders_workorder_changelist'),
+            {'action': 'delete_selected', '_selected_action': [self.work_order.pk], 'post': 'yes'},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertJobGone()
+
+
 class DuplicateRowTests(ReviewFixtureMixin, TestCase):
     """No section of the job form may name the same thing on two rows.
 

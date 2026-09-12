@@ -477,7 +477,15 @@ on the old row. It came with a standing rule — never `bulk_create`,
 It also counted jobs that were still waiting for approval, so it never agreed
 with the page anyway. **No page read it**, so migration `materials.0011` dropped
 the column and the model methods with it. `MachineUsage` is now an ordinary
-model, and `_write_job_rows` and `job_delete` just bulk-delete their rows.
+model, and `_write_job_rows` just bulk-deletes its rows.
+
+Every row hanging off a job — line items, machine usage, worker hours —
+cascades when the job is deleted, so `job_delete` is a plain
+`work_order.delete()` and the admin's delete page and „delete selected" action
+do the same thing. The line items' FK was `PROTECT` until migration
+`workorders.0014`, left over from when they were stock history; that made the
+admin refuse to delete any job with materials on it. `AdminJobDeleteTests`
+covers both admin paths.
 
 `tons` is nullable (rows predating the column mean *unknown*, not zero) and
 `Sum` skips NULLs, so a machine with no recorded tonnage sums to `None` and

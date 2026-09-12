@@ -94,9 +94,13 @@ class StockMovement(models.Model):
         help_text='Množství se znaménkem: kladné pro vyrobený materiál, záporné pro spotřebovaný.',
         verbose_name='množství',
     )
+    # CASCADE, like the job's other rows. It was PROTECT while a line item was
+    # stock history, which a deleted job must not take with it; now it is part
+    # of the job and nothing else, and PROTECT made the admin refuse to delete
+    # any job that had materials on it — which is every real job.
     work_order = models.ForeignKey(
         WorkOrder,
-        on_delete=models.PROTECT,
+        on_delete=models.CASCADE,
         related_name='movements',
         verbose_name='zakázka',
     )

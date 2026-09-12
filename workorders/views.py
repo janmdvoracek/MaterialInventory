@@ -1228,15 +1228,9 @@ def job_approve(request, pk):
 def job_delete(request, pk):
     work_order = get_object_or_404(WorkOrder.objects.select_related('created_by'), pk=pk)
     if request.method == 'POST':
-        with transaction.atomic():
-            # The line items have to go first: their FK to the job is PROTECT,
-            # so the job cannot be deleted while they point at it. The rest
-            # would cascade, but deleting them here keeps the order explicit.
-            work_order.movements.all().delete()
-            work_order.machine_usages.all().delete()
-            work_order.worker_hours.all().delete()
-            work_order.collaborators.clear()
-            work_order.delete()
+        # Line items, machine usage, hours and the collaborator links all
+        # cascade, so this is the same delete the admin performs.
+        work_order.delete()
         messages.success(request, 'Zpracování bylo smazáno.')
         return redirect('job_dashboard')
     consumed, produced = _job_line_items(work_order)
