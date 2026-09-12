@@ -30,6 +30,7 @@ from .forms import (
     WorkerHoursFormSet,
     WorkOrderForm,
     job_row_formset,
+    participation_filter,
 )
 from .models import MachineUsage, StockMovement, WorkerHours, WorkOrder
 
@@ -553,24 +554,7 @@ def _filtered_machine_usages(request):
         .select_related('machine', 'work_order', 'work_order__created_by')
         .order_by('-work_order__performed_on', '-id')
     )
-    if not form.is_bound:
-        # No filters submitted at all (initial page load) — show everything.
-        return form, usages
-    if not form.is_valid():
-        # A filter was submitted but is unusable. Return nothing rather than
-        # silently ignoring it, which would hand back the whole ledger and read
-        # as "these are your filtered results".
-        return form, usages.none()
-    data = form.cleaned_data
-    if data.get('machine'):
-        usages = usages.filter(machine=data['machine'])
-    if data.get('created_by'):
-        usages = usages.filter(work_order__created_by=data['created_by'])
-    if data.get('date_from'):
-        usages = usages.filter(work_order__performed_on__gte=data['date_from'])
-    if data.get('date_to'):
-        usages = usages.filter(work_order__performed_on__lte=data['date_to'])
-    return form, usages
+    return form, form.filter(usages)
 
 
 @role_required(*REVIEWER_ROLES)
@@ -649,22 +633,7 @@ def _filtered_material_movements(request):
         .annotate(typed_quantity=Abs('quantity'))
         .order_by('-work_order__performed_on', '-id')
     )
-    if not form.is_bound:
-        # No filters submitted at all (initial page load) — show everything.
-        return form, movements
-    if not form.is_valid():
-        # A filter was submitted but is unusable. Return nothing rather than
-        # silently ignoring it, which would hand back the whole ledger and read
-        # as "these are your filtered results".
-        return form, movements.none()
-    data = form.cleaned_data
-    if data.get('material'):
-        movements = movements.filter(material=data['material'])
-    if data.get('date_from'):
-        movements = movements.filter(work_order__performed_on__gte=data['date_from'])
-    if data.get('date_to'):
-        movements = movements.filter(work_order__performed_on__lte=data['date_to'])
-    return form, movements
+    return form, form.filter(movements)
 
 
 def _date_preset_links(request):
@@ -867,11 +836,6 @@ def time_worked_export(request):
     )
 
 
-def _participation_filter(user):
-    """A user "worked on" a job if they submitted it or were named a collaborator."""
-    return Q(created_by=user) | Q(collaborators=user)
-
-
 def _time_worked_summary(work_orders):
     """Hours per person across `work_orders`.
 
@@ -913,19 +877,8 @@ def _time_worked_scope(request):
         # Workers only ever see jobs they took part in; enforced here (not just
         # by hiding the `worker` filter field) so it can't be bypassed via the
         # querystring directly.
-        work_orders = work_orders.filter(_participation_filter(request.user))
-    if form.is_bound:
-        if not form.is_valid():
-            # An unusable filter must not fall through to showing everything.
-            work_orders = work_orders.none()
-        else:
-            data = form.cleaned_data
-            if data.get('worker'):
-                work_orders = work_orders.filter(_participation_filter(data['worker']))
-            if data.get('date_from'):
-                work_orders = work_orders.filter(performed_on__gte=data['date_from'])
-            if data.get('date_to'):
-                work_orders = work_orders.filter(performed_on__lte=data['date_to'])
+        work_orders = work_orders.filter(participation_filter(request.user))
+    work_orders = form.filter(work_orders)
 
     # Re-query by pk so the aggregation below joins cleanly — the collaborator
     # filters above already join the M2M, which would otherwise skew the sums.
@@ -1017,21 +970,7 @@ def job_dashboard(request):
         .prefetch_related('worker_hours__user')
         .order_by('-performed_on', '-created_at')
     )
-    if form.is_bound:
-        if not form.is_valid():
-            # Same rule as the other lists: an unusable filter shows nothing
-            # rather than quietly handing back everything.
-            jobs = jobs.none()
-        else:
-            data = form.cleaned_data
-            if data.get('created_by'):
-                jobs = jobs.filter(created_by=data['created_by'])
-            if data.get('status'):
-                jobs = jobs.filter(status=data['status'])
-            if data.get('date_from'):
-                jobs = jobs.filter(performed_on__gte=data['date_from'])
-            if data.get('date_to'):
-                jobs = jobs.filter(performed_on__lte=data['date_to'])
+    jobs = form.filter(jobs)
     return render(
         request,
         'workorders/job_dashboard.html',

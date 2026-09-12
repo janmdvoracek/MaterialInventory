@@ -245,7 +245,7 @@ withheld hours are missing from.
 
 Two scoping rules it does not share with the report underneath it:
 
-- It is scoped by `created_by` alone, **not** by `_participation_filter` — being
+- It is scoped by `created_by` alone, **not** by `participation_filter` — being
   named on someone else's job is not recording one, and those hours show up in
   the summary once the job is approved.
 - The filter form does not touch it. The filters narrow the approved-hours
@@ -737,6 +737,14 @@ renders an explicit warning instead.
 Note the ordering: `is_bound` is checked *before* `is_valid()`, because an
 unbound form is also not valid, and conflating them would return nothing on a
 plain page load.
+
+All three rows live in one place, `DateRangeFilterForm.filter(queryset)` in
+`workorders/forms.py`. Each filter form declares `lookups` — field name to ORM
+lookup string, or to a callable returning a `Q` (how `TimeWorkedFilterForm`
+applies `participation_filter`) — and `date_lookup`, which is `performed_on` on
+job-level pages and `work_order__performed_on` on the Stroje and Materiál rows.
+A view builds its base queryset and calls `form.filter()`; none of them writes
+the branches out.
 
 Neither `JobFilterForm` nor `MachineFilterForm` has a worker variant, and
 neither takes a `user`: the pages they filter are manager/admin only in the

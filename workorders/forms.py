@@ -404,10 +404,39 @@ class DateRangeFilterForm(forms.Form):
     Subclasses declare their own fields and set `field_order`: `{{ form.as_p }}`
     renders in declaration order and fields inherited from a base class come
     first, which would otherwise put the dates above the picker they qualify.
+    They also say how their values narrow a queryset — `lookups` and
+    `date_lookup` — so every page filters through the one `filter()` below.
     """
+
+    # The date the range compares against, relative to the filtered model.
+    date_lookup = 'performed_on'
+    # Field name -> ORM lookup string, or a callable taking the value and
+    # returning a Q. Applied only for fields that carry a value.
+    lookups = {}
 
     date_from = forms.DateField(required=False, widget=forms.DateInput(attrs={'type': 'date'}), label='Datum od')
     date_to = forms.DateField(required=False, widget=forms.DateInput(attrs={'type': 'date'}), label='Datum do')
+
+    def filter(self, queryset):
+        """`queryset` narrowed to what this form was submitted with.
+
+        Unbound — no querystring at all — shows everything. Bound but invalid
+        shows nothing: silently ignoring a bad filter would hand back the whole
+        list under a "these are your filtered results" heading.
+        """
+        if not self.is_bound:
+            return queryset
+        if not self.is_valid():
+            return queryset.none()
+        data = self.cleaned_data
+        for name, lookup in self.lookups.items():
+            if data.get(name):
+                queryset = queryset.filter(lookup(data[name]) if callable(lookup) else Q(**{lookup: data[name]}))
+        if data.get('date_from'):
+            queryset = queryset.filter(**{f'{self.date_lookup}__gte': data['date_from']})
+        if data.get('date_to'):
+            queryset = queryset.filter(**{f'{self.date_lookup}__lte': data['date_to']})
+        return queryset
 
     def clean(self):
         cleaned_data = super().clean()
@@ -418,8 +447,14 @@ class DateRangeFilterForm(forms.Form):
         return cleaned_data
 
 
+def participation_filter(user):
+    """A user "worked on" a job if they submitted it or were named a collaborator."""
+    return Q(created_by=user) | Q(collaborators=user)
+
+
 class TimeWorkedFilterForm(DateRangeFilterForm):
     field_order = ['worker', 'date_from', 'date_to']
+    lookups = {'worker': participation_filter}
 
     worker = forms.ModelChoiceField(
         queryset=User.objects.all().order_by('username'),
@@ -446,6 +481,8 @@ class MachineFilterForm(DateRangeFilterForm):
     """
 
     field_order = ['machine', 'created_by', 'date_from', 'date_to']
+    date_lookup = 'work_order__performed_on'
+    lookups = {'machine': 'machine', 'created_by': 'work_order__created_by'}
 
     machine = forms.ModelChoiceField(
         queryset=Machine.objects.all().order_by('name'),
@@ -476,6 +513,8 @@ class MaterialFilterForm(DateRangeFilterForm):
     """
 
     field_order = ['material', 'date_from', 'date_to']
+    date_lookup = 'work_order__performed_on'
+    lookups = {'material': 'material'}
 
     material = forms.ModelChoiceField(
         queryset=Material.objects.all().order_by('name'),
@@ -490,6 +529,7 @@ class JobFilterForm(DateRangeFilterForm):
     manager/admin only, so nothing has to be hidden from anyone."""
 
     field_order = ['created_by', 'status', 'date_from', 'date_to']
+    lookups = {'created_by': 'created_by', 'status': 'status'}
 
     created_by = forms.ModelChoiceField(
         queryset=User.objects.all().order_by('username'),

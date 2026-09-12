@@ -1466,7 +1466,7 @@ class TimeWorkedTests(TestCase):
 
     def test_manager_filtering_to_one_worker_does_not_multiply_hours(self):
         # Same join, reached the other way: the `worker` filter is the manager's
-        # route through _participation_filter.
+        # route through participation_filter.
         third_worker = User.objects.create_user(username='third', password='pw', role=User.Role.WORKER)
         work_order = self._job(
             self.worker,
