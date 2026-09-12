@@ -52,7 +52,7 @@ come back with a resized form, not script.
 WhiteNoise serves static files; Gunicorn runs the app in production. Ruff
 handles linting and formatting.
 
-Python is 3.12 locally and in CI, but the Docker image builds on 3.14 — see
+Python 3.14 — the Docker image and CI run the same version; see
 [configuration.md](docs/configuration.md#python-version).
 
 ## Quick start

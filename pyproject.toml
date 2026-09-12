@@ -1,5 +1,8 @@
 [tool.ruff]
 line-length = 120
+# Deliberately behind the 3.14 that CI and the image run. This is the syntax
+# Ruff may *write*, and at py314 the formatter drops the parentheses from
+# `except (TypeError, ValueError):` — valid PEP 758 syntax that reads as Python 2.
 target-version = "py312"
 extend-exclude = ["*/migrations/*"]
 

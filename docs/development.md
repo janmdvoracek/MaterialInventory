@@ -2,8 +2,8 @@
 
 ## Requirements
 
-- Python 3.12 — matches CI and Ruff's `target-version`. Note the Docker image
-  builds on 3.14; see [configuration.md](configuration.md#python-version).
+- Python 3.14 — matches the Docker image and CI; see
+  [configuration.md](configuration.md#python-version).
 - PostgreSQL 16 — **required**. There is no SQLite fallback; the test suite will
   not run without a reachable Postgres.
 - Docker and Docker Compose (optional, but the easiest way to get the database)
@@ -124,7 +124,8 @@ ruff format .     # format
 ```
 
 Config lives in `pyproject.toml`: 120-column lines, single quotes, Python 3.12
-target, migrations excluded. Three rules are disabled with rationale in the
+target (deliberately below the 3.14 runtime; see
+[configuration.md](configuration.md#python-version)), migrations excluded. Three rules are disabled with rationale in the
 file — Django's `class Meta` mutables, quoted `Decimal()` literals, and a
 naive-datetime rule that only fires in test helpers.
 
@@ -197,9 +198,9 @@ and every pull request:
 
 | Job | Steps |
 |---|---|
-| `lint` | `ruff check .`, then `ruff format --check .` |
-| `docker-build` | `docker build` — catches a broken image or a failing `collectstatic` |
-| `test` | `manage.py check` → `manage.py makemigrations --check --dry-run` → `manage.py test` against a Postgres 16 service |
+| `lint` | `ruff check .`, then `ruff format --check .`, then `shellcheck scripts/*.sh` |
+| `docker-build` | `scripts/smoke_prod_stack.sh` — builds the image and runs the whole production stack (see below) |
+| `test` | `manage.py check` → `manage.py makemigrations --check --dry-run` → `manage.py test` against a Postgres 16 service, on Python 3.14 like the image |
 
 The middle step of the test job is the one that surprises people: **a model
 change without its migration file fails CI even when every test passes.** Run
@@ -210,35 +211,73 @@ change without its migration file fails CI even when every test passes.** Run
 A commit touching nothing but Markdown runs **no jobs at all**; a commit
 touching even one other file runs the full pipeline.
 
-Dotfiles and dot-directories used to be exempt too, via four extra globs
-(`.*`, `.*/**`, `**/.*`, `**/.*/**`). Those were removed, so `.gitignore`,
-`.dockerignore`, `.env.example`, and everything under `.github/` now trigger
-CI like any other file — which is the safer default, since `.dockerignore`
-decides what lands in the image and `ci.yml` *is* the pipeline.
-
-> **The comment block above `on:` in `ci.yml` was not updated with the keys.**
-> It still explains the four dotfile globs as though they were live. Read the
-> `paths-ignore` keys themselves; the prose above them is stale.
-
-> **Watch out if `main` has branch protection** with these jobs as *required
-> status checks*. A skipped workflow reports nothing rather than success, so a
-> docs-only pull request would sit unmergeable, waiting for a check that will
-> never arrive. The standard fix is a second workflow, triggered on the same
-> ignored paths, with jobs of the same names that do nothing and pass.
+Dotfiles and dot-directories used to be exempt too, via four extra globs. Those
+were removed, so `.gitignore`, `.dockerignore`, `.env.example`, and everything
+under `.github/` trigger CI like any other file — which is the safer default,
+since `.dockerignore` decides what lands in the image and `ci.yml` *is* the
+pipeline.
 
 > **Watch out if `main` has branch protection** with these jobs as *required
 > status checks*. A skipped workflow reports nothing rather than success, so a
 > docs-only pull request would sit unmergeable, waiting for a check that will
 > never arrive. The standard fix is a second workflow, triggered on `**.md`
-> only, with jobs of the same names that do nothing and pass.
+> only, with jobs of the same names that do nothing and pass. The same gap is
+> why the deploy workflow cannot simply ask whether CI passed for the commit it
+> deploys — see below.
 
-What CI does **not** cover: static-file serving. The test job runs with the
-plain storage backend and never requests a `/static/` URL, and `docker build`
-does not start the container. Verify static changes by hand — see
+### The production smoke test
+
+The `docker-build` job keeps its name but no longer stops at `docker build`.
+`scripts/smoke_prod_stack.sh` brings up `docker-compose.prod.yml` — Postgres,
+gunicorn *and* Caddy — under its own project name. It uses an `.env.production`
+generated from `.env.production.example`, with only the placeholders filled in
+and the domain set to `localhost`, for which Caddy issues its own certificate.
+Then it checks:
+
+| Check | The failure it stands for |
+|---|---|
+| `compose config`, `caddy validate` | A typo in the compose file or the `Caddyfile` |
+| Login page links a hashed `app.css`, and it is served | Manifest storage not active: a 500 on every page in production |
+| `check --deploy` reports exactly `security.W021` | Runbook step 12. Also fails if **`.env.production.example` changes** in a way that adds a warning |
+| `http://` redirects to `https://` | Caddy's automatic HTTPS not in effect |
+| `https://…/login/` answers 200 with HSTS | A 301 means Django no longer sees the request as HTTPS: Caddy's `X-Forwarded-Proto` or `SECURE_PROXY_SSL_HEADER` |
+| A login POST carrying `Origin:` gets a 302, and the session works | A 403 is the CSRF origin check failing: the proxy lost the `Host` or the scheme |
+
+It does **not** catch a removed `FORWARDED_ALLOW_IPS` or an empty
+`CSRF_TRUSTED_ORIGINS`. Both were tried against this stack, and neither made a
+difference. Gunicorn 26 passes `X-Forwarded-Proto` through to Django from any
+peer; its allow-list only gates gunicorn's own `wsgi.url_scheme`. And once Django
+sees HTTPS, `Origin: https://<host>` already matches the request's own host.
+
+It writes `.env.production` into the checkout it runs in and **refuses to start
+if one already exists**, so it cannot clobber real settings. To run it locally,
+use a clean worktree; it needs Docker and free ports 80 and 443:
+
+```bash
+git worktree add ../mi-smoke && ../mi-smoke/scripts/smoke_prod_stack.sh
+```
+
+On Windows under Git Bash, prefix it with `MSYS2_ARG_CONV_EXCL=/etc/caddy`, or
+the in-container Caddyfile path gets rewritten into a Windows one. Not
+`MSYS_NO_PATHCONV=1`: that also stops `/dev/null` and the temp paths being
+translated for curl, and every request fails with curl error 23.
+
+It checks one static file, not all of them; for a change to other assets see
 [configuration.md](configuration.md#verifying-static-files).
 
+### Deploys
+
+`.github/workflows/deploy.yml` deploys to the production VPS, **started by hand**
+from the Actions tab and only from `main`. It refuses unless CI passed for the
+code, then runs `scripts/deploy.sh` on the server over SSH. How it decides what
+is tested, and the one-time server and GitHub setup, are in
+[DEPLOYMENT.md](deployment/DEPLOYMENT.md#automated-deploys).
+
 Dependabot (`.github/dependabot.yml`) opens weekly update pull requests for pip
-packages, Docker base images, and the Actions themselves.
+packages, the `Dockerfile` base image, and the Actions themselves. It does not
+update the images named in the compose files or in `ci.yml`'s Postgres service.
+A `python:` bump in the `Dockerfile` has to be matched by hand in both
+`setup-python` steps of `ci.yml`.
 
 ## Conventions
 

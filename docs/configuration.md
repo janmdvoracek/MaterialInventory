@@ -331,9 +331,11 @@ committed.**
 
 ### Verifying static files
 
-CI does not cover this: the test job uses plain storage and never requests a
-`/static/` URL, and `docker build` never starts the container. Check by hand
-after any static-file change.
+The test job uses plain storage and never requests a `/static/` URL, but CI's
+`docker-build` job does: `scripts/smoke_prod_stack.sh` runs the production stack
+and fetches the hashed `app.css` the login page links. To check by hand before
+pushing, run that script in a clean worktree (see its header), or do it step by
+step:
 
 ```bash
 docker build -t materialinventory-test .
@@ -439,13 +441,18 @@ They are not cosmetic. See [localization.md](localization.md).
 | Where | Version |
 |---|---|
 | `Dockerfile` base image | 3.14 |
-| CI (`setup-python`) | 3.12 |
+| CI (`setup-python`, both jobs) | 3.14 |
 | Ruff `target-version` | `py312` |
 
-These currently disagree. It works — nothing in the codebase is version
-sensitive — but the container runs a different interpreter from the one the test
-suite is verified against, so a 3.13/3.14 behaviour change would first appear in
-production. Worth aligning.
+The image and CI match, so the test suite runs on the interpreter production
+runs. **Dependabot bumps the `Dockerfile` on its own**, so a new Python minor
+arriving that way has to be copied into `ci.yml` by hand in the same pull
+request.
+
+Ruff's `target-version` stays at `py312` on purpose. It is the syntax Ruff may
+*write*, not the runtime: at `py314` the formatter rewrites
+`except (TypeError, ValueError):` into the unparenthesised PEP 758 form, which is
+valid 3.14 and reads as Python 2.
 
 ## Other settings worth knowing
 

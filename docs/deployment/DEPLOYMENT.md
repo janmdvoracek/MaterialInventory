@@ -384,24 +384,115 @@ there.
 
 ## Deploying an update
 
-```bash
-cd /srv/MaterialInventory && ./scripts/backup_db.sh
-```
-
-The backup is always worth it, and non-negotiable if the pull carries a
-migration.
+Two ways, and both run the same script. **From GitHub:** Actions → *Deploy* →
+*Run workflow* on `main`, once the one-time setup in
+[Automated deploys](#automated-deploys) is done. **By hand, on the server:**
 
 ```bash
-git pull && dcp up -d --build && dcp exec web python manage.py migrate
+cd /srv/MaterialInventory && ./scripts/deploy.sh
 ```
 
-`up -d --build` rebuilds the image, which is where `collectstatic` runs — it
-does not run at boot. Run `migrate` even when the change looks harmless: CI
-guarantees a migration file exists for every model change, but nothing
-guarantees it has been applied to *this* database.
+That deploys whatever `origin/main` points at; pass a full commit hash to deploy
+a specific commit of `main` instead. In order, it:
 
-The proxy is left alone unless its config changed, so an ordinary update does
-not touch the certificate.
+1. fetches, and refuses a commit that is not on `origin/main`, one *older* than
+   what is checked out, or a checkout carrying commits of its own;
+2. runs `./scripts/backup_db.sh` — always, before anything changes;
+3. fast-forwards the checkout;
+4. builds the `web` image, which is where `collectstatic` runs — it does not run
+   at boot;
+5. runs `migrate` from a one-off container of the **new** image;
+6. `up -d`, swapping the new container in.
+
+Migrating before the swap means a broken build or a failed migration leaves the
+old container serving; Postgres rolls a failed migration back. `migrate` runs
+even when the change looks harmless: CI guarantees a migration file exists for
+every model change, but nothing guarantees it has been applied to *this*
+database.
+
+**Rollbacks are refused on purpose.** Moving the code back does not move the
+schema back, and an older commit can meet tables it does not understand. Roll
+back by hand, deciding about the migrations first.
+
+A deploy that failed halfway is finished by running it again: at the commit
+already checked out, the script still rebuilds, migrates and restarts.
+
+The proxy is left alone unless its compose definition changed, so an ordinary
+update does not touch the certificate. An edit to `Caddyfile` alone still needs
+`dcp up -d --force-recreate proxy`, because a changed bind-mounted file does not
+count as a changed service.
+
+### Automated deploys
+
+`.github/workflows/deploy.yml` checks that CI passed for the code being deployed,
+then connects over SSH and runs `scripts/deploy.sh`. The key it uses can run
+that script and nothing else. The following is done once.
+
+**1. A key for GitHub.** On your own machine, not the server:
+
+```bash
+ssh-keygen -t ed25519 -N '' -C github-deploy -f deploy_key
+```
+
+**2. Restrict it on the server.** Append `deploy_key.pub` to
+`~/.ssh/authorized_keys` of the account that owns `/srv/MaterialInventory` and
+can talk to Docker — the same one whose crontab runs the backup — with this
+prefix on the same line:
+
+```text
+command="/srv/MaterialInventory/scripts/deploy.sh",restrict ssh-ed25519 AAAA… github-deploy
+```
+
+`command=` makes every connection with this key run the deploy script no matter
+what the client asks for, and `restrict` removes port forwarding, agent
+forwarding and a terminal. **That line is the whole security boundary**: an
+account that can use Docker is root-equivalent, so the key must never go on the
+server without it.
+
+The server's own `git fetch` has to work without a prompt. It already does if
+`git pull` has been working; the script sets `GIT_TERMINAL_PROMPT=0`, so a
+missing credential fails the deploy instead of hanging it.
+
+**3. Pin the host key.** Record the server's host key from a machine that has
+already connected and checked it:
+
+```bash
+ssh-keygen -F <server> -f ~/.ssh/known_hosts
+```
+
+Take the matching lines without the `# Host … found` comment. If the entries are
+hashed, `ssh-keyscan -t ed25519 <server>` gives an unhashed line — compare its
+fingerprint (`ssh-keygen -lf -` reading that line) with
+`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` run on the server before
+trusting it.
+
+**4. A `production` environment on GitHub.** *Settings → Environments → New
+environment*, named `production`:
+
+- **Deployment branches and tags → Selected branches → `main`.** Not optional.
+  Secrets on the repository would be readable by a workflow pushed on any
+  branch; secrets on an environment limited to `main` are not.
+- Secrets: `DEPLOY_SSH_KEY` (the whole private key file), `DEPLOY_KNOWN_HOSTS`
+  (the lines from step 3), `DEPLOY_HOST`, `DEPLOY_USER`.
+- Variables: `APP_DOMAIN` (the bare domain, as in `.env.production`), and
+  `DEPLOY_PORT` only if SSH is not on 22.
+- *Required reviewers* is optional. The run is already started by hand, but
+  adding yourself makes a second click the confirmation.
+
+Then delete `deploy_key` from your machine; GitHub holds the only copy it needs.
+
+**Which commit it deploys.** The head of `main` when the run starts. CI skips
+Markdown-only commits, so that head often has no CI run of its own. The workflow
+instead finds the newest commit on `main` whose CI passed and requires that
+everything after it is Markdown. A deploy started while CI for the latest push
+is still running, or after it failed, stops with an error that names the
+untested files. Wait for CI and run it again.
+
+After the SSH step it fetches `https://<domain>/login/` from GitHub's side —
+through DNS, the certificate and the proxy, the way a user arrives.
+
+To take the key out of use, delete its line from `authorized_keys`. That ends
+it immediately, whatever GitHub still holds.
 
 ## Lockouts
 

@@ -1,0 +1,108 @@
+name: Deploy
+
+# Deploys the head of main to the production VPS. Manual only: Actions → Deploy
+# → Run workflow. The server does the work — this workflow checks the commit is
+# tested, then runs scripts/deploy.sh over SSH with a key that can do nothing
+# else. One-time setup: "Automated deploys" in docs/deployment/DEPLOYMENT.md.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read   # to look up CI runs
+
+# Never two deploys at once, and never cancel one halfway through a migration.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    # The secrets live on this environment, not on the repository. Restrict the
+    # environment to the `main` branch in its settings: otherwise any branch
+    # pushed to this repo could carry a workflow that reads the deploy key.
+    environment:
+      name: production
+      url: https://${{ vars.APP_DOMAIN }}
+
+    steps:
+      - name: Check the environment is configured
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          APP_DOMAIN: ${{ vars.APP_DOMAIN }}
+        run: |
+          missing=0
+          for name in DEPLOY_SSH_KEY DEPLOY_KNOWN_HOSTS DEPLOY_HOST DEPLOY_USER APP_DOMAIN; do
+            if [ -z "${!name}" ]; then
+              echo "::error::$name is not set on the production environment"
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # CI skips Markdown-only commits, so the head of main often has no CI run
+      # of its own. Instead: take the newest commit on main whose CI passed, and
+      # require that everything between it and this one is Markdown. That also
+      # refuses a deploy while CI for the head is still running or has failed.
+      - name: Require a green CI run for this code
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          green=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --branch main --event push \
+            --status success --limit 1 --json headSha --jq '.[0].headSha // empty')
+          if [ -z "$green" ]; then
+            echo "::error::no successful CI run on main"
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$green" "$GITHUB_SHA"; then
+            echo "::error::main moved on since this run started — run the deploy again"
+            exit 1
+          fi
+          untested=$(git diff --name-only "$green" "$GITHUB_SHA" -- . ':!*.md')
+          if [ -n "$untested" ]; then
+            echo "::error::CI has not passed for ${GITHUB_SHA::7} (last green: ${green::7}). Untested files:"
+            echo "$untested"
+            exit 1
+          fi
+          echo "CI passed for ${green::7}; deploying ${GITHUB_SHA::7}"
+
+      - name: Deploy over SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          # Pinned, not ssh-keyscan'd here: scanning at deploy time would trust
+          # whatever answers on that address.
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          # The only thing sent is the commit hash. authorized_keys forces
+          # scripts/deploy.sh, which reads it from SSH_ORIGINAL_COMMAND.
+          ssh -i ~/.ssh/deploy_key -p "$DEPLOY_PORT" \
+            -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o ServerAliveInterval=30 \
+            "$DEPLOY_USER@$DEPLOY_HOST" "$GITHUB_SHA"
+
+      # From outside the server, through DNS, the certificate and the proxy —
+      # the path a user takes.
+      - name: Check the site answers
+        env:
+          APP_DOMAIN: ${{ vars.APP_DOMAIN }}
+        run: |
+          curl -fsS -o /dev/null --retry 10 --retry-delay 3 --retry-all-errors \
+            -w 'GET /login/ -> %{http_code}\n' "https://$APP_DOMAIN/login/"
