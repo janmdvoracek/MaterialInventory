@@ -3,6 +3,12 @@ from functools import wraps
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 
+from .models import User
+
+# Reviewing jobs and reading the depot-wide reports. Gated on the view, not just
+# by hiding the nav entry — a hidden link is not access control.
+REVIEWER_ROLES = (User.Role.MANAGER, User.Role.ADMIN)
+
 
 def role_required(*roles):
     """Restrict a view to authenticated users whose role is in `roles`.

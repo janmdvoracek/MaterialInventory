@@ -377,7 +377,7 @@ class DateRangeFilterForm(forms.Form):
     three also narrow to a span of days, so the pair of fields and the
     „od ≤ do“ check live here instead of three times over. This is also what
     parses the dates the quick-range links write into the querystring
-    (`_date_preset_links` in `workorders/views.py`).
+    (`_date_preset_links` in `workorders/reports.py`).
 
     Subclasses declare their own fields and set `field_order`: `{{ form.as_p }}`
     renders in declaration order and fields inherited from a base class come

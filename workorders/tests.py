@@ -13,7 +13,8 @@ from accounts.models import User
 from materials.models import Machine, Material
 
 from .models import MachineUsage, StockMovement, WorkerHours, WorkOrder
-from .views import MAX_ROWS_PER_SECTION, MIN_ROWS_PER_SECTION, MY_JOBS_LIMIT, _last_month
+from .reports import MY_JOBS_LIMIT, _last_month
+from .views import MAX_ROWS_PER_SECTION, MIN_ROWS_PER_SECTION
 
 
 class TransformCreateTests(TestCase):

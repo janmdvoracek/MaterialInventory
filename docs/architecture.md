@@ -618,6 +618,13 @@ otherwise does without.
 All in `workorders`, all mounted at the **root** by `config/urls.py`. No other
 app contributes a URL: `accounts` and `materials` are model-and-form only.
 
+The views are split across two modules. `workorders/views.py` records and
+reviews jobs — Zpracování and the `/jobs/` pages. `workorders/reports.py` holds
+Hodiny, Stroje and Materiál, their CSV exports, and the list-page helpers
+(`_list_page_context` and the date presets) that `job_dashboard` imports from
+it. `REVIEWER_ROLES`, which both modules gate on, lives in
+`accounts/decorators.py` beside `role_required`.
+
 | URL | Name | What |
 |---|---|---|
 | `/` | `transform_create` | Zpracování — the form, and the landing page |
@@ -768,7 +775,7 @@ dates would jump above the picker they qualify.
 
 Every filter card opens with a row of quick ranges — **Vše**, *posledních 7 dní*,
 *posledních 30 dní*, *minulý měsíc* — from `DATE_PRESETS` and
-`_date_preset_links(request)` in `workorders/views.py`, rendered by
+`_date_preset_links(request)` in `workorders/reports.py`, rendered by
 `templates/workorders/_date_presets.html`. Each list page includes it through
 `_filter_card.html` (the invalid-filter warning, the presets and the form), and
 pages its rows with `_pagination.html`.
@@ -790,7 +797,7 @@ by hand.
 
 Adding a filtered page means both halves: the context key *and* the include in
 the template. The context side is `**_list_page_context(request, rows)` in
-`workorders/views.py`, which returns all three keys a filtered list needs —
+`workorders/reports.py`, which returns all three keys a filtered list needs —
 `page_obj`, `querystring` (every parameter except `page`, so a page link carries
 the filters with it) and `date_presets`. They travel together because a page
 wants all three, and picking up two of them is the failure that is hard to
@@ -798,7 +805,7 @@ spot: the filter silently disappears on page two.
 
 ## Time-worked reporting
 
-`workorders/views.py::_time_worked_summary` sums `WorkerHours.hours` per person
+`workorders/reports.py::_time_worked_summary` sums `WorkerHours.hours` per person
 over the scoped jobs — the hours each person typed for themselves, not a share
 of anything.
 
