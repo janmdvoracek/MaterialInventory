@@ -100,12 +100,6 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'accounts',
     'materials',
-    # Holds no code — only its migrations. `StockMovement` moved to `workorders`
-    # (state-only, `inventory.0008` / `workorders.0013`), but the app has to stay
-    # installed: `materials.0008` depends on `inventory.0006`, and Django cannot
-    # resolve a dependency on an app it does not know about. Removing this line
-    # breaks `migrate` on a fresh database.
-    'inventory',
     'workorders',
     # Login rate limiting. The app is on the public internet and Django ships
     # nothing for this; see the AXES_* block below for the policy and

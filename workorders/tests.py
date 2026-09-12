@@ -2893,14 +2893,10 @@ class ThemeTokenTests(TestCase):
         self.assertEqual(literals, [])
 
 
-# Moved here with the model itself: `StockMovement` was the whole of the
-# `inventory` app, which had no views to drive and so no tests beyond these.
 class StockMovementTestCase(TestCase):
     def setUp(self):
         self.material = Material.objects.create(sku='SKU1', name='Steel Bar')
         self.worker = User.objects.create_user(username='worker', password='pw', role=User.Role.WORKER)
-        # Every line item belongs to a job — the column stopped being nullable
-        # when the last job-less rows were deleted in inventory migration 0007.
         self.work_order = WorkOrder.objects.create(created_by=self.worker, description='job')
 
     def _line_item(self, quantity, movement_type=StockMovement.MovementType.TRANSFORM_PRODUCE, **kwargs):
@@ -2935,8 +2931,7 @@ class StockMovementModelTests(StockMovementTestCase):
         self.assertEqual(produced.get_movement_type_display(), 'Zpracování – výroba')
 
     def test_only_the_two_transform_types_remain(self):
-        # Receipt, shipment and adjustment went with stock tracking, and the
-        # last rows carrying those raw values went with migration 0007.
+        # Receipt, shipment and adjustment went with stock tracking.
         self.assertEqual(
             [value for value, _ in StockMovement.MovementType.choices],
             ['TRANSFORM_CONSUME', 'TRANSFORM_PRODUCE'],
@@ -2963,8 +2958,6 @@ class StockMovementWorkOrderTests(StockMovementTestCase):
         self.assertEqual(work_order.movements.count(), 2)
 
     def test_a_line_item_cannot_exist_without_a_job(self):
-        # It was nullable only for the receipt/shipment rows that predated the
-        # stock removal; migration 0007 deleted the last of them.
         self.assertFalse(StockMovement._meta.get_field('work_order').null)
 
 

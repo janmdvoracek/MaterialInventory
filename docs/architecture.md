@@ -11,13 +11,6 @@ accounts ──┐
 materials ─┘
 ```
 
-A fourth app, `inventory`, is still in `INSTALLED_APPS` but holds **no code at
-all** — only its `migrations/` package. It used to own `StockMovement` back when
-the app tracked stock; that model moved to `workorders` (see below) and nothing
-was left. It cannot simply be deleted: `materials.0008` depends on
-`inventory.0006` to drop the `Location` FK column before the table it points at,
-and Django cannot resolve a dependency on an app it does not know about.
-
 > **This app does not track stock.** Receipts, shipments, adjustments, the stock
 > dashboard, the movement history and its CSV export were all removed, along with
 > `Material.track_stock` and every balance and sufficiency check. Nothing sums
@@ -27,18 +20,9 @@ and Django cannot resolve a dependency on an app it does not know about.
 
 ## Job line items
 
-`workorders.StockMovement` keeps its name — and its table name — for the same
-reason: renaming either would cost a data migration and buy nothing. It is no
-longer a ledger. One row is **one material line on one job**: what the job
-consumed or what it produced.
-
-The model lived in its own `inventory` app while the app tracked stock. Once
-that app had no views, no forms, no URLs and no admin left, a one-model app was
-just an import hop — every line of code that writes or reads a line item was
-already in `workorders`. `inventory.0008` and `workorders.0013` are a
-`SeparateDatabaseAndState` pair that moves it between app labels and **emits no
-SQL**; `Meta.db_table = 'inventory_stockmovement'` pins the table where it
-already is.
+`workorders.StockMovement` keeps its historical name, but it is no longer a
+ledger. One row is **one material line on one job**: what the job consumed or
+what it produced.
 
 | Field | Meaning |
 |---|---|
@@ -50,14 +34,7 @@ already is.
 
 **A line item has no timestamp of its own.** Its date is its job's
 `performed_on`, which is what Materiál filters and sorts on, and
-`Meta.ordering = ['id']` puts the rows of a job in the order they were typed. It used to carry both a `created_at` and a `recorded_at`, plus
-a `notes` field no form ever wrote; migration `0007` dropped all three because
-nothing read them.
-
-The same migration deleted the last two rows carrying the retired `RECEIPT` /
-`SHIPMENT` values, which were also the only movements without a job — so
-`work_order` stopped being nullable. `MovementType` now describes every row in
-the table.
+`Meta.ordering = ['id']` puts the rows of a job in the order they were typed.
 
 ### Not in the admin
 
@@ -68,9 +45,6 @@ top-level section to the admin index — labelled *Zpracování*, the same word 
 the worker-facing form, and holding one model already reachable from *Zakázky*.
 Everything about a job is edited in one place.
 
-`inventory` therefore has no admin, and now no models either, so its
-`AppConfig` carries no `verbose_name`: that only ever labelled an admin index
-section, and there is no section without a registered model.
 The `date_hierarchy` that used to live on the movement list moved to
 `WorkOrderAdmin`, which is now the only admin that has one — and the only place
 the Czech date-hierarchy string from `locale/cs` is exercised.
@@ -80,9 +54,7 @@ the Czech date-hierarchy string from `locale/cs` is exercised.
 There is no available-quantity helper, no `select_for_update()`, and no check to
 perform before writing a line item. A job records what a worker says happened.
 If you ever need balances back, you are adding a genuinely new subsystem — read
-the git history for `inventory/services.py` rather than assuming any of the old
-machinery is still wired up. (That history is under the old app path; the model
-itself is in `workorders/models.py` now.)
+the git history rather than assuming any of the old machinery is still wired up.
 
 ## Work orders
 
@@ -186,17 +158,12 @@ rendered `value=`.
 `job_edit` can correct the date, and its form shows the job's own date rather
 than today, so a correction that touches nothing else does not move it.
 
-Migration `0010` added the column with a `timezone.localdate` default and then
-back-filled every existing row from `created_at`: before the field existed there
-was no way to record a job for any day but the one it was entered, so that date
-is the right answer for them.
-
 **Every report keys off `performed_on`.** The date filters on Hodiny, Stroje,
 Materiál and Přehled compare it directly — it is a `DateField`, so a plain
 `__gte`/`__lte` with no `__date` lookup and no timezone conversion behind it —
 and each list's *Provedeno* column shows it. Ordering is
-`['-performed_on', '-created_at']` on all four lists and in `WorkOrder.Meta`
-(migration `0011`): the day the work happened, then entry order within a day.
+`['-performed_on', '-created_at']` on all four lists and in `WorkOrder.Meta`:
+the day the work happened, then entry order within a day.
 
 Two consequences worth knowing:
 
@@ -264,9 +231,7 @@ waiting would leave it stuck forever.
 There are only two outcomes, and both are the manager's to carry out: approve
 the job, or fix it (`job_edit`) — and if it is beyond fixing, delete it
 (`job_delete`). A job is never handed back to its author; **only a manager can
-correct a job**. There is no `RETURNED` status and no review note. Migration
-`0009` removed both, moving any job that had been returned back to `PENDING`: it
-was never approved, so it belongs in the queue awaiting a decision.
+correct a job**. There is no `RETURNED` status and no review note.
 
 Because of that, `time_worked` puts the requesting worker's own last
 `MY_JOBS_LIMIT` submissions at the top of Hodiny as `my_jobs` (built by
@@ -475,16 +440,16 @@ on the old row. It came with a standing rule — never `bulk_create`,
 `queryset.update()` or `queryset.delete()` a usage row, and never let a
 `WorkOrder` cascade onto one — because any of those silently desynchronised it.
 It also counted jobs that were still waiting for approval, so it never agreed
-with the page anyway. **No page read it**, so migration `materials.0011` dropped
-the column and the model methods with it. `MachineUsage` is now an ordinary
+with the page anyway. **No page read it**, so the column and the model methods
+were dropped. `MachineUsage` is now an ordinary
 model, and `_write_job_rows` just bulk-deletes its rows.
 
 Every row hanging off a job — line items, machine usage, worker hours —
 cascades when the job is deleted, so `job_delete` is a plain
 `work_order.delete()` and the admin's delete page and „delete selected" action
-do the same thing. The line items' FK was `PROTECT` until migration
-`workorders.0014`, left over from when they were stock history; that made the
-admin refuse to delete any job with materials on it. `AdminJobDeleteTests`
+do the same thing. The line items' FK used to be `PROTECT`, left over
+from when they were stock history, which made the admin refuse to delete any
+job with materials on it. `AdminJobDeleteTests`
 covers both admin paths.
 
 `tons` is nullable (rows predating the column mean *unknown*, not zero) and
@@ -645,8 +610,7 @@ otherwise does without.
 ## Pages and URLs
 
 All in `workorders`, all mounted at the **root** by `config/urls.py`. No other
-app contributes a URL: `accounts` and `materials` are model-and-form only, and
-`inventory` holds nothing but migrations.
+app contributes a URL: `accounts` and `materials` are model-and-form only.
 
 | URL | Name | What |
 |---|---|---|

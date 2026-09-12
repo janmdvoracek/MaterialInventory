@@ -151,8 +151,7 @@ A new model or ModelAdmin needs all three, or it will show English in one spot.
 
 **1. App labels.** Each `AppConfig` carries a `verbose_name` — `Katalog`,
 `Zakázky`, `Uživatelé`. Without it the admin index groups models under the
-Python package name. (`inventory` sets none — it holds no models to group.
-Django's own `Autentizace a autorizace`
+Python package name. (Django's own `Autentizace a autorizace`
 section is gone as well — `auth.Group` is unregistered in `accounts/admin.py`,
 since this app never consults permissions.)
 

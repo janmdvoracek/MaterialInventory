@@ -21,8 +21,7 @@ class WorkOrder(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='vytvořeno')
     # When the work was actually done, as opposed to when it was typed in. The
     # form pre-fills today, so the column is always answered and back-dating is
-    # just editing the box — the two differ only when someone does. Migration
-    # 0010 back-filled existing jobs from `created_at`. Day only, deliberately: an
+    # just editing the box — the two differ only when someone does. Day only, deliberately: an
     # `<input type="date">` renders the same everywhere, while the
     # `datetime-local` widget the removed Příjem/Výdej forms used let an
     # English-configured phone show AM/PM regardless of the app's `lang="cs"`.
@@ -39,8 +38,6 @@ class WorkOrder(models.Model):
     description = models.CharField(max_length=255, blank=True, verbose_name='popis')
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING, verbose_name='stav')
     reviewed_at = models.DateTimeField(null=True, blank=True, verbose_name='posouzeno')
-    # Null for jobs approved by the backfill migration — they predate the rule
-    # and were never signed off by a person.
     reviewed_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
@@ -75,9 +72,6 @@ class StockMovement(models.Model):
     A row has no timestamp of its own. Its date is the job's `performed_on`, and
     its position within the job is the order it was typed — which is what `id`
     ordering below gives.
-
-    The class name and the table name are both historical, kept because renaming
-    either would cost a data migration to no benefit. See `Meta.db_table`.
     """
 
     class MovementType(models.TextChoices):
@@ -94,10 +88,6 @@ class StockMovement(models.Model):
         help_text='Množství se znaménkem: kladné pro vyrobený materiál, záporné pro spotřebovaný.',
         verbose_name='množství',
     )
-    # CASCADE, like the job's other rows. It was PROTECT while a line item was
-    # stock history, which a deleted job must not take with it; now it is part
-    # of the job and nothing else, and PROTECT made the admin refuse to delete
-    # any job that had materials on it — which is every real job.
     work_order = models.ForeignKey(
         WorkOrder,
         on_delete=models.CASCADE,
@@ -109,14 +99,6 @@ class StockMovement(models.Model):
     )
 
     class Meta:
-        # The model lived in its own `inventory` app while the app tracked stock.
-        # It moved here when that app was left with nothing else — a line item
-        # only exists as part of a job, and every line of code that writes or
-        # reads one was already in `workorders`. The move was state-only
-        # (`inventory.0008` / `workorders.0013`, a `SeparateDatabaseAndState`
-        # pair that emits no SQL), so the table keeps the name it was created
-        # with. Renaming it would be a data migration bought for nothing.
-        db_table = 'inventory_stockmovement'
         # By insertion, which within a job is the order the rows were typed.
         ordering = ['id']
         indexes = [
