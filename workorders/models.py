@@ -146,7 +146,7 @@ class MachineUsage(models.Model):
         WorkOrder, on_delete=models.CASCADE, related_name='machine_usages', verbose_name='zakázka'
     )
     machine = models.ForeignKey(
-        'materials.Machine', on_delete=models.PROTECT, related_name='usages', verbose_name='stroj'
+        'machines.Machine', on_delete=models.PROTECT, related_name='usages', verbose_name='stroj'
     )
     hours = models.DecimalField(max_digits=12, decimal_places=2, verbose_name='motohodiny')
     # Nullable only because rows written before the column existed have no

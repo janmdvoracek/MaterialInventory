@@ -100,6 +100,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'accounts',
     'materials',
+    'machines',
     'workorders',
     # Login rate limiting. The app is on the public internet and Django ships
     # nothing for this; see the AXES_* block below for the policy and

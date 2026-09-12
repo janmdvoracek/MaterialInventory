@@ -8,8 +8,9 @@ from django.db import IntegrityError, transaction
 from django.test import TestCase
 
 from accounts.models import User
+from machines.models import Machine
 
-from .models import Machine, Material
+from .models import Material
 
 
 class MaterialModelTests(TestCase):
@@ -21,25 +22,6 @@ class MaterialModelTests(TestCase):
         Material.objects.create(sku='SKU1', name='Steel Bar')
         with self.assertRaises(IntegrityError), transaction.atomic():
             Material.objects.create(sku='SKU1', name='Other')
-
-
-class MachineModelTests(TestCase):
-    def test_machine_str(self):
-        machine = Machine.objects.create(name='Crusher A')
-        self.assertEqual(str(machine), 'Crusher A')
-
-    def test_machine_hourly_rate_defaults_to_none(self):
-        machine = Machine.objects.create(name='Crusher A')
-        self.assertIsNone(machine.hourly_rate)
-
-    def test_machine_rate_per_ton_defaults_to_none(self):
-        machine = Machine.objects.create(name='Crusher A')
-        self.assertIsNone(machine.rate_per_ton)
-
-    def test_machine_name_unique(self):
-        Machine.objects.create(name='Crusher A')
-        with self.assertRaises(IntegrityError), transaction.atomic():
-            Machine.objects.create(name='Crusher A')
 
 
 class SeedDataCommandTests(TestCase):

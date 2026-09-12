@@ -138,7 +138,8 @@ one of those URLs gets a 403 rather than a scoped-down page.
 ```
 config/       Django project — settings, root URLconf, WSGI/ASGI
 accounts/     Custom User model, roles, role_required decorator, Czech auth forms
-materials/    Material / Machine catalog + the seed_data command
+materials/    Material catalog + the seed_data command (materials, machines, users)
+machines/     Machine catalog with its hourly and per-tonne rates
 workorders/   Jobs and their StockMovement line items; Transform form, review dashboard, machine and material pages, time-worked reporting, all URLs (views.py: jobs; reports.py: reports)
 templates/    All HTML; base.html holds the site CSS and bottom nav
 static/       Source static assets (tracked; NOT the collectstatic output)

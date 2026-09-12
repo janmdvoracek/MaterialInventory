@@ -16,7 +16,8 @@ from django.utils.formats import number_format
 
 from accounts.decorators import REVIEWER_ROLES, role_required
 from accounts.models import User
-from materials.models import Machine, Material
+from machines.models import Machine
+from materials.models import Material
 
 from .forms import MachineFilterForm, MaterialFilterForm, TimeWorkedFilterForm, participation_filter
 from .models import MachineUsage, StockMovement, WorkerHours, WorkOrder

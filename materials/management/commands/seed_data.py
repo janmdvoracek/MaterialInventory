@@ -7,7 +7,8 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from accounts.models import User
-from materials.models import Machine, Material
+from machines.models import Machine
+from materials.models import Material
 
 
 class Command(BaseCommand):

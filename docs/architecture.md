@@ -1,14 +1,16 @@
 # Architecture
 
-A modular monolith: one Django project (`config`) with three code-bearing apps
-that depend on each other in one direction only — `accounts` and `materials`
-hold the reference data, and `workorders` owns the jobs, their material line
-items, and every page.
+A modular monolith: one Django project (`config`) with four code-bearing apps
+that depend on each other in one direction only — `accounts`, `materials` and
+`machines` hold the reference data, and `workorders` owns the jobs, their
+material line items, the machine usage rows, and every page. `materials` and
+`machines` do not know about each other; the one cross-reference is
+`seed_data`, which lives in `materials` and loads all three CSVs.
 
 ```
 accounts ──┐
-           ├──> workorders
-materials ─┘
+materials ─┼──> workorders
+machines ──┘
 ```
 
 > **This app does not track stock.** Receipts, shipments, adjustments, the stock
@@ -616,7 +618,8 @@ otherwise does without.
 ## Pages and URLs
 
 All in `workorders`, all mounted at the **root** by `config/urls.py`. No other
-app contributes a URL: `accounts` and `materials` are model-and-form only.
+app contributes a URL: `accounts`, `materials` and `machines` are
+model-and-admin only.
 
 The views are split across two modules. `workorders/views.py` records and
 reviews jobs — Zpracování and the `/jobs/` pages. `workorders/reports.py` holds
@@ -649,8 +652,8 @@ entry, and each gated exactly like the page it hangs off.
 `LOGIN_REDIRECT_URL`, the header logo and the post-submit redirect all point at
 `transform_create`. Login and password change are Django's own generic views,
 wired in `config/urls.py` with Czech form subclasses from `accounts/forms.py`;
-`accounts` has no `views.py` at all, and neither does `materials` — both files
-held nothing but `# Create your views here.` and were removed.
+`accounts` has no `views.py` at all, and neither do `materials` or `machines` —
+the first two held nothing but `# Create your views here.` and were removed.
 
 ## Roles and permissions
 

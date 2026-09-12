@@ -10,7 +10,8 @@ from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 
 from accounts.models import User
-from materials.models import Machine, Material
+from machines.models import Machine
+from materials.models import Material
 
 from .models import MachineUsage, StockMovement, WorkerHours, WorkOrder
 from .reports import MY_JOBS_LIMIT, _last_month

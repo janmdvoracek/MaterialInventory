@@ -177,7 +177,7 @@ class AdminCzechTests(TestCase):
 
     def test_index_lists_apps_and_models_in_czech(self):
         html = self.client.get(reverse('admin:index')).content.decode()
-        for label in ('Katalog', 'Zakázky', 'Uživatelé', 'Materiály', 'Stroje'):
+        for label in ('Materiály', 'Stroje', 'Zakázky', 'Uživatelé'):
             with self.subTest(label=label):
                 self.assertIn(label, html)
 
