@@ -69,7 +69,6 @@ class WorkOrderForm(forms.Form):
             required=False,
             label='Zapsat za',
             empty_label='Za sebe',
-            help_text='Hodiny i spolupracovníci patří tomu, za koho zapisujete.',
         )
         # With somebody else possibly on the receiving end, „Moje hodiny" would
         # be a lie half the time.

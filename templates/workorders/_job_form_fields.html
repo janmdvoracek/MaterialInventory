@@ -39,7 +39,6 @@ means something different by it — see `WorkOrderForm.__init__` and `job_edit`.
 {% if order_form.author %}
     <label for="{{ order_form.author.id_for_label }}">Zapsat za</label>
     {{ order_form.author }}
-    <p class="muted">{{ order_form.author.help_text }}</p>
 {% endif %}
 
 <label for="{{ order_form.hours.id_for_label }}">{{ order_form.hours.label }}</label>
