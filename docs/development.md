@@ -80,8 +80,12 @@ Two things to know about where coverage lives:
 model-level tests included.
 
 **Migrations were reset** to one `0001_initial` per app while production held no
-data. Once a deployment has real rows, that is no longer an option: new model
-changes get ordinary migrations on top.
+data — twice: once when the `inventory` app went, and again when `Machine` moved
+out of `materials` into its own `machines` app. A development database migrated
+before a reset still records the old migrations and tables, so recreate it
+(`docker compose down -v`, **dev compose file only**, then `migrate`). Once a
+deployment has real rows, resetting is no longer an option: new model changes
+get ordinary migrations on top.
 
 **`EmptyLabelTests`** (`workorders/tests.py`) fails if any `ModelChoiceField`
 forgets its `empty_label`. See

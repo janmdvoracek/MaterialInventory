@@ -628,6 +628,18 @@ Hodiny, Stroje and Materiál, their CSV exports, and the list-page helpers
 it. `REVIEWER_ROLES`, which both modules gate on, lives in
 `accounts/decorators.py` beside `role_required`.
 
+**The reports are a module, not an app, on purpose.** Splitting them into a
+`reports` app was considered and rejected: every report only aggregates
+`WorkOrder`, `StockMovement`, `WorkerHours` and `MachineUsage` and counts
+approved jobs alone, their filter forms live in `workorders/forms.py`, and
+`job_dashboard` imports `_list_page_context` from `reports.py`. A separate app
+would depend on `workorders` completely, and the shared list helpers would have
+to move out first to avoid a circular import — all for no change in behaviour.
+The module split already separates recording jobs from reading them back. The
+same reasoning keeps `MachineUsage` in `workorders` rather than `machines`: it
+is a row of a job, deleted with it and dated by it, not catalog data. Revisit
+the reports only if they get a separate audience or deployment.
+
 | URL | Name | What |
 |---|---|---|
 | `/` | `transform_create` | Zpracování — the form, and the landing page |
