@@ -1,0 +1,8 @@
+{# Page links for `page_obj`, carrying the filters along in `querystring`. #}
+{% if page_obj.has_other_pages %}
+<p>
+    {% if page_obj.has_previous %}<a href="?{{ querystring }}&page={{ page_obj.previous_page_number }}">Předchozí</a>{% endif %}
+    Stránka {{ page_obj.number }} z {{ page_obj.paginator.num_pages }}
+    {% if page_obj.has_next %}<a href="?{{ querystring }}&page={{ page_obj.next_page_number }}">Další</a>{% endif %}
+</p>
+{% endif %}

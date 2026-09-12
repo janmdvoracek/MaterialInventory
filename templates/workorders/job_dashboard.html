@@ -5,16 +5,7 @@
 {% if pending_count %}
     <p class="messages error">Čeká na schválení: {{ pending_count }}</p>
 {% endif %}
-{% if form.is_bound and not form.is_valid %}
-    <p class="messages error">Filtr je neplatný, proto se nezobrazují žádné výsledky. Opravte prosím zvýrazněná pole.</p>
-{% endif %}
-<div class="card">
-    {% include "workorders/_date_presets.html" %}
-    <form method="get">
-        {{ form.as_p }}
-        <button type="submit">Filtrovat</button>
-    </form>
-</div>
+{% include "workorders/_filter_card.html" %}
 <div class="card">
     <div class="table-scroll">
     <table>
@@ -38,11 +29,5 @@
     </table>
     </div>
 </div>
-{% if page_obj.has_other_pages %}
-<p>
-    {% if page_obj.has_previous %}<a href="?{{ querystring }}&page={{ page_obj.previous_page_number }}">Předchozí</a>{% endif %}
-    Stránka {{ page_obj.number }} z {{ page_obj.paginator.num_pages }}
-    {% if page_obj.has_next %}<a href="?{{ querystring }}&page={{ page_obj.next_page_number }}">Další</a>{% endif %}
-</p>
-{% endif %}
+{% include "workorders/_pagination.html" %}
 {% endblock %}

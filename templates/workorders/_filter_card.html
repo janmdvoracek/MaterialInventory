@@ -1,0 +1,19 @@
+{% comment %}
+The filter card every filtered list page opens with: the warning an invalid
+filter gets, the quick date ranges, and the form itself. The warning is not
+optional — an invalid filter shows no rows (`DateRangeFilterForm.filter`), and
+without it an empty table would read as "nothing matched".
+
+Needs `form` and `date_presets` in the context; `_list_page_context` supplies
+the latter.
+{% endcomment %}
+{% if form.is_bound and not form.is_valid %}
+    <p class="messages error">Filtr je neplatný, proto se nezobrazují žádné výsledky. Opravte prosím zvýrazněná pole.</p>
+{% endif %}
+<div class="card">
+    {% include "workorders/_date_presets.html" %}
+    <form method="get">
+        {{ form.as_p }}
+        <button type="submit">Filtrovat</button>
+    </form>
+</div>

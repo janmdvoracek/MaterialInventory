@@ -763,7 +763,9 @@ dates would jump above the picker they qualify.
 Every filter card opens with a row of quick ranges — **Vše**, *posledních 7 dní*,
 *posledních 30 dní*, *minulý měsíc* — from `DATE_PRESETS` and
 `_date_preset_links(request)` in `workorders/views.py`, rendered by
-`templates/workorders/_date_presets.html`.
+`templates/workorders/_date_presets.html`. Each list page includes it through
+`_filter_card.html` (the invalid-filter warning, the presets and the form), and
+pages its rows with `_pagination.html`.
 
 They are plain links that set `date_from`/`date_to` in the querystring rather
 than a field on the form: one tap on a phone, no JS, and since the form is bound
