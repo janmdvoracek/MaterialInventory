@@ -20,14 +20,10 @@ from materials.models import Machine, Material
 
 from .forms import (
     JOB_SECTIONS,
-    ConsumedFormSet,
     JobFilterForm,
     MachineFilterForm,
-    MachineUsageFormSet,
     MaterialFilterForm,
-    ProducedFormSet,
     TimeWorkedFilterForm,
-    WorkerHoursFormSet,
     WorkOrderForm,
     job_row_formset,
     participation_filter,
@@ -63,7 +59,7 @@ DATE_PRESETS = (
 )
 
 
-def _collect_rows(consumed_formset, produced_formset, machine_formset, worker_formset):
+def _collect_rows(formsets):
     """The filled-in rows of a submitted job, one collection per section.
 
     Rows are taken exactly as typed. Every section refuses a repeat before this
@@ -72,15 +68,12 @@ def _collect_rows(consumed_formset, produced_formset, machine_formset, worker_fo
     section, and the worker mapping cannot collide with
     `unique_worker_hours_per_work_order`.
     """
-    consumed_rows = [f.cleaned_data for f in consumed_formset if f.cleaned_data.get('material')]
-    produced_rows = [f.cleaned_data for f in produced_formset if f.cleaned_data.get('material')]
-    machine_rows = [f.cleaned_data for f in machine_formset if f.cleaned_data.get('machine')]
-    worker_hours = {
-        form.cleaned_data['user']: form.cleaned_data['hours']
-        for form in worker_formset
-        if form.cleaned_data.get('user')
-    }
-    return consumed_rows, produced_rows, machine_rows, worker_hours
+
+    def filled(prefix, field):
+        return [form.cleaned_data for form in formsets[prefix] if form.cleaned_data.get(field)]
+
+    worker_hours = {row['user']: row['hours'] for row in filled('workers', 'user')}
+    return filled('consumed', 'material'), filled('produced', 'material'), filled('machines', 'machine'), worker_hours
 
 
 def _balance_error(consumed_rows, produced_rows):
@@ -120,43 +113,40 @@ def _write_job_rows(work_order, author, own_hours, consumed_rows, produced_rows,
     # about who worked the job.
     work_order.collaborators.set(worker_hours.keys())
     work_order.worker_hours.all().delete()
-    WorkerHours.objects.create(work_order=work_order, user=author, hours=own_hours)
-    for user, hours in worker_hours.items():
-        WorkerHours.objects.create(work_order=work_order, user=user, hours=hours)
+    WorkerHours.objects.bulk_create(
+        WorkerHours(work_order=work_order, user=user, hours=hours)
+        for user, hours in [(author, own_hours), *worker_hours.items()]
+    )
 
     work_order.movements.all().delete()
-    for row in consumed_rows:
-        StockMovement.objects.create(
-            material=row['material'],
-            quantity=-row['quantity'],
-            movement_type=StockMovement.MovementType.TRANSFORM_CONSUME,
+    # Consumed quantities are stored negative, so a material's net is a plain Sum.
+    StockMovement.objects.bulk_create(
+        StockMovement(
             work_order=work_order,
             created_by=author,
-        )
-    for row in produced_rows:
-        StockMovement.objects.create(
             material=row['material'],
-            quantity=row['quantity'],
-            movement_type=StockMovement.MovementType.TRANSFORM_PRODUCE,
-            work_order=work_order,
-            created_by=author,
+            quantity=sign * row['quantity'],
+            movement_type=movement_type,
         )
+        for rows, sign, movement_type in (
+            (consumed_rows, -1, StockMovement.MovementType.TRANSFORM_CONSUME),
+            (produced_rows, 1, StockMovement.MovementType.TRANSFORM_PRODUCE),
+        )
+        for row in rows
+    )
 
     work_order.machine_usages.all().delete()
-    for row in machine_rows:
-        MachineUsage.objects.create(
-            work_order=work_order,
-            machine=row['machine'],
-            hours=row['hours'],
-            tons=row['tons'],
-        )
+    MachineUsage.objects.bulk_create(
+        MachineUsage(work_order=work_order, machine=row['machine'], hours=row['hours'], tons=row['tons'])
+        for row in machine_rows
+    )
 
 
 # What the two row buttons under each section post under. A submit button
 # reaches the server only when it is the one that was pressed, so the key being
 # there at all is the whole signal — there is no value to compare against.
-ADD_ROW_BUTTONS = {f'add_{prefix}': prefix for prefix, *_ in JOB_SECTIONS}
-REMOVE_ROW_BUTTONS = {f'remove_{prefix}': prefix for prefix, *_ in JOB_SECTIONS}
+ADD_ROW_BUTTONS = {f'add_{section.prefix}': section.prefix for section in JOB_SECTIONS}
+REMOVE_ROW_BUTTONS = {f'remove_{section.prefix}': section.prefix for section in JOB_SECTIONS}
 
 # Floor on the rows a section can be left with. „− odebrat řádek" stops here, and
 # so does a rebuild from a POST that claims fewer: a section with no rows at all
@@ -192,14 +182,15 @@ def _pressed_row_button(post_data):
     return None
 
 
-def _submitted_rows(post_data, row_form, prefix):
+def _submitted_rows(post_data, section):
     """One section's rows, as the raw strings the browser posted.
 
     Read out of the POST directly rather than off a bound formset, because the
-    resized page is rebuilt unbound — see `_resized_job_forms`. `base_fields` is
-    the row's own field list, so a column added to a row form is carried over
-    here without a second list to keep in step.
+    resized page is rebuilt unbound — see `_job_forms`. `base_fields` is the
+    row's own field list, so a column added to a row form is carried over here
+    without a second list to keep in step.
     """
+    prefix = section.prefix
     try:
         count = int(post_data.get(f'{prefix}-TOTAL_FORMS', 0))
     except (TypeError, ValueError):
@@ -208,24 +199,24 @@ def _submitted_rows(post_data, row_form, prefix):
         # nothing to restore.
         count = 0
     return [
-        {name: post_data.get(f'{prefix}-{index}-{name}', '') for name in row_form.base_fields}
+        {name: post_data.get(f'{prefix}-{index}-{name}', '') for name in section.row_form.base_fields}
         for index in range(min(count, MAX_ROWS_PER_SECTION))
     ]
 
 
 def _submitted_author(post_data, submitter):
-    """Who „Zapsat za" currently names, on a page being re-rendered rather than submitted.
+    """Who „Zapsat za" names in this POST, or the submitter.
 
-    The collaborator list is built from the author, so resizing the
-    Spolupracovníci section has to resolve it the way a real submission would.
+    The collaborator list is built from the author, so it has to be settled
+    before the formsets are — on a submission and on a row-button rebuild alike.
     Otherwise a manager recording for someone else would get their own name back
     in the list, and a collaborator they had already picked would drop out of
-    the queryset and off the row that was re-rendered.
+    the queryset and off the row.
 
-    The form is bound only to read that one field. Everything else about it is
-    very likely incomplete — that is the normal state of a form somebody is
-    still filling in — and its errors are thrown away. A plain worker has no
-    `author` field at all, so this is just `submitter` for them.
+    The form is bound only to read that one field, and its errors are thrown
+    away: the page's own bound form reports them, and a form still being filled
+    in is expected to have some. A plain worker has no `author` field at all, so
+    this is just `submitter` for them.
     """
     form = WorkOrderForm(post_data, user=submitter)
     form.is_valid()
@@ -255,33 +246,6 @@ def _resized_section(rows, delta):
     return rows, max(blank_rows, MIN_ROWS_PER_SECTION - len(rows))
 
 
-def _recorded_choices(work_order):
-    """The catalog rows an existing job already names, keyed by section prefix.
-
-    `job_edit` has to keep offering these whatever their `is_active`. The
-    pickers are scoped to the active catalog so a retired material or machine
-    cannot land on a *new* job, but a job recorded before the retirement still
-    names one — and a picker that has dropped it renders the row blank and then
-    refuses it on submit, which silently deletes the row. `_offer_recorded` in
-    forms.py has the rest of the reasoning.
-
-    The workers section needs nothing: `collaborator_queryset` never filters on
-    `is_active`, so a deactivated account still renders on the row it is on.
-    """
-    consumed, produced = [], []
-    for material_id, movement_type in work_order.movements.values_list('material_id', 'movement_type'):
-        if movement_type == StockMovement.MovementType.TRANSFORM_CONSUME:
-            consumed.append(material_id)
-        else:
-            produced.append(material_id)
-    return {
-        'consumed': consumed,
-        'produced': produced,
-        'machines': list(work_order.machine_usages.values_list('machine_id', flat=True)),
-        'workers': [],
-    }
-
-
 def _section_form_kwargs(prefix, *, author, viewer, keep=None):
     """The per-row kwargs one section's forms are built with.
 
@@ -296,144 +260,133 @@ def _section_form_kwargs(prefix, *, author, viewer, keep=None):
     return {'keep': (keep or {}).get(prefix, ())}
 
 
-def _resized_job_forms(post_data, section, delta, *, author, viewer, order_form_user=None, keep=None):
-    """Every form on the job page, rebuilt from `post_data` with `section` one row
-    bigger or smaller. Returns the job form and the four formsets by prefix.
+def _job_forms(request, *, author, viewer, order_form_user=None, keep=None, initial=None):
+    """Every form on the job page, and whether this request submitted them.
 
-    Unbound throughout, and deliberately: the row buttons ask for a different
-    form, they do not submit one, so the page has to come back carrying what was
-    typed and complaining about nothing. A bound rebuild would render „Toto pole
-    je vyžadováno." over the hours box of somebody who only wanted a fourth
-    material row.
+    Returns `(order_form, formsets_by_prefix, submitted)`, covering the three
+    things a request to the job page can be:
 
-    Raw POST strings round-trip through an unbound widget without help: a pk
-    string re-selects its option, and a date string reaches `<input type="date">`
-    unchanged instead of going out through the `cs` DATE_INPUT_FORMATS as
-    `05.09.2026`, which the widget rejects and shows blank — the same trap
-    `WorkOrderForm.performed_on` carries an explicit `format` for.
+    - **A row button.** Every form is rebuilt from the POST, *unbound*, with
+      that section one row bigger or smaller. Asking for a row is not
+      submitting, so the page has to come back carrying what was typed and
+      complaining about nothing — a bound rebuild would put „Toto pole je
+      vyžadováno." over the hours box of somebody who only wanted a fourth
+      material row. Raw POST strings round-trip through an unbound widget
+      without help: a pk re-selects its option, and a date string reaches
+      `<input type="date">` unchanged instead of going out through the `cs`
+      DATE_INPUT_FORMATS as `05.09.2026`, which the widget shows blank.
+    - **Any other POST.** Everything bound; `submitted` is True.
+    - **A GET.** Fresh forms, pre-filled from `initial` — keyed `order` for the
+      job form and by section prefix for the rows — on `job_edit`.
+
+    `author` decides who may be named as a collaborator, `viewer` how wide that
+    list is, and `keep` which retired catalog records `job_edit` still offers.
     """
-    order_form = WorkOrderForm(user=order_form_user)
-    # Read off the form's own fields, so „Zapsat za" — which exists only on a
-    # manager's form — is carried over without a second list of names here.
-    # Assigned after construction because the field set is not known until then.
-    order_form.initial = {name: post_data.get(name, '') for name in order_form.fields}
-    formsets = {}
-    for prefix, row_form, base_formset in JOB_SECTIONS:
-        rows, blank_rows = _resized_section(
-            _submitted_rows(post_data, row_form, prefix),
-            delta if prefix == section else 0,
+    form_kwargs = {
+        section.prefix: _section_form_kwargs(section.prefix, author=author, viewer=viewer, keep=keep)
+        for section in JOB_SECTIONS
+    }
+    pressed = _pressed_row_button(request.POST) if request.method == 'POST' else None
+    if pressed:
+        pressed_prefix, delta = pressed
+        order_form = WorkOrderForm(user=order_form_user)
+        # Read off the form's own fields, so „Zapsat za" — which exists only on a
+        # manager's form — is carried over without a second list of names here.
+        # Assigned after construction because the field set is not known until then.
+        order_form.initial = {name: request.POST.get(name, '') for name in order_form.fields}
+        formsets = {}
+        for section in JOB_SECTIONS:
+            rows, blank_rows = _resized_section(
+                _submitted_rows(request.POST, section),
+                delta if section.prefix == pressed_prefix else 0,
+            )
+            formsets[section.prefix] = job_row_formset(
+                section, rows=rows, blank_rows=blank_rows, form_kwargs=form_kwargs[section.prefix]
+            )
+        return order_form, formsets, False
+    if request.method == 'POST':
+        order_form = WorkOrderForm(request.POST, user=order_form_user)
+        formsets = {
+            section.prefix: job_row_formset(section, data=request.POST, form_kwargs=form_kwargs[section.prefix])
+            for section in JOB_SECTIONS
+        }
+        return order_form, formsets, True
+    initial = initial or {}
+    order_form = WorkOrderForm(initial=initial.get('order'), user=order_form_user)
+    formsets = {
+        section.prefix: job_row_formset(
+            section, rows=initial.get(section.prefix, ()), form_kwargs=form_kwargs[section.prefix]
         )
-        formsets[prefix] = job_row_formset(
-            row_form,
-            base_formset,
-            prefix=prefix,
-            rows=rows,
-            blank_rows=blank_rows,
-            form_kwargs=_section_form_kwargs(prefix, author=author, viewer=viewer, keep=keep),
-        )
-    return order_form, formsets
+        for section in JOB_SECTIONS
+    }
+    return order_form, formsets, False
+
+
+def _valid_job_rows(request, order_form, formsets):
+    """The rows of a submitted job, or None when it cannot be saved.
+
+    Nothing is written unless all five forms validate and the job balances.
+    Form errors render beside their fields; the balance error has no field to
+    sit on, so it goes on `messages`.
+    """
+    if not (order_form.is_valid() and all(formset.is_valid() for formset in formsets.values())):
+        return None
+    rows = _collect_rows(formsets)
+    error = _balance_error(rows[0], rows[1])
+    if error:
+        messages.error(request, error)
+        return None
+    return rows
+
+
+def _job_context(order_form, formsets, **extra):
+    """The job page's context: the job form, the sections in render order for
+    `_job_form_fields.html`, and each formset under its own name as well."""
+    return {
+        'order_form': order_form,
+        'sections': [(section, formsets[section.prefix]) for section in JOB_SECTIONS],
+        **{section.context_name: formsets[section.prefix] for section in JOB_SECTIONS},
+        **extra,
+    }
 
 
 @login_required
 def transform_create(request):
-    # Neither row button is a submission: the page comes straight back one row
-    # bigger or smaller, with nothing validated and nothing written. Checked
-    # before the normal POST branch so that branch stays the submission path and
-    # nothing else.
-    resized = _pressed_row_button(request.POST) if request.method == 'POST' else None
-    if resized:
-        section, delta = resized
-        order_form, formsets = _resized_job_forms(
-            request.POST,
-            section,
-            delta,
-            author=_submitted_author(request.POST, request.user),
-            viewer=request.user,
-            order_form_user=request.user,
-        )
-        consumed_formset = formsets['consumed']
-        produced_formset = formsets['produced']
-        machine_formset = formsets['machines']
-        worker_formset = formsets['workers']
-    elif request.method == 'POST':
-        order_form = WorkOrderForm(request.POST, user=request.user)
-        consumed_formset = ConsumedFormSet(request.POST, prefix='consumed')
-        produced_formset = ProducedFormSet(request.POST, prefix='produced')
-        machine_formset = MachineUsageFormSet(request.POST, prefix='machines')
-        # Who the job belongs to is chosen on this same form, and it decides who
-        # may be named as a collaborator — you cannot collaborate with yourself.
-        # So the author has to be settled before the hours rows are built. A
-        # form that does not validate has no author; the submitter stands in,
-        # only so the invalid page can be re-rendered.
-        author = order_form.author_or(request.user) if order_form.is_valid() else request.user
-        worker_formset = WorkerHoursFormSet(
-            request.POST, prefix='workers', form_kwargs={'user': author, 'viewer': request.user}
-        )
-        if (
-            order_form.is_valid()
-            and consumed_formset.is_valid()
-            and produced_formset.is_valid()
-            and machine_formset.is_valid()
-            and worker_formset.is_valid()
-        ):
-            consumed_rows, produced_rows, machine_rows, worker_hours = _collect_rows(
-                consumed_formset, produced_formset, machine_formset, worker_formset
-            )
-            error = _balance_error(consumed_rows, produced_rows)
-            if error:
-                messages.error(request, error)
-            else:
-                # A worker's job is a proposal until a manager signs it off, so
-                # it stays out of the Hodiny/Stroje reports until then. A
-                # manager has nobody above them to approve it, so theirs counts
-                # straight away — and that goes for one they typed on a worker's
-                # behalf too: they are the reviewer, and they just saw the work
-                # written down. The *submitter* decides this, not the author.
-                approved = request.user.is_manager_or_admin
-                with transaction.atomic():
-                    work_order = WorkOrder.objects.create(
-                        created_by=author,
-                        description=order_form.cleaned_data['description'],
-                        performed_on=order_form.cleaned_data['performed_on'],
-                        status=WorkOrder.Status.APPROVED if approved else WorkOrder.Status.PENDING,
-                        reviewed_at=timezone.now() if approved else None,
-                        reviewed_by=request.user if approved else None,
-                    )
-                    _write_job_rows(
-                        work_order,
-                        author,
-                        order_form.cleaned_data['hours'],
-                        consumed_rows,
-                        produced_rows,
-                        machine_rows,
-                        worker_hours,
-                    )
-                messages.success(
-                    request,
-                    'Zpracování bylo zaznamenáno.'
-                    if approved
-                    else 'Zpracování bylo zaznamenáno a čeká na schválení vedoucím.',
-                )
-                return redirect('transform_create')
-    else:
-        order_form = WorkOrderForm(user=request.user)
-        consumed_formset = ConsumedFormSet(prefix='consumed')
-        produced_formset = ProducedFormSet(prefix='produced')
-        machine_formset = MachineUsageFormSet(prefix='machines')
-        worker_formset = WorkerHoursFormSet(
-            prefix='workers', form_kwargs={'user': request.user, 'viewer': request.user}
-        )
-    return render(
-        request,
-        'workorders/transform_form.html',
-        {
-            'order_form': order_form,
-            'consumed_formset': consumed_formset,
-            'produced_formset': produced_formset,
-            'machine_formset': machine_formset,
-            'worker_formset': worker_formset,
-        },
+    # Who the job belongs to is chosen on this same form, and it decides who may
+    # be named as a collaborator — you cannot collaborate with yourself — so it
+    # is settled before any formset is built.
+    author = _submitted_author(request.POST, request.user) if request.method == 'POST' else request.user
+    order_form, formsets, submitted = _job_forms(
+        request, author=author, viewer=request.user, order_form_user=request.user
     )
+    if submitted:
+        rows = _valid_job_rows(request, order_form, formsets)
+        if rows is not None:
+            # A worker's job is a proposal until a manager signs it off, so it
+            # stays out of the Hodiny/Stroje reports until then. A manager has
+            # nobody above them to approve it, so theirs counts straight away —
+            # and that goes for one they typed on a worker's behalf too: they
+            # are the reviewer, and they just saw the work written down. The
+            # *submitter* decides this, not the author.
+            approved = request.user.is_manager_or_admin
+            with transaction.atomic():
+                work_order = WorkOrder.objects.create(
+                    created_by=author,
+                    description=order_form.cleaned_data['description'],
+                    performed_on=order_form.cleaned_data['performed_on'],
+                    status=WorkOrder.Status.APPROVED if approved else WorkOrder.Status.PENDING,
+                    reviewed_at=timezone.now() if approved else None,
+                    reviewed_by=request.user if approved else None,
+                )
+                _write_job_rows(work_order, author, order_form.cleaned_data['hours'], *rows)
+            messages.success(
+                request,
+                'Zpracování bylo zaznamenáno.'
+                if approved
+                else 'Zpracování bylo zaznamenáno a čeká na schválení vedoucím.',
+            )
+            return redirect('transform_create')
+    return render(request, 'workorders/transform_form.html', _job_context(order_form, formsets))
 
 
 @role_required(*REVIEWER_ROLES)
@@ -1020,135 +973,66 @@ def job_edit(request, pk):
     work_order = get_object_or_404(WorkOrder.objects.select_related('created_by'), pk=pk)
     # The rows belong to whoever recorded the job, not to the manager editing
     # it: the "moje hodiny" field is the author's, and the collaborator list has
-    # to exclude the author rather than the editor.
+    # to exclude the author rather than the editor. There is no „Zapsat za" on
+    # this form, so a correction cannot reassign the job.
     author = work_order.created_by
+    consumed, produced = _job_line_items(work_order)
+    usages = list(work_order.machine_usages.all())
     # What the job already names, so a material or machine retired since it was
-    # recorded still renders on its row and survives the save. Read before the
-    # branch because every one of the three needs it — the POST branches most of
-    # all, where a picker that has dropped the value would reject it outright.
-    keep = _recorded_choices(work_order)
-
-    def section_kwargs(prefix):
-        return _section_form_kwargs(prefix, author=author, viewer=request.user, keep=keep)
-
-    # Same as on the Transform form: resize the section and re-render, unbound.
-    # The author is the job's, not whatever the POST says — a manager correcting
-    # somebody's job cannot reassign it, and there is no „Zapsat za" field here.
-    resized = _pressed_row_button(request.POST) if request.method == 'POST' else None
-    if resized:
-        section, delta = resized
-        order_form, formsets = _resized_job_forms(
-            request.POST, section, delta, author=author, viewer=request.user, keep=keep
-        )
-        consumed_formset = formsets['consumed']
-        produced_formset = formsets['produced']
-        machine_formset = formsets['machines']
-        worker_formset = formsets['workers']
-    elif request.method == 'POST':
-        order_form = WorkOrderForm(request.POST)
-        consumed_formset = ConsumedFormSet(request.POST, prefix='consumed', form_kwargs=section_kwargs('consumed'))
-        produced_formset = ProducedFormSet(request.POST, prefix='produced', form_kwargs=section_kwargs('produced'))
-        machine_formset = MachineUsageFormSet(request.POST, prefix='machines', form_kwargs=section_kwargs('machines'))
-        worker_formset = WorkerHoursFormSet(request.POST, prefix='workers', form_kwargs=section_kwargs('workers'))
-        if (
-            order_form.is_valid()
-            and consumed_formset.is_valid()
-            and produced_formset.is_valid()
-            and machine_formset.is_valid()
-            and worker_formset.is_valid()
-        ):
-            consumed_rows, produced_rows, machine_rows, worker_hours = _collect_rows(
-                consumed_formset, produced_formset, machine_formset, worker_formset
-            )
-            error = _balance_error(consumed_rows, produced_rows)
-            if error:
-                messages.error(request, error)
-            else:
-                with transaction.atomic():
-                    work_order.description = order_form.cleaned_data['description']
-                    work_order.performed_on = order_form.cleaned_data['performed_on']
-                    work_order.save(update_fields=['description', 'performed_on'])
-                    _write_job_rows(
-                        work_order,
-                        author,
-                        order_form.cleaned_data['hours'],
-                        consumed_rows,
-                        produced_rows,
-                        machine_rows,
-                        worker_hours,
-                    )
-                messages.success(request, 'Zpracování bylo upraveno.')
-                return redirect('job_detail', pk=work_order.pk)
-    else:
-        consumed, produced = _job_line_items(work_order)
-        own_hours = work_order.worker_hours.filter(user=author).first()
-        order_form = WorkOrderForm(
-            initial={
-                'description': work_order.description,
-                'hours': _trim(own_hours.hours) if own_hours else None,
-                # The job's own date, not today: a correction that touches
-                # nothing else must not move it.
-                'performed_on': work_order.performed_on,
-            }
-        )
-        consumed_formset = ConsumedFormSet(
-            prefix='consumed',
-            form_kwargs=section_kwargs('consumed'),
-            initial=[
-                {
-                    'material': movement.material_id,
-                    'quantity': _trim(movement.typed_quantity),
-                }
-                for movement in consumed
-            ],
-        )
-        produced_formset = ProducedFormSet(
-            prefix='produced',
-            form_kwargs=section_kwargs('produced'),
-            initial=[
-                {
-                    'material': movement.material_id,
-                    'quantity': _trim(movement.typed_quantity),
-                }
-                for movement in produced
-            ],
-        )
-        machine_formset = MachineUsageFormSet(
-            prefix='machines',
-            form_kwargs=section_kwargs('machines'),
-            initial=[
-                {
-                    'machine': usage.machine_id,
-                    'hours': _trim(usage.hours),
-                    'tons': _trim(usage.tons) if usage.tons is not None else None,
-                }
-                for usage in work_order.machine_usages.all()
-            ],
-        )
-        worker_formset = WorkerHoursFormSet(
-            prefix='workers',
-            form_kwargs=section_kwargs('workers'),
-            initial=[
-                {'user': row.user_id, 'hours': _trim(row.hours)} for row in work_order.worker_hours.exclude(user=author)
-            ],
-        )
+    # recorded still renders on its row and survives the save — `_offer_recorded`
+    # in forms.py has the reasoning. The workers section needs nothing:
+    # `collaborator_queryset` never filters on `is_active`.
+    keep = {
+        'consumed': [movement.material_id for movement in consumed],
+        'produced': [movement.material_id for movement in produced],
+        'machines': [usage.machine_id for usage in usages],
+    }
+    order_form, formsets, submitted = _job_forms(
+        request,
+        author=author,
+        viewer=request.user,
+        keep=keep,
+        initial=_edit_initial(work_order, author, consumed, produced, usages) if request.method == 'GET' else None,
+    )
+    if submitted:
+        rows = _valid_job_rows(request, order_form, formsets)
+        if rows is not None:
+            with transaction.atomic():
+                work_order.description = order_form.cleaned_data['description']
+                work_order.performed_on = order_form.cleaned_data['performed_on']
+                work_order.save(update_fields=['description', 'performed_on'])
+                _write_job_rows(work_order, author, order_form.cleaned_data['hours'], *rows)
+            messages.success(request, 'Zpracování bylo upraveno.')
+            return redirect('job_detail', pk=work_order.pk)
     # The shared form body reads this label off the form, and neither of the two
     # the form sets itself fits here: a manager is correcting somebody else's
     # job, so it is neither „Moje hodiny" nor an unqualified „Odpracované
-    # hodiny". Set on both branches, since an invalid POST re-renders too.
+    # hodiny". Set on every path, since an invalid POST re-renders too.
     order_form.fields['hours'].label = f'Hodiny – {author.username}'
-    return render(
-        request,
-        'workorders/job_edit.html',
-        {
-            'work_order': work_order,
-            'order_form': order_form,
-            'consumed_formset': consumed_formset,
-            'produced_formset': produced_formset,
-            'machine_formset': machine_formset,
-            'worker_formset': worker_formset,
+    return render(request, 'workorders/job_edit.html', _job_context(order_form, formsets, work_order=work_order))
+
+
+def _edit_initial(work_order, author, consumed, produced, usages):
+    """`job_edit`'s pre-fill: the job as recorded, quantities as they were typed."""
+    own_hours = work_order.worker_hours.filter(user=author).first()
+    return {
+        'order': {
+            'description': work_order.description,
+            'hours': _trim(own_hours.hours) if own_hours else None,
+            # The job's own date, not today: a correction that touches nothing
+            # else must not move it.
+            'performed_on': work_order.performed_on,
         },
-    )
+        'consumed': [{'material': m.material_id, 'quantity': _trim(m.typed_quantity)} for m in consumed],
+        'produced': [{'material': m.material_id, 'quantity': _trim(m.typed_quantity)} for m in produced],
+        'machines': [
+            {'machine': u.machine_id, 'hours': _trim(u.hours), 'tons': _trim(u.tons) if u.tons is not None else None}
+            for u in usages
+        ],
+        'workers': [
+            {'user': row.user_id, 'hours': _trim(row.hours)} for row in work_order.worker_hours.exclude(user=author)
+        ],
+    }
 
 
 @role_required(*REVIEWER_ROLES)

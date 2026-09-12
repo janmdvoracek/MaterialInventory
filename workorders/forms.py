@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from decimal import Decimal
 
 from django import forms
@@ -26,6 +27,13 @@ from .models import WorkOrder
 # `quantity` and `tons` need no such cap: at `max_digits=7` they are already far
 # narrower than the columns they land in.
 HOURS_MAX_DIGITS = 11
+
+
+def _hours_field(**kwargs):
+    """Hours as the job form takes them: half-hour steps, capped at the column width."""
+    return forms.DecimalField(
+        min_value=Decimal('0.5'), max_digits=HOURS_MAX_DIGITS, step_size=Decimal('0.5'), decimal_places=1, **kwargs
+    )
 
 
 def _offer_recorded(field, keep):
@@ -78,14 +86,7 @@ class WorkOrderForm(forms.Form):
         label='Popis',
         widget=forms.TextInput(attrs={'placeholder': 'Popis provedené práce (volitelné)'}),
     )
-    hours = forms.DecimalField(
-        min_value=Decimal('0.5'),
-        max_digits=HOURS_MAX_DIGITS,
-        step_size=Decimal('0.5'),
-        decimal_places=1,
-        label='Moje hodiny',
-        widget=forms.NumberInput(attrs={'placeholder': 'Odpracované hodiny'}),
-    )
+    hours = _hours_field(label='Moje hodiny', widget=forms.NumberInput(attrs={'placeholder': 'Odpracované hodiny'}))
     # Pre-filled with today, so the common case is already answered and
     # back-dating is just editing the box. **`format` is not optional here**: an
     # unbound field with a python `date` initial renders through the `cs`
@@ -223,7 +224,42 @@ class WorkerRowFormSet(UniqueChoiceFormSet):
     duplicate_error = 'Pracovník „{name}“ je vybraný víckrát. Sečtěte hodiny do jednoho řádku.'
 
 
-class MovementItemForm(forms.Form):
+class RowForm(forms.Form):
+    """One row of a job section: left blank, or filled in completely.
+
+    Every field on a row is `required=False`, because a whole row may be left
+    empty; this is what refuses a half-filled one. `incomplete_error` is the
+    Czech complaint about that, and `catalog_field` names the picker `job_edit`
+    may widen with `keep` (see `_offer_recorded`).
+    """
+
+    incomplete_error = None
+    catalog_field = None
+
+    def __init__(self, *args, keep=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.catalog_field:
+            _offer_recorded(self.fields[self.catalog_field], keep)
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if self.errors:
+            # A field that failed its own validation is absent from
+            # cleaned_data, which reads here exactly like a half-filled row —
+            # so the check below would add "fill in both" on top of the real
+            # complaint, and that is the one the reader would act on. It is
+            # also the wrong advice: they *did* fill both in.
+            return cleaned_data
+        filled = [cleaned_data.get(name) for name in self.fields]
+        if any(filled) and not all(filled):
+            raise forms.ValidationError(self.incomplete_error)
+        return cleaned_data
+
+
+class MovementItemForm(RowForm):
+    catalog_field = 'material'
+    incomplete_error = 'Vyplňte materiál i množství, nebo řádek nechte prázdný.'
+
     # required=False because a whole row may be left blank, but these are still
     # entry fields — the blank option is a prompt, not an "all" filter.
     material = forms.ModelChoiceField(
@@ -243,45 +279,18 @@ class MovementItemForm(forms.Form):
         widget=forms.NumberInput(attrs={'placeholder': 'Množství (t)'}),
     )
 
-    def __init__(self, *args, keep=None, **kwargs):
-        super().__init__(*args, **kwargs)
-        _offer_recorded(self.fields['material'], keep)
 
-    def clean(self):
-        cleaned_data = super().clean()
-        if self.errors:
-            # A field that failed its own validation is absent from
-            # cleaned_data, which reads here exactly like a half-filled row —
-            # so the check below would add "fill in both" on top of the real
-            # complaint, and that is the one the reader would act on. It is
-            # also the wrong advice: they *did* fill both in.
-            return cleaned_data
-        filled = [cleaned_data.get('material'), cleaned_data.get('quantity')]
-        if any(filled) and not all(filled):
-            raise forms.ValidationError('Vyplňte materiál i množství, nebo řádek nechte prázdný.')
-        return cleaned_data
+class MachineUsageForm(RowForm):
+    catalog_field = 'machine'
+    incomplete_error = 'Vyplňte stroj, motohodiny a tuny, nebo řádek nechte prázdný.'
 
-
-ConsumedFormSet = forms.formset_factory(MovementItemForm, formset=MaterialRowFormSet, extra=1)
-ProducedFormSet = forms.formset_factory(MovementItemForm, formset=MaterialRowFormSet, extra=1)
-
-
-class MachineUsageForm(forms.Form):
     machine = forms.ModelChoiceField(
         queryset=Machine.objects.filter(is_active=True),
         required=False,
         label='Stroj',
         empty_label='Stroj',
     )
-    hours = forms.DecimalField(
-        min_value=Decimal('0.5'),
-        max_digits=HOURS_MAX_DIGITS,
-        step_size=Decimal('0.5'),
-        decimal_places=1,
-        required=False,
-        label='Hodiny',
-        widget=forms.NumberInput(attrs={'placeholder': 'Motohodiny'}),
-    )
+    hours = _hours_field(required=False, label='Hodiny', widget=forms.NumberInput(attrs={'placeholder': 'Motohodiny'}))
     # Tonnage this machine put through on this job. Unrelated to the job's
     # own consumed/produced totals — several chained machines each process the
     # same material, so these do not add up to the mass balance and are not
@@ -295,29 +304,12 @@ class MachineUsageForm(forms.Form):
         widget=forms.NumberInput(attrs={'placeholder': 'Tuny'}),
     )
 
-    def __init__(self, *args, keep=None, **kwargs):
-        super().__init__(*args, **kwargs)
-        _offer_recorded(self.fields['machine'], keep)
 
-    def clean(self):
-        cleaned_data = super().clean()
-        if self.errors:
-            # See MovementItemForm.clean: a field error already removed the
-            # value from cleaned_data, so the emptiness check below would bury
-            # the real message under a wrong one.
-            return cleaned_data
-        filled = [cleaned_data.get('machine'), cleaned_data.get('hours'), cleaned_data.get('tons')]
-        if any(filled) and not all(filled):
-            raise forms.ValidationError('Vyplňte stroj, motohodiny a tuny, nebo řádek nechte prázdný.')
-        return cleaned_data
-
-
-MachineUsageFormSet = forms.formset_factory(MachineUsageForm, formset=MachineRowFormSet, extra=1)
-
-
-class WorkerHoursForm(forms.Form):
+class WorkerHoursForm(RowForm):
     """One collaborator and the hours they worked. Naming someone here is what
     makes them a collaborator on the job — there is no separate picker."""
+
+    incomplete_error = 'Vyplňte pracovníka a počet hodin, nebo řádek nechte prázdný.'
 
     user = forms.ModelChoiceField(
         queryset=User.objects.none(),
@@ -327,69 +319,55 @@ class WorkerHoursForm(forms.Form):
     )
     # The row layout has no room for a visible label, so the placeholder is it —
     # same reason the selects use the bare noun as their `empty_label`.
-    hours = forms.DecimalField(
-        min_value=Decimal('0.5'),
-        max_digits=HOURS_MAX_DIGITS,
-        step_size=Decimal('0.5'),
-        decimal_places=1,
-        required=False,
-        label='Hodiny',
-        widget=forms.NumberInput(attrs={'placeholder': 'Hodiny'}),
-    )
+    hours = _hours_field(required=False, label='Hodiny', widget=forms.NumberInput(attrs={'placeholder': 'Hodiny'}))
 
     def __init__(self, *args, user=None, viewer=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['user'].queryset = collaborator_queryset(user, viewer)
 
-    def clean(self):
-        cleaned_data = super().clean()
-        if self.errors:
-            # See MovementItemForm.clean.
-            return cleaned_data
-        filled = [cleaned_data.get('user'), cleaned_data.get('hours')]
-        if any(filled) and not all(filled):
-            raise forms.ValidationError('Vyplňte pracovníka a počet hodin, nebo řádek nechte prázdný.')
-        return cleaned_data
+
+@dataclass(frozen=True)
+class JobSection:
+    """One row section of the job form.
+
+    `prefix` is the formset prefix and the suffix of its row buttons
+    (`add_workers`, `remove_consumed`); `context_name` is the key the formset is
+    also exposed under in the page context; `formset_class` holds the section's
+    no-duplicates rule.
+    """
+
+    prefix: str
+    context_name: str
+    title: str
+    row_form: type
+    formset_class: type
 
 
-WorkerHoursFormSet = forms.formset_factory(WorkerHoursForm, formset=WorkerRowFormSet, extra=1)
-
-
-# The four row sections of the job form, in the order `_job_form_fields.html`
-# renders them: the formset prefix — which is also the suffix of the
-# „+ další řádek" button that grows that section, `add_workers` and friends —
-# the form a single row is made of, and the formset class that holds the
-# section's no-duplicates rule. `_resized_job_forms` in views.py walks this, so
-# a fifth section needs adding here and nowhere else.
+# In render order. `_job_form_fields.html` loops over these and views.py builds,
+# resizes and reads the formsets from them, so a fifth section needs adding
+# here and nowhere else.
 JOB_SECTIONS = (
-    ('workers', WorkerHoursForm, WorkerRowFormSet),
-    ('consumed', MovementItemForm, MaterialRowFormSet),
-    ('produced', MovementItemForm, MaterialRowFormSet),
-    ('machines', MachineUsageForm, MachineRowFormSet),
+    JobSection('workers', 'worker_formset', 'Spolupracovníci', WorkerHoursForm, WorkerRowFormSet),
+    JobSection('consumed', 'consumed_formset', 'Spotřebováno', MovementItemForm, MaterialRowFormSet),
+    JobSection('produced', 'produced_formset', 'Vyrobeno', MovementItemForm, MaterialRowFormSet),
+    JobSection('machines', 'machine_formset', 'Použité stroje', MachineUsageForm, MachineRowFormSet),
 )
 
 
-def job_row_formset(row_form, base_formset, *, prefix, rows, blank_rows, form_kwargs=None):
-    """One section of the job form holding exactly `rows`, plus `blank_rows` empty ones.
+def job_row_formset(section, *, data=None, rows=(), blank_rows=1, form_kwargs=None):
+    """One section of the job form: bound to `data`, or holding `rows` plus `blank_rows` empty ones.
 
-    The formset classes above pad a fixed number of blanks onto whatever they
-    are handed, which is what a fresh form wants and the opposite of what a page
-    being re-rendered after „+ další řádek" wants — there the row count *is* the
-    answer, and padding it again would add three rows per tap instead of one.
-    `extra` is a class attribute, so the size has to be baked into a class
-    rather than passed to the instance; `formset_factory` is a `type()` call and
-    cheap enough to run per request.
+    `extra` is a class attribute, so the number of blanks has to be baked into a
+    class rather than passed to the instance; `formset_factory` is a `type()`
+    call and cheap enough to run per request. A page re-rendered after
+    „+ další řádek" passes the exact count it wants — padding the rows it
+    already has would add more than one row per tap.
 
-    Handing `formset_factory` the section's own `base_formset` is what keeps
-    the rebuilt page's dropdowns free of what the other rows already took — a
-    plain `BaseFormSet` here would leave the new row offering the material one
-    tap away from being a duplicate.
-
-    The rows go in as `initial`, not `data`: the rebuilt page is unbound on
-    purpose. See `_resized_job_forms`.
+    Unbound rows go in as `initial`, not `data`: the rebuilt page is unbound on
+    purpose. See `_job_forms` in views.py.
     """
-    formset_class = forms.formset_factory(row_form, formset=base_formset, extra=blank_rows)
-    return formset_class(prefix=prefix, initial=rows, form_kwargs=form_kwargs or {})
+    formset_class = forms.formset_factory(section.row_form, formset=section.formset_class, extra=blank_rows)
+    return formset_class(data, prefix=section.prefix, initial=list(rows), form_kwargs=form_kwargs or {})
 
 
 class DateRangeFilterForm(forms.Form):

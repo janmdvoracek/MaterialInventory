@@ -212,9 +212,9 @@ manager worked the job. `job_edit` passes the same pair. A worker recording
 their own job is unaffected — `viewer` defaults to `user`.
 
 Because the author is chosen on the same form that the collaborator rows live
-on, `transform_create` validates `WorkOrderForm` **before** building the
-`WorkerHoursFormSet`. An invalid form has no author; the submitter stands in,
-only so the page can be re-rendered with its errors.
+on, `transform_create` reads it out of the POST with `_submitted_author`
+**before** any formset is built, on a submission and a row-button rebuild alike.
+When „Zapsat za" is empty or invalid, the submitter stands in.
 
 ### Approval
 
@@ -308,9 +308,9 @@ nothing selected, and saving the form as rendered posts an empty row. Since
 and the edit still reports success, while a vanished consumed row leaves the job
 behind a mass-balance error no edit can clear.
 
-So `job_edit` widens those three sections. `_recorded_choices(work_order)` reads
-the pks the job already uses, keyed by section prefix; `_section_form_kwargs`
-hands them to the row forms as `keep`; and `_offer_recorded` in `forms.py` unions
+So `job_edit` widens those three sections. It collects the pks the job already
+uses, keyed by section prefix, from the line items and machine usages it has
+already loaded; `_section_form_kwargs` hands them to the row forms as `keep`; and `_offer_recorded` in `forms.py` unions
 them back into the field's queryset. **Only what this job names comes back** — the
 rest of the retired catalog stays hidden, and a fresh form passes no `keep` at
 all, which is what keeps retiring something meaningful. The workers section needs
@@ -326,13 +326,19 @@ balance is checked across a single submission it could not be split over two
 either.
 
 Each section carries two ordinary submit buttons, `add_<prefix>` and
-`remove_<prefix>`. The prefixes live in `JOB_SECTIONS` in `workorders/forms.py` —
-prefix, row form and the formset class holding that section's no-duplicates rule
-— and that tuple is the only place a fifth section would have to be registered. `_pressed_row_button` looks for either at the top of both
-`transform_create` and `job_edit`, ahead of the submission branch, and reports
-which section and which direction as `(prefix, delta)`; `_resized_job_forms` then
+`remove_<prefix>`. The sections live in `JOB_SECTIONS` in `workorders/forms.py`, a
+tuple of `JobSection` — prefix, context name, title, row form and the formset
+class holding that section's no-duplicates rule — which `_job_form_fields.html`
+loops over, and which is the only place a fifth section would have to be
+registered.
+
+Both `transform_create` and `job_edit` build their forms through one helper,
+`_job_forms`. It checks `_pressed_row_button` ahead of the submission branch,
+which reports which section and which direction as `(prefix, delta)`, and then
 rebuilds every form on the page out of the raw POST, giving the named section one
-row more or less and every other section exactly the rows it already had.
+row more or less and every other section exactly the rows it already had. Any
+other POST comes back bound, and `_valid_job_rows` runs the five validations and
+the mass balance before either view writes.
 
 **Removing takes the last row — the exact one adding appends**, so the two
 buttons undo each other. Anything cleverer, like dropping the last *empty* row,
@@ -367,8 +373,8 @@ Four details are load-bearing and easy to undo by accident:
   when nobody needs to change the number of rows.
 - **`job_row_formset` builds a class per call.** `extra` is a class attribute, so
   a formset sized to its caller cannot take the size as a constructor argument.
-  Reusing the module-level `extra=3` classes would pad three more rows onto every
-  tap instead of one.
+  It is how every formset on the job page is built; there are no module-level
+  formset classes to reach for instead.
 - **Both callers open their `<form>` with an off-screen decoy submit.** A browser
   submits a form through its *first* submit button when Enter is pressed in a text
   field, and „+ další řádek" comes before the real button. The decoy is
@@ -394,7 +400,7 @@ Two unrelated numbers. Do not derive one from the other.
 
 - **`WorkerHours`** is labour: what a person typed for themselves. The
   submitter's own hours come from `WorkOrderForm.hours` (*„Moje hodiny"*, and it
-  is required); each collaborator's come from a `WorkerHoursFormSet` row. A
+  is required); each collaborator's come from a row in the workers section. A
   `UniqueConstraint` allows one row per person per job, and the form refuses a
   second row for someone already named rather than reaching it — see *One row
   each* above.

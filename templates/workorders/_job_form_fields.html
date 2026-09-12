@@ -1,48 +1,35 @@
 {% comment %}
-The body of the Zpracování form: the job's own fields, then the four formset
-sections. Shared by transform_form.html (recording a job) and job_edit.html (a
-manager correcting one), so a field added to a row cannot land on one page and
-be forgotten on the other. The two views already share `_collect_rows` and
-`_write_job_rows`; this is the markup half of the same rule.
+The body of the Zpracování form: the job's own fields, then one block per
+`JOB_SECTIONS` entry (`sections` in the context, from `_job_context`). Shared by
+transform_form.html (recording a job) and job_edit.html (a manager correcting
+one), so a field added to a row cannot land on one page and be forgotten on the
+other.
 
 Rendered inside the caller's own <form>, so there is no <form> tag, no
 {% csrf_token %} and no primary submit button here — those differ per page and
-stay with the caller.
+stay with the caller. Because the browser submits a form via its *first* submit
+button when Enter is pressed, and the row buttons below come before the
+caller's real one, each caller opens its <form> with an off-screen decoy submit
+so Enter still saves.
 
-The two row buttons *are* here, one pair per section, because they belong to the
-rows they resize. Each is a plain submit posting the form back under
-`add_<prefix>` or `remove_<prefix>`; the view rebuilds the page unbound with one
-more blank row, or one fewer row, and renders it. That is the whole mechanism —
-there is no JavaScript in this app, and a formset otherwise renders a fixed
-number of rows with no way past them in either direction. Both carry
-`formnovalidate` because „Moje hodiny" and „Datum provedení" are required, and
-without it the browser would refuse to submit a half-filled form and the buttons
-would silently do nothing.
-
-„− odebrat řádek" drops the *last* row — the exact one „+ další řádek" adds — and
-is hidden once a section is down to a single row, so it is never shown as a
-button that does nothing. The view holds the same floor regardless of what the
-POST asks for, so hiding it is presentation, not the rule.
-
-Because the browser submits a form via its *first* submit button when Enter is
-pressed in a text field, and these come before the caller's real one, each
-caller opens its <form> with an off-screen decoy submit so Enter still saves.
+Each section's two row buttons are plain submits posting the form back under
+`add_<prefix>` or `remove_<prefix>`; the view rebuilds the page unbound one row
+bigger or smaller (`_job_forms`). There is no JavaScript in this app. Both carry
+`formnovalidate`, or the browser would refuse to submit a half-filled form and
+the buttons would silently do nothing. „− odebrat řádek" is hidden once a
+section is down to one row; the view holds the same floor regardless, so hiding
+it is presentation, not the rule.
 
 „Zapsat za" is guarded because it is manager-only: `job_edit` builds
-`WorkOrderForm` without a `user`, so the field is simply not there. The hours
-label comes from the form rather than being written out, because each page
-means something different by it — see `WorkOrderForm.__init__` and `job_edit`.
+`WorkOrderForm` without a `user`, so the field is not there. The hours label
+comes from the form, because each page means something different by it.
 
 **Every error this page can produce is rendered, and that is a rule rather than
-a nicety.** Nothing here is written unless all five forms validate, so an error
-with nowhere to appear is a submission that vanishes: the page comes back
-carrying what was typed, with no message anywhere, looking exactly as if the
-button had not been pressed. That is what used to happen to any *field* error on
-a row (`_row_errors.html` now covers those), to a formset's `non_form_errors`,
-and to the job form's own `description`/`author`/`non_field_errors`.
+a nicety.** Nothing is written unless all five forms validate, so an error with
+nowhere to appear is a submission that vanishes: the page comes back carrying
+what was typed, with no message anywhere, looking as if the button had not been
+pressed.
 {% endcomment %}
-{# The job's own errors, same rule as the rows below: anything that refused the #}
-{# submission has to be readable, or the page just comes back looking ignored.  #}
 {% for error in order_form.non_field_errors %}<p class="messages error">{{ error }}</p>{% endfor %}
 
 <label for="{{ order_form.description.id_for_label }}">Popis</label>
@@ -65,74 +52,20 @@ and to the job form's own `description`/`author`/`non_field_errors`.
     {% for error in order_form.performed_on.errors %}<p class="messages error">{{ error }}</p>{% endfor %}
 </div>
 
-<h2>Spolupracovníci</h2>
-{{ worker_formset.management_form }}
-{% for error in worker_formset.non_form_errors %}<p class="messages error">{{ error }}</p>{% endfor %}
-{% for form in worker_formset %}
+{% for section, formset in sections %}
+<h2>{{ section.title }}</h2>
+{{ formset.management_form }}
+{% for error in formset.non_form_errors %}<p class="messages error">{{ error }}</p>{% endfor %}
+{% for form in formset %}
     <div class="item-row">
-        <div>{{ form.user }}</div>
-        <div>{{ form.hours }}</div>
-    </div>
-    {% include "workorders/_row_errors.html" %}
-{% endfor %}
-
-<div class="row-controls">
-    <button class="btn secondary" type="submit" name="add_workers" formnovalidate>+ další řádek</button>
-    {% if worker_formset|length > 1 %}
-        <button class="btn secondary" type="submit" name="remove_workers" formnovalidate>− odebrat řádek</button>
-    {% endif %}
-</div>
-
-<h2>Spotřebováno</h2>
-{{ consumed_formset.management_form }}
-{% for error in consumed_formset.non_form_errors %}<p class="messages error">{{ error }}</p>{% endfor %}
-{% for form in consumed_formset %}
-    <div class="item-row">
-        <div>{{ form.material }}</div>
-        <div>{{ form.quantity }}</div>
-    </div>
-    {% include "workorders/_row_errors.html" %}
-{% endfor %}
-
-<div class="row-controls">
-    <button class="btn secondary" type="submit" name="add_consumed" formnovalidate>+ další řádek</button>
-    {% if consumed_formset|length > 1 %}
-        <button class="btn secondary" type="submit" name="remove_consumed" formnovalidate>− odebrat řádek</button>
-    {% endif %}
-</div>
-
-<h2>Vyrobeno</h2>
-{{ produced_formset.management_form }}
-{% for error in produced_formset.non_form_errors %}<p class="messages error">{{ error }}</p>{% endfor %}
-{% for form in produced_formset %}
-    <div class="item-row">
-        <div>{{ form.material }}</div>
-        <div>{{ form.quantity }}</div>
-    </div>
-    {% include "workorders/_row_errors.html" %}
-{% endfor %}
-
-<div class="row-controls">
-    <button class="btn secondary" type="submit" name="add_produced" formnovalidate>+ další řádek</button>
-    {% if produced_formset|length > 1 %}
-        <button class="btn secondary" type="submit" name="remove_produced" formnovalidate>− odebrat řádek</button>
-    {% endif %}
-</div>
-
-<h2>Použité stroje</h2>
-{{ machine_formset.management_form }}
-{% for error in machine_formset.non_form_errors %}<p class="messages error">{{ error }}</p>{% endfor %}
-{% for form in machine_formset %}
-    <div class="item-row">
-        <div>{{ form.machine }}</div>
-        <div>{{ form.hours }}</div>
-        <div>{{ form.tons }}</div>
+        {% for field in form %}<div>{{ field }}</div>{% endfor %}
     </div>
     {% include "workorders/_row_errors.html" %}
 {% endfor %}
 <div class="row-controls">
-    <button class="btn secondary" type="submit" name="add_machines" formnovalidate>+ další řádek</button>
-    {% if machine_formset|length > 1 %}
-        <button class="btn secondary" type="submit" name="remove_machines" formnovalidate>− odebrat řádek</button>
+    <button class="btn secondary" type="submit" name="add_{{ section.prefix }}" formnovalidate>+ další řádek</button>
+    {% if formset|length > 1 %}
+        <button class="btn secondary" type="submit" name="remove_{{ section.prefix }}" formnovalidate>− odebrat řádek</button>
     {% endif %}
 </div>
+{% endfor %}
