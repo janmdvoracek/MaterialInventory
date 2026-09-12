@@ -1,0 +1,22 @@
+{% comment %}
+Everything wrong with one formset row. Included under each row of every section
+in `_job_form_fields.html`, so a section cannot be rendered with half its errors
+missing.
+
+Both halves are needed. `non_field_errors` is the row's own rule ("fill in the
+material and the quantity, or leave the row empty") and the no-duplicates
+complaint `UniqueChoiceFormSet.clean` puts here. The per-field loop is the rest —
+a quantity with three decimals, motohodiny off the half-hour step — and those
+used to be dropped on the floor: the page came back with nothing written, no
+message anywhere near the row, and the form looking like it had simply ignored
+the tap.
+
+The field label is printed with the message because a row is three selects and
+boxes side by side with no visible labels of their own (see the `empty_label`
+note in CLAUDE.md), so „Ujistěte se, že pole neobsahuje více než 2 desetinná
+místa." on its own would not say *which* box.
+{% endcomment %}
+{% for error in form.non_field_errors %}<p class="messages error">{{ error }}</p>{% endfor %}
+{% for field in form %}
+    {% for error in field.errors %}<p class="messages error">{{ field.label }}: {{ error }}</p>{% endfor %}
+{% endfor %}

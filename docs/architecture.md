@@ -317,6 +317,40 @@ because each page means something different by it — `job_edit` sets it to
 *„Hodiny – <author>"*, since a manager correcting somebody else's job is looking
 at neither *„Moje hodiny"* nor a bare *„Odpracované hodiny"*.
 
+**The partial renders every error either page can produce, and that is a rule.**
+Nothing is written unless all five forms validate, so an error with nowhere to
+render is not a cosmetic gap — it is a submission that disappears. The page comes
+back carrying what was typed, with no message anywhere, looking exactly as though
+the button had not been pressed. Each row's errors go through
+`templates/workorders/_row_errors.html` (its non-field errors *and* a labelled
+line per field error, since the row's selects have no visible labels of their
+own); each section renders its `non_form_errors`; and the job form renders its
+`description`, `author` and non-field errors alongside the two that were always
+there. The row forms also bail out of their own `clean()` when `self.errors` is
+non-empty — a field that failed validation is missing from `cleaned_data`, which
+reads exactly like a half-filled row, so the "fill in both, or leave it empty"
+message would otherwise be printed *over* the real complaint and tell the reader
+to do something they had already done.
+
+### Editing a job that names a retired record
+
+A catalog entry retired after a job was recorded is still on that job. The row
+pickers are scoped to `is_active=True` — a retired material must not land on a
+*new* job — but applying that scoping to `job_edit` is a data-loss bug: a
+`ModelChoiceField` whose queryset excludes the stored pk renders the row with
+nothing selected, and saving the form as rendered posts an empty row. Since
+`_write_job_rows` clears and rewrites, the machine usage is then deleted outright
+and the edit still reports success, while a vanished consumed row leaves the job
+behind a mass-balance error no edit can clear.
+
+So `job_edit` widens those three sections. `_recorded_choices(work_order)` reads
+the pks the job already uses, keyed by section prefix; `_section_form_kwargs`
+hands them to the row forms as `keep`; and `_offer_recorded` in `forms.py` unions
+them back into the field's queryset. **Only what this job names comes back** — the
+rest of the retired catalog stays hidden, and a fresh form passes no `keep` at
+all, which is what keeps retiring something meaningful. The workers section needs
+none of this: `collaborator_queryset` never filters on `is_active`.
+
 ### Resizing a section without JavaScript
 
 A formset renders a fixed number of rows. Before the row buttons, that made the
@@ -812,3 +846,7 @@ multiplies the `Sum` by the number of matched collaborators.
 - **No soft deletes.** Catalog entries are retired with `is_active = False`,
   which removes them from every dropdown while preserving their history.
   Deletion is blocked by `on_delete=PROTECT` once anything references them.
+  The one exception is deliberate: `job_edit` keeps offering the material or
+  machine a job *already names*, however it is flagged, because a picker that
+  has dropped the stored value renders the row blank and then throws it away on
+  save. See "Editing a job that names a retired record" above.

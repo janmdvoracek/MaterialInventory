@@ -1,12 +1,52 @@
 from decimal import Decimal
 
 from django import forms
+from django.db.models import Q
 from django.utils import timezone
 
 from accounts.models import User
 from materials.models import Machine, Material
 
 from .models import WorkOrder
+
+# The hours fields below are typed with one decimal place but stored in columns
+# declared `max_digits=12, decimal_places=2` (`WorkerHours.hours`,
+# `MachineUsage.hours`). Postgres spends the scale whether the value uses it or
+# not, so those columns hold at most 12 - 2 = 10 *integer* digits — and a form
+# wider than its column is not a harmless mismatch here: the value passes
+# validation, reaches the INSERT and comes back as `DataError: numeric field
+# overflow`, i.e. an unhandled 500 rather than a message on the field.
+#
+# So the form is capped at the column's integer width, expressed the way
+# `DecimalValidator` reads it: that validator allows `max_digits -
+# decimal_places` integer digits, so the ten the column holds plus the one
+# decimal place typed here is eleven. Off by one in either direction is a real
+# bug — 12 is the overflow above, 10 would refuse a value that stores fine.
+#
+# `quantity` and `tons` need no such cap: at `max_digits=7` they are already far
+# narrower than the columns they land in.
+HOURS_MAX_DIGITS = 11
+
+
+def _offer_recorded(field, keep):
+    """Let a catalog picker keep offering the records a job already names.
+
+    The row pickers are scoped to `is_active=True`, so a retired material or
+    machine cannot land on a *new* job. A job recorded before the retirement
+    still names one, though, and a `ModelChoiceField` whose queryset excludes
+    the stored pk renders that row with nothing selected and then rejects the pk
+    on submit. Saving the form as rendered drops the row silently: the machine
+    usage is deleted outright by `_write_job_rows`, and a vanished consumed row
+    leaves the job stuck behind a mass-balance error no edit can clear.
+
+    So `job_edit` passes the pks the job already uses, and those are added back
+    — those and nothing else, which is what keeps retirement meaningful
+    everywhere except the one job that predates it. Assumes the field's base
+    queryset is the active catalog, which is how both callers declare it.
+    """
+    if not keep:
+        return
+    field.queryset = field.queryset.model.objects.filter(Q(is_active=True) | Q(pk__in=keep))
 
 
 def collaborator_queryset(user, viewer=None):
@@ -40,7 +80,7 @@ class WorkOrderForm(forms.Form):
     )
     hours = forms.DecimalField(
         min_value=Decimal('0.5'),
-        max_digits=12,
+        max_digits=HOURS_MAX_DIGITS,
         step_size=Decimal('0.5'),
         decimal_places=1,
         label='Moje hodiny',
@@ -203,8 +243,19 @@ class MovementItemForm(forms.Form):
         widget=forms.NumberInput(attrs={'placeholder': 'Množství (t)'}),
     )
 
+    def __init__(self, *args, keep=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        _offer_recorded(self.fields['material'], keep)
+
     def clean(self):
         cleaned_data = super().clean()
+        if self.errors:
+            # A field that failed its own validation is absent from
+            # cleaned_data, which reads here exactly like a half-filled row —
+            # so the check below would add "fill in both" on top of the real
+            # complaint, and that is the one the reader would act on. It is
+            # also the wrong advice: they *did* fill both in.
+            return cleaned_data
         filled = [cleaned_data.get('material'), cleaned_data.get('quantity')]
         if any(filled) and not all(filled):
             raise forms.ValidationError('Vyplňte materiál i množství, nebo řádek nechte prázdný.')
@@ -224,7 +275,7 @@ class MachineUsageForm(forms.Form):
     )
     hours = forms.DecimalField(
         min_value=Decimal('0.5'),
-        max_digits=12,
+        max_digits=HOURS_MAX_DIGITS,
         step_size=Decimal('0.5'),
         decimal_places=1,
         required=False,
@@ -244,8 +295,17 @@ class MachineUsageForm(forms.Form):
         widget=forms.NumberInput(attrs={'placeholder': 'Tuny'}),
     )
 
+    def __init__(self, *args, keep=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        _offer_recorded(self.fields['machine'], keep)
+
     def clean(self):
         cleaned_data = super().clean()
+        if self.errors:
+            # See MovementItemForm.clean: a field error already removed the
+            # value from cleaned_data, so the emptiness check below would bury
+            # the real message under a wrong one.
+            return cleaned_data
         filled = [cleaned_data.get('machine'), cleaned_data.get('hours'), cleaned_data.get('tons')]
         if any(filled) and not all(filled):
             raise forms.ValidationError('Vyplňte stroj, motohodiny a tuny, nebo řádek nechte prázdný.')
@@ -269,7 +329,7 @@ class WorkerHoursForm(forms.Form):
     # same reason the selects use the bare noun as their `empty_label`.
     hours = forms.DecimalField(
         min_value=Decimal('0.5'),
-        max_digits=12,
+        max_digits=HOURS_MAX_DIGITS,
         step_size=Decimal('0.5'),
         decimal_places=1,
         required=False,
@@ -283,6 +343,9 @@ class WorkerHoursForm(forms.Form):
 
     def clean(self):
         cleaned_data = super().clean()
+        if self.errors:
+            # See MovementItemForm.clean.
+            return cleaned_data
         filled = [cleaned_data.get('user'), cleaned_data.get('hours')]
         if any(filled) and not all(filled):
             raise forms.ValidationError('Vyplňte pracovníka a počet hodin, nebo řádek nechte prázdný.')

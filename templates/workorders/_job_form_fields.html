@@ -32,13 +32,27 @@ caller opens its <form> with an off-screen decoy submit so Enter still saves.
 `WorkOrderForm` without a `user`, so the field is simply not there. The hours
 label comes from the form rather than being written out, because each page
 means something different by it — see `WorkOrderForm.__init__` and `job_edit`.
+
+**Every error this page can produce is rendered, and that is a rule rather than
+a nicety.** Nothing here is written unless all five forms validate, so an error
+with nowhere to appear is a submission that vanishes: the page comes back
+carrying what was typed, with no message anywhere, looking exactly as if the
+button had not been pressed. That is what used to happen to any *field* error on
+a row (`_row_errors.html` now covers those), to a formset's `non_form_errors`,
+and to the job form's own `description`/`author`/`non_field_errors`.
 {% endcomment %}
+{# The job's own errors, same rule as the rows below: anything that refused the #}
+{# submission has to be readable, or the page just comes back looking ignored.  #}
+{% for error in order_form.non_field_errors %}<p class="messages error">{{ error }}</p>{% endfor %}
+
 <label for="{{ order_form.description.id_for_label }}">Popis</label>
 {{ order_form.description }}
+{% for error in order_form.description.errors %}<p class="messages error">{{ error }}</p>{% endfor %}
 
 {% if order_form.author %}
     <label for="{{ order_form.author.id_for_label }}">Zapsat za</label>
     {{ order_form.author }}
+    {% for error in order_form.author.errors %}<p class="messages error">{{ error }}</p>{% endfor %}
 {% endif %}
 
 <label for="{{ order_form.hours.id_for_label }}">{{ order_form.hours.label }}</label>
@@ -53,12 +67,13 @@ means something different by it — see `WorkOrderForm.__init__` and `job_edit`.
 
 <h2>Spolupracovníci</h2>
 {{ worker_formset.management_form }}
+{% for error in worker_formset.non_form_errors %}<p class="messages error">{{ error }}</p>{% endfor %}
 {% for form in worker_formset %}
     <div class="item-row">
         <div>{{ form.user }}</div>
         <div>{{ form.hours }}</div>
     </div>
-    {% for error in form.non_field_errors %}<p class="messages error">{{ error }}</p>{% endfor %}
+    {% include "workorders/_row_errors.html" %}
 {% endfor %}
 
 <div class="row-controls">
@@ -70,12 +85,13 @@ means something different by it — see `WorkOrderForm.__init__` and `job_edit`.
 
 <h2>Spotřebováno</h2>
 {{ consumed_formset.management_form }}
+{% for error in consumed_formset.non_form_errors %}<p class="messages error">{{ error }}</p>{% endfor %}
 {% for form in consumed_formset %}
     <div class="item-row">
         <div>{{ form.material }}</div>
         <div>{{ form.quantity }}</div>
     </div>
-    {% for error in form.non_field_errors %}<p class="messages error">{{ error }}</p>{% endfor %}
+    {% include "workorders/_row_errors.html" %}
 {% endfor %}
 
 <div class="row-controls">
@@ -87,12 +103,13 @@ means something different by it — see `WorkOrderForm.__init__` and `job_edit`.
 
 <h2>Vyrobeno</h2>
 {{ produced_formset.management_form }}
+{% for error in produced_formset.non_form_errors %}<p class="messages error">{{ error }}</p>{% endfor %}
 {% for form in produced_formset %}
     <div class="item-row">
         <div>{{ form.material }}</div>
         <div>{{ form.quantity }}</div>
     </div>
-    {% for error in form.non_field_errors %}<p class="messages error">{{ error }}</p>{% endfor %}
+    {% include "workorders/_row_errors.html" %}
 {% endfor %}
 
 <div class="row-controls">
@@ -104,13 +121,14 @@ means something different by it — see `WorkOrderForm.__init__` and `job_edit`.
 
 <h2>Použité stroje</h2>
 {{ machine_formset.management_form }}
+{% for error in machine_formset.non_form_errors %}<p class="messages error">{{ error }}</p>{% endfor %}
 {% for form in machine_formset %}
     <div class="item-row">
         <div>{{ form.machine }}</div>
         <div>{{ form.hours }}</div>
         <div>{{ form.tons }}</div>
     </div>
-    {% for error in form.non_field_errors %}<p class="messages error">{{ error }}</p>{% endfor %}
+    {% include "workorders/_row_errors.html" %}
 {% endfor %}
 <div class="row-controls">
     <button class="btn secondary" type="submit" name="add_machines" formnovalidate>+ další řádek</button>

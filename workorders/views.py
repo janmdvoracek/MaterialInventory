@@ -254,7 +254,48 @@ def _resized_section(rows, delta):
     return rows, max(blank_rows, MIN_ROWS_PER_SECTION - len(rows))
 
 
-def _resized_job_forms(post_data, section, delta, *, author, viewer, order_form_user=None):
+def _recorded_choices(work_order):
+    """The catalog rows an existing job already names, keyed by section prefix.
+
+    `job_edit` has to keep offering these whatever their `is_active`. The
+    pickers are scoped to the active catalog so a retired material or machine
+    cannot land on a *new* job, but a job recorded before the retirement still
+    names one — and a picker that has dropped it renders the row blank and then
+    refuses it on submit, which silently deletes the row. `_offer_recorded` in
+    forms.py has the rest of the reasoning.
+
+    The workers section needs nothing: `collaborator_queryset` never filters on
+    `is_active`, so a deactivated account still renders on the row it is on.
+    """
+    consumed, produced = [], []
+    for material_id, movement_type in work_order.movements.values_list('material_id', 'movement_type'):
+        if movement_type == StockMovement.MovementType.TRANSFORM_CONSUME:
+            consumed.append(material_id)
+        else:
+            produced.append(material_id)
+    return {
+        'consumed': consumed,
+        'produced': produced,
+        'machines': list(work_order.machine_usages.values_list('machine_id', flat=True)),
+        'workers': [],
+    }
+
+
+def _section_form_kwargs(prefix, *, author, viewer, keep=None):
+    """The per-row kwargs one section's forms are built with.
+
+    The workers section needs the pair that decides who may be named on a row;
+    the three catalog sections need the records an existing job already uses, so
+    `job_edit` can re-render a row whose material or machine has since been
+    retired. A fresh form passes no `keep` and gets the active catalog only,
+    which is the whole point of retiring something.
+    """
+    if prefix == 'workers':
+        return {'user': author, 'viewer': viewer}
+    return {'keep': (keep or {}).get(prefix, ())}
+
+
+def _resized_job_forms(post_data, section, delta, *, author, viewer, order_form_user=None, keep=None):
     """Every form on the job page, rebuilt from `post_data` with `section` one row
     bigger or smaller. Returns the job form and the four formsets by prefix.
 
@@ -287,7 +328,7 @@ def _resized_job_forms(post_data, section, delta, *, author, viewer, order_form_
             prefix=prefix,
             rows=rows,
             blank_rows=blank_rows,
-            form_kwargs={'user': author, 'viewer': viewer} if prefix == 'workers' else None,
+            form_kwargs=_section_form_kwargs(prefix, author=author, viewer=viewer, keep=keep),
         )
     return order_form, formsets
 
@@ -1042,25 +1083,34 @@ def job_edit(request, pk):
     # it: the "moje hodiny" field is the author's, and the collaborator list has
     # to exclude the author rather than the editor.
     author = work_order.created_by
+    # What the job already names, so a material or machine retired since it was
+    # recorded still renders on its row and survives the save. Read before the
+    # branch because every one of the three needs it — the POST branches most of
+    # all, where a picker that has dropped the value would reject it outright.
+    keep = _recorded_choices(work_order)
+
+    def section_kwargs(prefix):
+        return _section_form_kwargs(prefix, author=author, viewer=request.user, keep=keep)
+
     # Same as on the Transform form: resize the section and re-render, unbound.
     # The author is the job's, not whatever the POST says — a manager correcting
     # somebody's job cannot reassign it, and there is no „Zapsat za" field here.
     resized = _pressed_row_button(request.POST) if request.method == 'POST' else None
     if resized:
         section, delta = resized
-        order_form, formsets = _resized_job_forms(request.POST, section, delta, author=author, viewer=request.user)
+        order_form, formsets = _resized_job_forms(
+            request.POST, section, delta, author=author, viewer=request.user, keep=keep
+        )
         consumed_formset = formsets['consumed']
         produced_formset = formsets['produced']
         machine_formset = formsets['machines']
         worker_formset = formsets['workers']
     elif request.method == 'POST':
         order_form = WorkOrderForm(request.POST)
-        consumed_formset = ConsumedFormSet(request.POST, prefix='consumed')
-        produced_formset = ProducedFormSet(request.POST, prefix='produced')
-        machine_formset = MachineUsageFormSet(request.POST, prefix='machines')
-        worker_formset = WorkerHoursFormSet(
-            request.POST, prefix='workers', form_kwargs={'user': author, 'viewer': request.user}
-        )
+        consumed_formset = ConsumedFormSet(request.POST, prefix='consumed', form_kwargs=section_kwargs('consumed'))
+        produced_formset = ProducedFormSet(request.POST, prefix='produced', form_kwargs=section_kwargs('produced'))
+        machine_formset = MachineUsageFormSet(request.POST, prefix='machines', form_kwargs=section_kwargs('machines'))
+        worker_formset = WorkerHoursFormSet(request.POST, prefix='workers', form_kwargs=section_kwargs('workers'))
         if (
             order_form.is_valid()
             and consumed_formset.is_valid()
@@ -1104,6 +1154,7 @@ def job_edit(request, pk):
         )
         consumed_formset = ConsumedFormSet(
             prefix='consumed',
+            form_kwargs=section_kwargs('consumed'),
             initial=[
                 {
                     'material': movement.material_id,
@@ -1114,6 +1165,7 @@ def job_edit(request, pk):
         )
         produced_formset = ProducedFormSet(
             prefix='produced',
+            form_kwargs=section_kwargs('produced'),
             initial=[
                 {
                     'material': movement.material_id,
@@ -1124,6 +1176,7 @@ def job_edit(request, pk):
         )
         machine_formset = MachineUsageFormSet(
             prefix='machines',
+            form_kwargs=section_kwargs('machines'),
             initial=[
                 {
                     'machine': usage.machine_id,
@@ -1135,7 +1188,7 @@ def job_edit(request, pk):
         )
         worker_formset = WorkerHoursFormSet(
             prefix='workers',
-            form_kwargs={'user': author, 'viewer': request.user},
+            form_kwargs=section_kwargs('workers'),
             initial=[
                 {'user': row.user_id, 'hours': _trim(row.hours)} for row in work_order.worker_hours.exclude(user=author)
             ],

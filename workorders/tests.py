@@ -2927,3 +2927,192 @@ class StockMovementWorkOrderTests(StockMovementTestCase):
         # It was nullable only for the receipt/shipment rows that predated the
         # stock removal; migration 0007 deleted the last of them.
         self.assertFalse(StockMovement._meta.get_field('work_order').null)
+
+
+class RetiredCatalogOnEditTests(ReviewFixtureMixin, TestCase):
+    """A job that names a material or machine retired *after* it was recorded
+    stays editable, and editing it does not quietly throw the row away.
+
+    The row pickers are scoped to the active catalog so a retired record cannot
+    land on a new job. That scoping used to apply to `job_edit` as well, where
+    the stored pk is not in the queryset: the select rendered with nothing
+    chosen, and saving the form as rendered posted an empty row. A machine usage
+    was deleted outright and the edit still reported success; a consumed row took
+    the whole job into a mass-balance error that no edit could clear, which made
+    the job permanently uneditable.
+    """
+
+    def _retire(self, record):
+        record.is_active = False
+        record.save(update_fields=['is_active'])
+
+    def test_retired_machine_still_renders_on_the_row_it_is_on(self):
+        job = self.submit_job(
+            self.worker,
+            machine_rows=[{'machine': self.machine_a, 'hours': Decimal('2'), 'tons': Decimal('5')}],
+        )
+        self._retire(self.machine_a)
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('job_edit', args=[job.pk]))
+        row = response.context['machine_formset'].forms[0]
+        self.assertIn(self.machine_a, row.fields['machine'].queryset)
+        self.assertIn('Crusher A', response.content.decode())
+
+    def test_retiring_a_machine_does_not_delete_its_usage_on_the_next_edit(self):
+        job = self.submit_job(
+            self.worker,
+            machine_rows=[{'machine': self.machine_a, 'hours': Decimal('2'), 'tons': Decimal('5')}],
+        )
+        self._retire(self.machine_a)
+        payload = job_payload(
+            [{'material': self.material_raw, 'quantity': Decimal('5')}],
+            [{'material': self.material_finished, 'quantity': Decimal('5')}],
+            machine_rows=[{'machine': self.machine_a, 'hours': Decimal('2'), 'tons': Decimal('5')}],
+            description='opraveno',
+        )
+        self.client.force_login(self.manager)
+        response = self.client.post(reverse('job_edit', args=[job.pk]), payload)
+        self.assertRedirects(response, reverse('job_detail', args=[job.pk]))
+        usage = MachineUsage.objects.get(work_order=job)
+        self.assertEqual(usage.machine, self.machine_a)
+        self.assertEqual(usage.hours, Decimal('2.00'))
+
+    def test_a_job_naming_a_retired_material_can_still_be_corrected(self):
+        job = self.submit_job(self.worker)
+        self._retire(self.material_raw)
+        payload = job_payload(
+            [{'material': self.material_raw, 'quantity': Decimal('5')}],
+            [{'material': self.material_finished, 'quantity': Decimal('5')}],
+            description='opraveno',
+        )
+        self.client.force_login(self.manager)
+        response = self.client.post(reverse('job_edit', args=[job.pk]), payload)
+        self.assertRedirects(response, reverse('job_detail', args=[job.pk]))
+        job.refresh_from_db()
+        self.assertEqual(job.description, 'opraveno')
+        consumed = job.movements.get(movement_type=StockMovement.MovementType.TRANSFORM_CONSUME)
+        self.assertEqual(consumed.material, self.material_raw)
+
+    def test_a_retired_record_is_still_kept_off_a_new_job(self):
+        # The widening is scoped to the job being edited; recording a *new* job
+        # must not offer a retired material, which is the whole point of
+        # retiring it.
+        self._retire(self.material_raw)
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('transform_create'))
+        row = response.context['consumed_formset'].forms[0]
+        self.assertNotIn(self.material_raw, row.fields['material'].queryset)
+
+    def test_the_edit_form_offers_no_other_retired_record(self):
+        # Only what this job already names comes back, not the retired catalog.
+        other = Material.objects.create(sku='OLD', name='Vyřazený písek', is_active=False)
+        job = self.submit_job(self.worker)
+        self._retire(self.material_raw)
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('job_edit', args=[job.pk]))
+        queryset = response.context['consumed_formset'].forms[0].fields['material'].queryset
+        self.assertIn(self.material_raw, queryset)
+        self.assertNotIn(other, queryset)
+
+
+class RowErrorVisibilityTests(ReviewFixtureMixin, TestCase):
+    """Nothing is written unless every form validates, so an error with nowhere
+    to render is a submission that vanishes without a word."""
+
+    def _submit(self, **overrides):
+        payload = job_payload(
+            [{'material': self.material_raw, 'quantity': Decimal('5')}],
+            [{'material': self.material_finished, 'quantity': Decimal('5')}],
+            machine_rows=[{'machine': self.machine_a, 'hours': Decimal('2'), 'tons': Decimal('5')}],
+        )
+        payload.update(overrides)
+        self.client.force_login(self.worker)
+        return self.client.post(reverse('transform_create'), payload)
+
+    def test_a_bad_quantity_says_what_is_wrong_with_it(self):
+        response = self._submit(**{'consumed-0-quantity': '5.123'})
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(WorkOrder.objects.exists())
+        self.assertContains(response, 'desetinná místa')
+
+    def test_a_field_error_does_not_also_claim_the_row_is_half_empty(self):
+        # The row *was* filled in; the value simply did not validate. The old
+        # behaviour hid the real message and printed this one instead.
+        response = self._submit(**{'consumed-0-quantity': '5.123'})
+        self.assertNotContains(response, 'Vyplňte materiál i množství')
+
+    def test_motohodiny_off_the_step_say_so(self):
+        response = self._submit(**{'machines-0-hours': '0.3'})
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(WorkOrder.objects.exists())
+        self.assertNotContains(response, 'Vyplňte stroj, motohodiny a tuny')
+        self.assertContains(response, 'Hodiny:')
+
+    def test_a_genuinely_half_filled_row_still_says_so(self):
+        # The guard must not swallow the rule it sits in front of: a row with a
+        # material and no quantity has no field error of its own.
+        response = self._submit(**{'consumed-0-quantity': ''})
+        self.assertContains(response, 'Vyplňte materiál i množství')
+
+    def test_row_errors_render_on_the_edit_form_too(self):
+        # Both pages share `_job_form_fields.html`, so this cannot regress on
+        # one of them alone.
+        job = self.submit_job(self.worker)
+        payload = job_payload(
+            [{'material': self.material_raw, 'quantity': Decimal('5')}],
+            [{'material': self.material_finished, 'quantity': Decimal('5')}],
+        )
+        payload['consumed-0-quantity'] = '5.123'
+        self.client.force_login(self.manager)
+        response = self.client.post(reverse('job_edit', args=[job.pk]), payload)
+        self.assertContains(response, 'desetinná místa')
+
+
+class HoursWidthTests(ReviewFixtureMixin, TestCase):
+    """The hours form fields must not accept more than their columns hold.
+
+    `WorkerHours.hours` and `MachineUsage.hours` are `decimal(12, 2)`, so ten
+    integer digits. A form field wider than that validated the value, reached
+    the INSERT and came back as `DataError: numeric field overflow` — an
+    unhandled 500 rather than a message on the field.
+    """
+
+    def _submit(self, **overrides):
+        payload = job_payload(
+            [{'material': self.material_raw, 'quantity': Decimal('5')}],
+            [{'material': self.material_finished, 'quantity': Decimal('5')}],
+            machine_rows=[{'machine': self.machine_a, 'hours': Decimal('2'), 'tons': Decimal('5')}],
+        )
+        payload.update(overrides)
+        self.client.force_login(self.worker)
+        return self.client.post(reverse('transform_create'), payload)
+
+    def test_own_hours_too_wide_are_refused_by_the_form(self):
+        response = self._submit(hours='99999999999.5')
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(WorkOrder.objects.exists())
+
+    def test_machine_hours_too_wide_are_refused_by_the_form(self):
+        response = self._submit(**{'machines-0-hours': '99999999999.5'})
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(MachineUsage.objects.exists())
+
+    def test_collaborator_hours_too_wide_are_refused_by_the_form(self):
+        response = self._submit(
+            **{
+                'workers-TOTAL_FORMS': '1',
+                'workers-0-user': str(self.other_worker.pk),
+                'workers-0-hours': '99999999999.5',
+            }
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(WorkerHours.objects.exists())
+
+    def test_the_widest_value_the_form_accepts_actually_stores(self):
+        # The cap has to land exactly on what the column holds: one digit less
+        # and a legitimate value is refused, one more and this is a 500. Ten
+        # integer digits and the one decimal place the field allows is the
+        # widest `decimal(12, 2)` takes.
+        response = self._submit(hours='9999999999.5')
+        self.assertRedirects(response, reverse('transform_create'))
+        self.assertEqual(WorkerHours.objects.get(user=self.worker).hours, Decimal('9999999999.50'))
