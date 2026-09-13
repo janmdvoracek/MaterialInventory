@@ -45,6 +45,28 @@ class CustomUserAdmin(UserAdmin):
     list_filter = ('role', 'is_active')
     filter_horizontal = ()
 
+    # Nobody can deactivate their own account — it would log them out of the
+    # admin they just used and leave nobody to switch it back on. The checkbox is
+    # read-only on their own change page and disabled on their own list row. A
+    # disabled field ignores whatever is posted for it, so a hand-crafted POST
+    # cannot get past it either.
+    def get_readonly_fields(self, request, obj=None):
+        readonly = super().get_readonly_fields(request, obj)
+        if obj is not None and obj.pk == request.user.pk:
+            return (*readonly, 'is_active')
+        return readonly
+
+    def get_changelist_form(self, request, **kwargs):
+        base = super().get_changelist_form(request, **kwargs)
+
+        class ChangelistForm(base):
+            def __init__(self, *args, **form_kwargs):
+                super().__init__(*args, **form_kwargs)
+                if self.instance.pk == request.user.pk and 'is_active' in self.fields:
+                    self.fields['is_active'].disabled = True
+
+        return ChangelistForm
+
     def save_model(self, request, obj, form, change):
         is_admin = obj.role == User.Role.ADMIN
         obj.is_staff = is_admin

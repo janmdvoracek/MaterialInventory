@@ -184,6 +184,26 @@ class AdminUserListTests(TestCase):
         self.worker.refresh_from_db()
         self.assertFalse(self.worker.is_active)
 
+    def test_own_row_cannot_be_unchecked_from_the_changelist(self):
+        # The field is disabled on your own row, so the unchecked POST is ignored.
+        self.client.post(
+            reverse('admin:accounts_user_changelist') + f'?q={self.admin_user.username}',
+            {
+                'form-TOTAL_FORMS': '1',
+                'form-INITIAL_FORMS': '1',
+                'form-0-id': str(self.admin_user.pk),
+                '_save': 'Uložit',
+            },
+        )
+        self.admin_user.refresh_from_db()
+        self.assertTrue(self.admin_user.is_active)
+
+    def test_is_active_is_read_only_on_own_change_page_only(self):
+        own = self.client.get(reverse('admin:accounts_user_change', args=[self.admin_user.pk]))
+        self.assertNotIn('is_active', own.context['adminform'].form.fields)
+        other = self.client.get(reverse('admin:accounts_user_change', args=[self.worker.pk]))
+        self.assertIn('is_active', other.context['adminform'].form.fields)
+
 
 class AdminCzechTests(TestCase):
     """The admin is Czech from three separate mechanisms, each of which fails
