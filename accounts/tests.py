@@ -162,6 +162,29 @@ class AdminIndexTests(TestCase):
             reverse('admin:axes_accessattempt_changelist')
 
 
+class AdminUserListTests(TestCase):
+    def setUp(self):
+        self.admin_user = User.objects.create_superuser(username='admin', password='pw', role=User.Role.ADMIN)
+        self.client.force_login(self.admin_user)
+        self.worker = User.objects.create_user(username='worker', password='pw')
+
+    def test_is_active_can_be_unchecked_from_the_changelist(self):
+        # Like materials and machines, an account is retired from the list
+        # without opening it.
+        response = self.client.post(
+            reverse('admin:accounts_user_changelist') + f'?q={self.worker.username}',
+            {
+                'form-TOTAL_FORMS': '1',
+                'form-INITIAL_FORMS': '1',
+                'form-0-id': str(self.worker.pk),
+                '_save': 'Uložit',
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        self.worker.refresh_from_db()
+        self.assertFalse(self.worker.is_active)
+
+
 class AdminCzechTests(TestCase):
     """The admin is Czech from three separate mechanisms, each of which fails
     silently back to English: app `verbose_name`s, model/field `verbose_name`s,

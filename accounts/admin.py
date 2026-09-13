@@ -41,6 +41,7 @@ class CustomUserAdmin(UserAdmin):
         ('Důležitá data', {'fields': ('last_login', 'date_joined')}),
     )
     list_display = ('username', 'first_name', 'last_name', 'role', 'is_active')
+    list_editable = ('is_active',)
     list_filter = ('role', 'is_active')
     filter_horizontal = ()
 
