@@ -5,11 +5,7 @@ services:
       POSTGRES_DB: ${DB_NAME:-materialinventory}
       POSTGRES_USER: ${DB_USER:-materialinventory}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-materialinventory}
-      # Match production: without it the cluster sorts in byte order and `Š`
-      # lands after `Z`, which both catalogs order by name would show in every
-      # material dropdown. Read only when the volume is empty — an existing dev
-      # database keeps whatever collation it was created with until a
-      # `docker compose down -v` (which also destroys its data).
+      # Czech sorting, like production. Only applies to a new volume.
       POSTGRES_INITDB_ARGS: "--locale-provider=icu --icu-locale=cs-CZ --encoding=UTF8"
     volumes:
       - db_data:/var/lib/postgresql/data
@@ -32,13 +28,8 @@ services:
       - .env
     environment:
       DB_HOST: db
-      # Undo the Dockerfile's manifest-storage ENV for local dev. The image
-      # builds a manifest into /app/staticfiles, but the `.:/app` mount above
-      # shadows it, and the test runner forces DEBUG=False -- which is exactly
-      # what stops Django short-circuiting the hashed-name lookup. Without this
-      # every test that renders a template dies on a missing manifest entry.
-      # Costs nothing at runtime: DEBUG=True here skips the lookup anyway.
-      # Production still opts in via the Dockerfile, where collectstatic runs.
+      # Undo the Dockerfile's manifest storage: the mount hides the manifest,
+      # and tests (DEBUG=False) would fail without it.
       STATICFILES_BACKEND: django.contrib.staticfiles.storage.StaticFilesStorage
     depends_on:
       db:

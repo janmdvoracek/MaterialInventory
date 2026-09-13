@@ -1,9 +1,7 @@
 name: Deploy
 
-# Deploys the head of main to the production VPS. Manual only: Actions → Deploy
-# → Run workflow. The server does the work — this workflow checks the commit is
-# tested, then runs scripts/deploy.sh over SSH with a key that can do nothing
-# else. One-time setup: "Automated deploys" in docs/deployment/DEPLOYMENT.md.
+# Manual deploy of main to the VPS via scripts/deploy.sh over SSH.
+# Setup: "Automated deploys" in docs/deployment/DEPLOYMENT.md.
 on:
   workflow_dispatch:
 
@@ -11,7 +9,7 @@ permissions:
   contents: read
   actions: read   # to look up CI runs
 
-# Never two deploys at once, and never cancel one halfway through a migration.
+# Never cancel a deploy mid-migration.
 concurrency:
   group: deploy-production
   cancel-in-progress: false
@@ -22,9 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
-    # The secrets live on this environment, not on the repository. Restrict the
-    # environment to the `main` branch in its settings: otherwise any branch
-    # pushed to this repo could carry a workflow that reads the deploy key.
+    # Restrict this environment to `main`, or any branch could read the deploy key.
     environment:
       name: production
       url: https://${{ vars.APP_DOMAIN }}
@@ -51,10 +47,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      # CI skips Markdown-only commits, so the head of main often has no CI run
-      # of its own. Instead: take the newest commit on main whose CI passed, and
-      # require that everything between it and this one is Markdown. That also
-      # refuses a deploy while CI for the head is still running or has failed.
+      # CI skips Markdown-only commits: require the newest green commit on main
+      # to differ from this one by Markdown only.
       - name: Require a green CI run for this code
         env:
           GH_TOKEN: ${{ github.token }}
@@ -89,17 +83,13 @@ jobs:
           install -m 700 -d ~/.ssh
           printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          # Pinned, not ssh-keyscan'd here: scanning at deploy time would trust
-          # whatever answers on that address.
+          # Pinned host key; scanning now would trust whatever answers.
           printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
-          # The only thing sent is the commit hash. authorized_keys forces
-          # scripts/deploy.sh, which reads it from SSH_ORIGINAL_COMMAND.
+          # Only the hash is sent; the server forces scripts/deploy.sh.
           ssh -i ~/.ssh/deploy_key -p "$DEPLOY_PORT" \
             -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o ServerAliveInterval=30 \
             "$DEPLOY_USER@$DEPLOY_HOST" "$GITHUB_SHA"
 
-      # From outside the server, through DNS, the certificate and the proxy —
-      # the path a user takes.
       - name: Check the site answers
         env:
           APP_DOMAIN: ${{ vars.APP_DOMAIN }}

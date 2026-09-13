@@ -11,22 +11,9 @@ from materials.models import Material
 
 from .models import WorkOrder
 
-# The hours fields below are typed with one decimal place but stored in columns
-# declared `max_digits=12, decimal_places=2` (`WorkerHours.hours`,
-# `MachineUsage.hours`). Postgres spends the scale whether the value uses it or
-# not, so those columns hold at most 12 - 2 = 10 *integer* digits — and a form
-# wider than its column is not a harmless mismatch here: the value passes
-# validation, reaches the INSERT and comes back as `DataError: numeric field
-# overflow`, i.e. an unhandled 500 rather than a message on the field.
-#
-# So the form is capped at the column's integer width, expressed the way
-# `DecimalValidator` reads it: that validator allows `max_digits -
-# decimal_places` integer digits, so the ten the column holds plus the one
-# decimal place typed here is eleven. Off by one in either direction is a real
-# bug — 12 is the overflow above, 10 would refuse a value that stores fine.
-#
-# `quantity` and `tons` need no such cap: at `max_digits=7` they are already far
-# narrower than the columns they land in.
+# The hours columns are decimal(12, 2), so 10 integer digits. DecimalValidator
+# allows max_digits - decimal_places integer digits: 10 + the 1 decimal place
+# typed here = 11. Wider, and an oversized value is a 500 instead of a field error.
 HOURS_MAX_DIGITS = 11
 
 
@@ -38,20 +25,10 @@ def _hours_field(**kwargs):
 
 
 def _offer_recorded(field, keep):
-    """Let a catalog picker keep offering the records a job already names.
+    """Add the retired catalog records in `keep` back to an active-only picker.
 
-    The row pickers are scoped to `is_active=True`, so a retired material or
-    machine cannot land on a *new* job. A job recorded before the retirement
-    still names one, though, and a `ModelChoiceField` whose queryset excludes
-    the stored pk renders that row with nothing selected and then rejects the pk
-    on submit. Saving the form as rendered drops the row silently: the machine
-    usage is deleted outright by `_write_job_rows`, and a vanished consumed row
-    leaves the job stuck behind a mass-balance error no edit can clear.
-
-    So `job_edit` passes the pks the job already uses, and those are added back
-    — those and nothing else, which is what keeps retirement meaningful
-    everywhere except the one job that predates it. Assumes the field's base
-    queryset is the active catalog, which is how both callers declare it.
+    Without this, `job_edit` renders a row naming a retired record blank, and
+    saving it drops the row.
     """
     if not keep:
         return
@@ -59,23 +36,16 @@ def _offer_recorded(field, keep):
 
 
 def collaborator_queryset(user, viewer=None):
-    """People who may be named as having worked a job whose author is `user`.
+    """Who may be named on a job authored by `user`.
 
-    `viewer` is whoever is filling the form in: the submitter, or the manager
-    recording on somebody's behalf or correcting their job. It decides how wide
-    the list is, while `user` is only ever excluded from it. The two differ only
-    when a manager acts for someone else — the role restriction below is there
-    to stop a *worker* putting hours on a manager, not to stop a manager
-    recording that a manager worked the job.
+    `user` is excluded. `viewer`, whoever fills the form in (default `user`),
+    sets the width: a plain worker may only name other workers.
     """
     viewer = viewer if viewer is not None else user
     queryset = User.objects.all().order_by('username')
     if user is not None:
-        # Can't collaborate with yourself — you're already the creator.
         queryset = queryset.exclude(pk=user.pk)
     if viewer is not None and not viewer.is_manager_or_admin:
-        # Plain workers only collaborate with other workers, not
-        # managers/admins.
         queryset = queryset.filter(role=User.Role.WORKER)
     return queryset
 
@@ -88,11 +58,8 @@ class WorkOrderForm(forms.Form):
         widget=forms.TextInput(attrs={'placeholder': 'Popis provedené práce (volitelné)'}),
     )
     hours = _hours_field(label='Moje hodiny', widget=forms.NumberInput(attrs={'placeholder': 'Odpracované hodiny'}))
-    # Pre-filled with today, so the common case is already answered and
-    # back-dating is just editing the box. **`format` is not optional here**: an
-    # unbound field with a python `date` initial renders through the `cs`
-    # DATE_INPUT_FORMATS, i.e. `02.09.2026`, which `<input type="date">` rejects
-    # outright and shows as blank. ISO is what the widget reads and writes.
+    # `format` is required: the cs locale would render 02.09.2026, which
+    # <input type="date"> shows as blank.
     performed_on = forms.DateField(
         initial=timezone.localdate,
         widget=forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
@@ -101,10 +68,8 @@ class WorkOrderForm(forms.Form):
 
     def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
+        # Only managers and admins may record a job for someone else.
         if user is None or not user.is_manager_or_admin:
-            # Plain workers record their own work and nobody else's. The field
-            # simply is not on their form, so an `author` in the POST is not
-            # something the view has to defend against — it is never cleaned.
             return
         self.fields['author'] = forms.ModelChoiceField(
             queryset=collaborator_queryset(user),
@@ -112,8 +77,6 @@ class WorkOrderForm(forms.Form):
             label='Zapsat za',
             empty_label='Za sebe',
         )
-        # With somebody else possibly on the receiving end, „Moje hodiny" would
-        # be a lie half the time.
         self.fields['hours'].label = 'Odpracované hodiny'
 
     def author_or(self, submitter):
@@ -124,7 +87,6 @@ class WorkOrderForm(forms.Form):
         cleaned_data = super().clean()
         performed_on = cleaned_data.get('performed_on')
         if performed_on and performed_on > timezone.localdate():
-            # Recording work that has not happened yet is a typo, not a plan.
             self.add_error('performed_on', 'Datum provedení nemůže být v budoucnosti.')
         return cleaned_data
 
@@ -132,32 +94,11 @@ class WorkOrderForm(forms.Form):
 class UniqueChoiceFormSet(forms.BaseFormSet):
     """A job section whose rows must each name a different thing.
 
-    One material, machine or person belongs on one row of a section: two rows
-    naming the same one are two halves of a number that should have been typed
-    once, and nothing downstream can tell them apart afterwards. The rule is
-    per section, so the same material may still be consumed *and* produced by
-    one job — those are two different statements about it.
-
-    Two halves, and both are needed:
-
-    - `clean()` refuses a duplicate and says which one, on the offending row.
-      This is the rule; it is enforced on the POST and cannot be got around.
-    - `_hide_taken_choices()` drops what other rows already took out of a row's
-      dropdown, so on an unbound page the duplicate is not offered in the first
-      place. Presentation only, and it can only be as fresh as the last render:
-      there is no JavaScript in this app, so the list a row is showing was built
-      when the page was, and the page is rebuilt on „+ další řádek" (which is
-      the tap that asks for an empty row to fill) and on every re-render after
-      an error. Picking the same thing twice between two renders is exactly what
-      `clean()` is there for.
-
-    Only unbound formsets get the hiding. A bound one is being validated, and
-    narrowing a field's queryset there would turn a duplicate into
-    „Vyberte platnou možnost." on whichever row lost the race, instead of the
-    message below.
+    `clean()` refuses a repeat. Unbound formsets also hide choices other rows
+    already took; bound ones don't, or a duplicate would fail as
+    „Vyberte platnou možnost." instead of with `duplicate_error`.
     """
 
-    # The select the rule applies to, and the Czech complaint about a repeat.
     unique_field = None
     duplicate_error = None
 
@@ -167,12 +108,9 @@ class UniqueChoiceFormSet(forms.BaseFormSet):
             self._hide_taken_choices()
 
     def _row_choices(self):
-        """What each row currently names, as a pk string, `None` for an empty row.
+        """Each row's choice as a pk string, or None.
 
-        Read off `initial` because this runs on unbound formsets only. The
-        values arrive as ints from `job_edit` (a stored `material_id`) and as
-        strings from a „+ další řádek" rebuild (raw POST), so they are
-        normalised to strings and anything that is not a pk is ignored.
+        Initial values arrive as ints from `job_edit` and as strings from a raw POST.
         """
         choices = []
         for form in self.forms:
@@ -187,8 +125,7 @@ class UniqueChoiceFormSet(forms.BaseFormSet):
         if not taken:
             return
         for form, own in zip(self.forms, chosen):
-            # Every row keeps its own choice — it is the one that has to
-            # re-select an option when the row renders.
+            # A row keeps its own choice, or it would render blank.
             drop = taken - {own}
             if drop:
                 field = form.fields[self.unique_field]
@@ -198,14 +135,10 @@ class UniqueChoiceFormSet(forms.BaseFormSet):
         super().clean()
         seen = set()
         for form in self.forms:
-            # A row that failed its own validation has nothing to compare and is
-            # already carrying an error of its own.
             value = form.cleaned_data.get(self.unique_field) if hasattr(form, 'cleaned_data') else None
             if value is None:
                 continue
             if value in seen:
-                # On the row, not as a non-form error: the message names one row
-                # of four and belongs where the reader can see which.
                 form.add_error(None, self.duplicate_error.format(name=value))
             seen.add(value)
 
@@ -226,12 +159,9 @@ class WorkerRowFormSet(UniqueChoiceFormSet):
 
 
 class RowForm(forms.Form):
-    """One row of a job section: left blank, or filled in completely.
+    """One row of a job section: blank, or filled in completely.
 
-    Every field on a row is `required=False`, because a whole row may be left
-    empty; this is what refuses a half-filled one. `incomplete_error` is the
-    Czech complaint about that, and `catalog_field` names the picker `job_edit`
-    may widen with `keep` (see `_offer_recorded`).
+    `catalog_field` names the picker `keep` widens (see `_offer_recorded`).
     """
 
     incomplete_error = None
@@ -245,11 +175,8 @@ class RowForm(forms.Form):
     def clean(self):
         cleaned_data = super().clean()
         if self.errors:
-            # A field that failed its own validation is absent from
-            # cleaned_data, which reads here exactly like a half-filled row —
-            # so the check below would add "fill in both" on top of the real
-            # complaint, and that is the one the reader would act on. It is
-            # also the wrong advice: they *did* fill both in.
+            # A failed field is missing from cleaned_data and would look
+            # half-filled, burying the real error under `incomplete_error`.
             return cleaned_data
         filled = [cleaned_data.get(name) for name in self.fields]
         if any(filled) and not all(filled):
@@ -261,8 +188,6 @@ class MovementItemForm(RowForm):
     catalog_field = 'material'
     incomplete_error = 'Vyplňte materiál i množství, nebo řádek nechte prázdný.'
 
-    # required=False because a whole row may be left blank, but these are still
-    # entry fields — the blank option is a prompt, not an "all" filter.
     material = forms.ModelChoiceField(
         queryset=Material.objects.filter(is_active=True),
         required=False,
@@ -274,8 +199,6 @@ class MovementItemForm(RowForm):
         max_digits=7,
         decimal_places=2,
         required=False,
-        # The app records tonnes and nothing else, so the unit is part of
-        # the prompt rather than a column on the material.
         label='Množství (t)',
         widget=forms.NumberInput(attrs={'placeholder': 'Množství (t)'}),
     )
@@ -292,10 +215,7 @@ class MachineUsageForm(RowForm):
         empty_label='Stroj',
     )
     hours = _hours_field(required=False, label='Hodiny', widget=forms.NumberInput(attrs={'placeholder': 'Motohodiny'}))
-    # Tonnage this machine put through on this job. Unrelated to the job's
-    # own consumed/produced totals — several chained machines each process the
-    # same material, so these do not add up to the mass balance and are not
-    # checked against it.
+    # Not part of the mass balance: chained machines each process the same material.
     tons = forms.DecimalField(
         min_value=Decimal('0.01'),
         max_digits=7,
@@ -307,8 +227,7 @@ class MachineUsageForm(RowForm):
 
 
 class WorkerHoursForm(RowForm):
-    """One collaborator and the hours they worked. Naming someone here is what
-    makes them a collaborator on the job — there is no separate picker."""
+    """A collaborator and their hours. Naming someone here is what makes them a collaborator."""
 
     incomplete_error = 'Vyplňte pracovníka a počet hodin, nebo řádek nechte prázdný.'
 
@@ -318,8 +237,6 @@ class WorkerHoursForm(RowForm):
         label='Pracovník',
         empty_label='Pracovník',
     )
-    # The row layout has no room for a visible label, so the placeholder is it —
-    # same reason the selects use the bare noun as their `empty_label`.
     hours = _hours_field(required=False, label='Hodiny', widget=forms.NumberInput(attrs={'placeholder': 'Hodiny'}))
 
     def __init__(self, *args, user=None, viewer=None, **kwargs):
@@ -329,13 +246,7 @@ class WorkerHoursForm(RowForm):
 
 @dataclass(frozen=True)
 class JobSection:
-    """One row section of the job form.
-
-    `prefix` is the formset prefix and the suffix of its row buttons
-    (`add_workers`, `remove_consumed`); `context_name` is the key the formset is
-    also exposed under in the page context; `formset_class` holds the section's
-    no-duplicates rule.
-    """
+    """One row section of the job form. `prefix` also names its row buttons (`add_<prefix>`)."""
 
     prefix: str
     context_name: str
@@ -344,9 +255,7 @@ class JobSection:
     formset_class: type
 
 
-# In render order. `_job_form_fields.html` loops over these and views.py builds,
-# resizes and reads the formsets from them, so a fifth section needs adding
-# here and nowhere else.
+# In render order. A new section only needs adding here.
 JOB_SECTIONS = (
     JobSection('workers', 'worker_formset', 'Spolupracovníci', WorkerHoursForm, WorkerRowFormSet),
     JobSection('consumed', 'consumed_formset', 'Spotřebováno', MovementItemForm, MaterialRowFormSet),
@@ -356,53 +265,29 @@ JOB_SECTIONS = (
 
 
 def job_row_formset(section, *, data=None, rows=(), blank_rows=1, form_kwargs=None):
-    """One section of the job form: bound to `data`, or holding `rows` plus `blank_rows` empty ones.
+    """One section's formset: bound to `data`, or `rows` plus `blank_rows` empty ones.
 
-    `extra` is a class attribute, so the number of blanks has to be baked into a
-    class rather than passed to the instance; `formset_factory` is a `type()`
-    call and cheap enough to run per request. A page re-rendered after
-    „+ další řádek" passes the exact count it wants — padding the rows it
-    already has would add more than one row per tap.
-
-    Unbound rows go in as `initial`, not `data`: the rebuilt page is unbound on
-    purpose. See `_job_forms` in views.py.
+    `extra` is a class attribute, hence a new formset class per call.
     """
     formset_class = forms.formset_factory(section.row_form, formset=section.formset_class, extra=blank_rows)
     return formset_class(data, prefix=section.prefix, initial=list(rows), form_kwargs=form_kwargs or {})
 
 
 class DateRangeFilterForm(forms.Form):
-    """The date range every filtered page has, and the one rule about it.
+    """The date range shared by every filter form.
 
-    Hodiny, Stroje and Přehled each scope by something of their own, but all
-    three also narrow to a span of days, so the pair of fields and the
-    „od ≤ do“ check live here instead of three times over. This is also what
-    parses the dates the quick-range links write into the querystring
-    (`_date_preset_links` in `workorders/reports.py`).
-
-    Subclasses declare their own fields and set `field_order`: `{{ form.as_p }}`
-    renders in declaration order and fields inherited from a base class come
-    first, which would otherwise put the dates above the picker they qualify.
-    They also say how their values narrow a queryset — `lookups` and
-    `date_lookup` — so every page filters through the one `filter()` below.
+    Subclasses set `lookups`, `date_lookup`, and `field_order` so the dates render last.
     """
 
-    # The date the range compares against, relative to the filtered model.
     date_lookup = 'performed_on'
-    # Field name -> ORM lookup string, or a callable taking the value and
-    # returning a Q. Applied only for fields that carry a value.
+    # Field name -> ORM lookup, or a callable returning a Q.
     lookups = {}
 
     date_from = forms.DateField(required=False, widget=forms.DateInput(attrs={'type': 'date'}), label='Datum od')
     date_to = forms.DateField(required=False, widget=forms.DateInput(attrs={'type': 'date'}), label='Datum do')
 
     def filter(self, queryset):
-        """`queryset` narrowed to what this form was submitted with.
-
-        Unbound — no querystring at all — shows everything. Bound but invalid
-        shows nothing: silently ignoring a bad filter would hand back the whole
-        list under a "these are your filtered results" heading.
-        """
+        """`queryset` narrowed by this form. Unbound shows everything; invalid shows nothing."""
         if not self.is_bound:
             return queryset
         if not self.is_valid():
@@ -445,19 +330,12 @@ class TimeWorkedFilterForm(DateRangeFilterForm):
     def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
         if user is not None and not user.is_manager_or_admin:
-            # Workers only ever see their own hours, so picking someone else
-            # would be a dead end.
+            # Cosmetic; the view's queryset is what scopes a worker.
             del self.fields['worker']
 
 
 class MachineFilterForm(DateRangeFilterForm):
-    """Filters the whole Stroje page — both the per-machine totals and the usage
-    rows underneath them, which are two views of the same set of rows.
-
-    Takes no `user`, unlike `TimeWorkedFilterForm`: the page is manager/admin
-    only, so `created_by` is never a dead end and there is nobody to hide it
-    from.
-    """
+    """Filters Stroje's totals and usage rows. Manager-only, so nothing is hidden."""
 
     field_order = ['machine', 'created_by', 'date_from', 'date_to']
     date_lookup = 'work_order__performed_on'
@@ -478,17 +356,9 @@ class MachineFilterForm(DateRangeFilterForm):
 
 
 class MaterialFilterForm(DateRangeFilterForm):
-    """Filters the whole Materiál page — the per-material totals and the line
-    items underneath them, which are two views of the same set of rows.
+    """Filters Materiál's totals and line items.
 
-    Laid out like `MachineFilterForm` and manager/admin only for the same
-    reason, but without its `created_by`: who typed a job in is a review
-    question, not a material one.
-
-    The queryset is every material, not just the active ones. A retired
-    material still has history worth reading back, and the summary above is
-    what limits itself to `is_active=True` — narrowing to one retired material
-    here is the only way to see its rows at all.
+    Offers retired materials too, the only way to reach their rows.
     """
 
     field_order = ['material', 'date_from', 'date_to']
@@ -504,8 +374,7 @@ class MaterialFilterForm(DateRangeFilterForm):
 
 
 class JobFilterForm(DateRangeFilterForm):
-    """Filters for the manager dashboard. No worker variant: the whole view is
-    manager/admin only, so nothing has to be hidden from anyone."""
+    """Filters for Přehled (manager-only)."""
 
     field_order = ['created_by', 'status', 'date_from', 'date_to']
     lookups = {'created_by': 'created_by', 'status': 'status'}

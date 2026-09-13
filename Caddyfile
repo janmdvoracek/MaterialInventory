@@ -1,51 +1,25 @@
-# Reverse proxy and TLS terminator for the public deployment.
-# See docs/deployment/DEPLOYMENT.md.
+# Reverse proxy and TLS for the production stack. Bind-mounted, so edits need
+# only `up -d proxy`, not a rebuild.
 #
-# Bind-mounted read-only into the `proxy` service by docker-compose.prod.yml and
-# deliberately NOT baked into the app image (.dockerignore excludes it), so an
-# edit on the server takes effect with `dcp up -d proxy` and needs no rebuild.
+# Caddy issues and renews the certificate itself, as long as port 80 stays open
+# and the `caddy_data` volume survives (Let's Encrypt allows 5 certificates per
+# hostname per week).
 #
-# Caddy obtains and renews the Let's Encrypt certificate on its own — there is
-# no certbot, no cron entry and no renewal step in the runbook. Two conditions
-# make that work, and both are easy to break:
-#
-#   1. Port 80 must stay reachable from the internet. It is not there to serve
-#      the app (every request on it is redirected to HTTPS); it is there for the
-#      ACME HTTP-01 challenge, at first issue *and* at every renewal.
-#   2. The `caddy_data` volume must persist. It holds the certificate and the
-#      ACME account key. Destroy it repeatedly and you will hit Let's Encrypt's
-#      rate limit of 5 certificates per exact hostname per week — at which point
-#      the site has no certificate and no way to get one until the window rolls.
-#
-# Both placeholders come from .env.production through the `proxy` service's
-# `environment:` block. Caddy spells an environment variable `{$NAME}`; the
-# `${NAME}` form is Compose's and means nothing in this file.
+# `{$NAME}` is Caddy's env-var syntax; the values come from .env.production.
 
 {
-	# ACME account e-mail. Let's Encrypt writes here if renewal ever stops
-	# working, which is the one notification about this deployment worth having.
 	email {$ACME_EMAIL}
 }
 
 {$APP_DOMAIN} {
-	# Caddy sets X-Forwarded-Proto, -For and -Host on every proxied request and
-	# *overwrites* whatever the client sent. That overwrite is what makes
-	# SECURE_PROXY_SSL_HEADER in config/settings.py safe to trust, and it is why
-	# the `web` service publishes no host port: the guarantee only holds while
-	# this is the sole route to gunicorn.
+	# Caddy overwrites X-Forwarded-*, which is what makes SECURE_PROXY_SSL_HEADER
+	# safe, as long as this is the only route to gunicorn.
 	reverse_proxy web:8000
 
 	encode zstd gzip
 
-	# Nothing here for /static/. WhiteNoise serves it from inside the image with
-	# far-future caching on content-hashed filenames, which is already correct.
-
-	# OPTIONAL — keep the Django admin off the open internet by allowing only
-	# known source addresses. /admin/ is the superuser surface and the only page
-	# on the site where guessing a password is worth an attacker's time.
-	# Uncomment, list the office and VPN egress IPs, and REPLACE the plain
-	# `reverse_proxy` line above with this whole block: `route` preserves the
-	# order written here, which a bare matcher would not.
+	# OPTIONAL: restrict /admin/ to known IPs. Replace the `reverse_proxy` line
+	# above with this block (`route` keeps the order written).
 	#
 	# route {
 	# 	@admin_denied {

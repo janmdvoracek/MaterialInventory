@@ -4,25 +4,17 @@ from django.contrib.auth.models import Group
 
 from .models import User
 
-# Groups are Django's own bundles of model permissions, registered by
-# django.contrib.auth's admin rather than by this project. Nothing here consults
-# them: access is `User.role` plus role_required in the views, and everyone who
-# can open the admin at all is a superuser (both flags are derived from the role
-# in save_model below), so a superuser passes every permission check regardless.
-# A group could therefore only ever be a no-op that someone mistook for access
-# control, so the section is taken off the index. Nothing is deleted — the model
-# and any rows in it stay exactly as they are.
+# Access is `role` + role_required and every admin user is a superuser, so
+# groups would do nothing. Unregistered only; no data is deleted.
 admin.site.unregister(Group)
 
 
 @admin.register(User)
 class CustomUserAdmin(UserAdmin):
-    """`is_staff`/`is_superuser` are never edited directly here — they're derived
-    from `role` in `save_model` below, same rule `seed_data` uses (ADMIN gets
-    both, everyone else gets neither). Note this only applies to accounts
-    managed through this admin: a `createsuperuser` bootstrap account has
-    `role=WORKER` by default, so editing it here without also setting its role
-    to Admin would strip its admin access.
+    """`is_staff`/`is_superuser` are derived from `role` in `save_model` (ADMIN gets both).
+
+    A `createsuperuser` account defaults to WORKER, so saving it here without
+    setting the role strips its admin access.
     """
 
     add_fieldsets = (
@@ -45,11 +37,7 @@ class CustomUserAdmin(UserAdmin):
     list_filter = ('role', 'is_active')
     filter_horizontal = ()
 
-    # Nobody can deactivate their own account — it would log them out of the
-    # admin they just used and leave nobody to switch it back on. The checkbox is
-    # read-only on their own change page and disabled on their own list row. A
-    # disabled field ignores whatever is posted for it, so a hand-crafted POST
-    # cannot get past it either.
+    # Nobody can deactivate their own account. A disabled field also ignores a forged POST.
     def get_readonly_fields(self, request, obj=None):
         readonly = super().get_readonly_fields(request, obj)
         if obj is not None and obj.pk == request.user.pk:

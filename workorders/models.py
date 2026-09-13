@@ -4,14 +4,10 @@ from django.utils import timezone
 
 
 class WorkOrder(models.Model):
-    """Groups the stock movements produced by a single transformation job.
+    """One transformation job.
 
-    A job a worker submits is a *proposal* until a manager or admin approves it:
-    only APPROVED jobs are counted by the Hodiny and Stroje pages. A manager's
-    own submission is approved on the spot — there is nobody above them to sign
-    it off. There is no third outcome: a job a manager is not happy with is
-    corrected (job_edit) or deleted (job_delete), never handed back to its
-    author.
+    Only APPROVED jobs count in reports. A manager's own submission is approved
+    on the spot; a job is never handed back, only edited or deleted.
     """
 
     class Status(models.TextChoices):
@@ -19,12 +15,7 @@ class WorkOrder(models.Model):
         APPROVED = 'APPROVED', 'Schváleno'
 
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='vytvořeno')
-    # When the work was actually done, as opposed to when it was typed in. The
-    # form pre-fills today, so the column is always answered and back-dating is
-    # just editing the box — the two differ only when someone does. Day only, deliberately: an
-    # `<input type="date">` renders the same everywhere, while the
-    # `datetime-local` widget the removed Příjem/Výdej forms used let an
-    # English-configured phone show AM/PM regardless of the app's `lang="cs"`.
+    # When the work was done; `created_at` is when it was typed in.
     performed_on = models.DateField(default=timezone.localdate, verbose_name='datum provedení')
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='work_orders', verbose_name='vytvořil'
@@ -48,8 +39,6 @@ class WorkOrder(models.Model):
     )
 
     class Meta:
-        # By the day the work was done, then by entry order within a day — the
-        # same rule every list in the app follows.
         ordering = ['-performed_on', '-created_at']
         verbose_name = 'zakázka'
         verbose_name_plural = 'zakázky'
@@ -63,15 +52,9 @@ class WorkOrder(models.Model):
 
 
 class StockMovement(models.Model):
-    """One material line item on a transformation job — what it consumed or produced.
+    """One material line item on a job: consumed (negative) or produced (positive).
 
-    This is a record of what was processed, not a stock balance. Nothing sums
-    these into an on-hand quantity and nothing checks sufficiency before
-    writing one; the app tracks jobs, hours and machines, not inventory levels.
-
-    A row has no timestamp of its own. Its date is the job's `performed_on`, and
-    its position within the job is the order it was typed — which is what `id`
-    ordering below gives.
+    Not a stock balance. It has no timestamp; its date is the job's `performed_on`.
     """
 
     class MovementType(models.TextChoices):
@@ -99,7 +82,7 @@ class StockMovement(models.Model):
     )
 
     class Meta:
-        # By insertion, which within a job is the order the rows were typed.
+        # The order the rows were typed.
         ordering = ['id']
         indexes = [
             models.Index(fields=['material']),
@@ -112,12 +95,7 @@ class StockMovement(models.Model):
 
 
 class WorkerHours(models.Model):
-    """Labour hours one person spent on a transformation job.
-
-    Typed on the Transform form — one row for the person recording the job and
-    one for each collaborator they named. This is what the Hodiny tab reports;
-    `MachineUsage.hours` is machine runtime and is a separate number entirely.
-    """
+    """Labour hours one person worked on a job. Unrelated to `MachineUsage.hours`."""
 
     work_order = models.ForeignKey(
         WorkOrder, on_delete=models.CASCADE, related_name='worker_hours', verbose_name='zakázka'
@@ -149,14 +127,10 @@ class MachineUsage(models.Model):
         'machines.Machine', on_delete=models.PROTECT, related_name='usages', verbose_name='stroj'
     )
     hours = models.DecimalField(max_digits=12, decimal_places=2, verbose_name='motohodiny')
-    # Nullable only because rows written before the column existed have no
-    # answer — unknown, not zero. The Transform form requires it on every row
-    # it writes, alongside the machine and its hours.
+    # Null only on rows from before the column existed: unknown, not zero.
     tons = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, verbose_name='odpracované tuny')
 
     class Meta:
-        # Newest first, and within a job the reverse of the order typed. The row
-        # has no timestamp of its own; its date is the job's `performed_on`.
         ordering = ['-id']
         verbose_name = 'využití stroje'
         verbose_name_plural = 'využití strojů'

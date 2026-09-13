@@ -1,39 +1,16 @@
 #!/usr/bin/env bash
 #
-# Smoke test of the production stack. Brings up docker-compose.prod.yml — db,
-# web and the Caddy proxy, the way the server runs them — and checks what the
-# test suite cannot see, because it runs without the image, the proxy or the
-# production settings. Run by the `docker-build` job in .github/workflows/ci.yml.
+# Smoke test of docker-compose.prod.yml (db, web, Caddy), run by CI's
+# `docker-build` job. Checks: both configs validate, hashed static files are
+# served, `check --deploy` reports only W021, HTTP redirects to HTTPS, HTTPS
+# answers 200 with HSTS, and a login POST works through the proxy.
 #
-# Every check stands for a failure that would otherwise first appear on the
-# server:
+# Does NOT catch a removed FORWARDED_ALLOW_IPS or empty CSRF_TRUSTED_ORIGINS
+# (both tested; both still pass).
 #
-#   - compose and Caddy both accept their config files;
-#   - the image builds and the running app serves *hashed* static URLs, i.e. the
-#     manifest collectstatic wrote is actually read (a missing one is a 500 on
-#     every page, which the plain-storage test suite never exercises);
-#   - `check --deploy` against .env.production.example reports exactly the one
-#     known warning, security.W021 — runbook step 12, automated;
-#   - HTTP redirects to HTTPS, and HTTPS through Caddy answers 200 with HSTS
-#     instead of redirecting to itself — which it does if Django stops seeing
-#     the request as HTTPS (Caddy's X-Forwarded-Proto, SECURE_PROXY_SSL_HEADER);
-#   - a login POST carrying a browser's Origin header succeeds, and its session
-#     authenticates the next request (the CSRF origin check, the Host header
-#     through the proxy, Secure cookies over HTTPS).
-#
-# Deliberately NOT claimed: that removing FORWARDED_ALLOW_IPS from the compose
-# file or emptying CSRF_TRUSTED_ORIGINS fails this. Both were tried and neither
-# does — gunicorn 26 passes X-Forwarded-Proto through to Django from any peer
-# (the allow-list only gates its own wsgi.url_scheme), and once Django sees
-# HTTPS, `Origin: https://<host>` matches the request's own host.
-#
-# It writes .env.production into the checkout it runs in, so it refuses to run
-# where one already exists — never run it in the server's deployment checkout.
-# Locally, use a clean worktree:
+# Writes .env.production here, so never run it in the server checkout. Locally:
 #   git worktree add ../mi-smoke && ../mi-smoke/scripts/smoke_prod_stack.sh
-# Needs Docker and free host ports 80 and 443. It runs under its own project
-# name and deletes only that project's volumes, so a real
-# materialinventory-prod stack on the same machine is never touched.
+# Needs Docker and free ports 80/443. Uses its own project name and volumes.
 
 set -euo pipefail
 
@@ -52,8 +29,7 @@ ok() {
     echo "ok: $*"
 }
 
-# -k throughout: for `localhost` Caddy issues from its own internal CA rather
-# than Let's Encrypt, which is what lets the proxy run here unmodified.
+# -k: Caddy uses its internal CA for localhost.
 http_status() {
     curl -k -s -o /dev/null -w '%{http_code}' "$@"
 }
@@ -76,10 +52,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Built from the committed template, not from values invented here, so the
-# `check --deploy` count below is a check on the template the runbook tells the
-# server to copy. Only the placeholders are filled in. `tr -d '\r'` because a
-# Windows checkout may carry the template with CRLF endings.
+# From the committed template, so the checks cover it. `tr` strips CRLF.
 tr -d '\r' < .env.production.example \
     | sed -e 's/inventar\.firma\.cz/localhost/g' \
         -e "s/^SECRET_KEY=\$/SECRET_KEY=$(openssl rand -hex 32)/" \
@@ -106,8 +79,7 @@ if ! grep -q 'security.W021' <<< "$report" || ! grep -q 'identified 1 issue ' <<
 fi
 ok "check --deploy reports only W021"
 
-# Caddy needs a moment to issue its local certificate and gunicorn to boot;
-# --retry-all-errors with --fail rides out the 502s in between.
+# Ride out 502s while the certificate and gunicorn come up.
 curl -k -s -S -o /dev/null --fail --retry 30 --retry-delay 2 --retry-all-errors "$BASE/login/" \
     || fail "the site never answered through the proxy"
 
@@ -138,9 +110,7 @@ password=$(openssl rand -hex 16)
 token=$(grep -o 'name="csrfmiddlewaretoken" value="[^"]*"' "$page" | sed -e 's/.*value="//' -e 's/"$//') || true
 [ -n "$token" ] || fail "no CSRF token on the login page"
 
-# Sent the way a browser sends it: Django's CSRF check compares Origin with the
-# scheme and host it believes the request has, so this is where a proxy that
-# rewrites Host or drops X-Forwarded-Proto shows up.
+# With a browser's Origin header, to exercise the CSRF origin check.
 read -r status location < <(curl -k -s -c "$jar" -b "$jar" -o /dev/null -w '%{http_code} %{redirect_url}\n' \
     -H "Origin: $BASE" -H "Referer: $BASE/login/" \
     --data-urlencode "csrfmiddlewaretoken=$token" \

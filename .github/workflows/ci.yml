@@ -1,17 +1,11 @@
 name: CI
 
-# Skip CI for documentation-only changes. `**.md` is a glob, not a regex, and
-# matches Markdown at any depth. A commit touching even one other file —
-# dotfiles and .github/ included — runs the full pipeline.
-#
-# A skipped run reports nothing, which matters in two places: branch protection
-# that requires these checks would wait forever on a docs-only pull request,
-# and deploy.yml has to look past Markdown commits to find the last green run.
+# Markdown-only commits run nothing, so they report no status either.
 on:
   push:
     branches: [main]
     paths-ignore:
-      - '**.md'      # docs, at any depth
+      - '**.md'
   pull_request:
     paths-ignore:
       - '**.md'
@@ -23,16 +17,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Match the Dockerfile's base image. Dependabot bumps that one file on its
-      # own, so a new Python minor has to be brought here by hand.
+      # Keep in step with the Dockerfile by hand; Dependabot bumps only that.
       - uses: actions/setup-python@v7
         with:
           python-version: "3.14"
           cache: "pip"
 
-      # Single source of truth for the Ruff version: an inline pin here drifts
-      # the moment Dependabot bumps requirements-dev.txt, and CI then lints with
-      # a different version than anyone runs locally.
+      # Ruff's version is pinned there.
       - run: pip install -r requirements-dev.txt
 
       - name: Ruff check
@@ -41,16 +32,10 @@ jobs:
       - name: Ruff format check
         run: ruff format --check .
 
-      # Preinstalled on the runner. These scripts run unattended on the server —
-      # from cron and from the deploy workflow — where a quoting bug is found by
-      # losing a backup.
       - name: ShellCheck
         run: shellcheck scripts/*.sh
 
-  # Builds the image through docker-compose.prod.yml and runs the whole
-  # production stack — Postgres, gunicorn, Caddy — against the settings in
-  # .env.production.example: hashed static files, check --deploy, the HTTPS
-  # redirect and a login POST through the proxy. See the script's header.
+  # Runs the whole production stack; see scripts/smoke_prod_stack.sh.
   docker-build:
     runs-on: ubuntu-latest
 
@@ -89,7 +74,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # The interpreter the image ships — see the lint job.
+      # Match the Dockerfile, like the lint job.
       - uses: actions/setup-python@v7
         with:
           python-version: "3.14"

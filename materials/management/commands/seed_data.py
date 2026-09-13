@@ -34,18 +34,12 @@ class Command(BaseCommand):
             return []
         with path.open(newline='', encoding='utf-8') as f:
             reader = csv.DictReader(f)
-            # Read the header inside the `with`: `fieldnames` is lazy, and on an
-            # empty file `list(reader)` never triggers it, so touching it
-            # afterwards raises "I/O operation on closed file".
+            # Inside the `with`: `fieldnames` is lazy and fails once the file is closed.
             fieldnames = reader.fieldnames
             rows = list(reader)
         if fieldnames is None:
-            # Empty file: nothing to seed, and nothing wrong either. Only a file
-            # that *has* a header can have the wrong one.
             return []
-        # A header the command cannot read would otherwise skip every row and
-        # report "0 created" — which on the deployment runbook reads as "the
-        # catalog was already up to date" rather than "this file is wrong".
+        # Otherwise a wrong header silently seeds nothing.
         missing = [column for column in required if column not in fieldnames]
         if missing:
             raise CommandError(f'{path} is missing required column(s): {", ".join(missing)}.')
@@ -53,15 +47,7 @@ class Command(BaseCommand):
 
     @staticmethod
     def _cell(row, column, default=''):
-        """One CSV cell as a stripped string.
-
-        `csv.DictReader` fills the columns a *short row* never reached with
-        `None`, not `''` — so `machines.csv` written as `Bagr,10` under a
-        `name,hourly_rate,rate_per_ton` header hands back `rate_per_ton=None`
-        and a bare `.strip()` raises `AttributeError`. Trailing commas are easy
-        to leave out by hand, and a spreadsheet export drops them too, so treat
-        an unreached column exactly like an empty one.
-        """
+        """One CSV cell, stripped. Columns a short row never reached are `None`; treat them as empty."""
         value = row.get(column, default)
         return (value if value is not None else default).strip()
 
@@ -87,8 +73,7 @@ class Command(BaseCommand):
             name = self._cell(row, 'name')
             if not name:
                 continue
-            # Only touch the rate columns when they carry a value, so re-seeding
-            # never silently wipes a rate set by hand in the admin.
+            # Blank rates keep the existing value, so re-seeding never wipes a hand-set rate.
             defaults = {}
             for column in ('hourly_rate', 'rate_per_ton'):
                 raw = self._cell(row, column)
@@ -125,9 +110,7 @@ class Command(BaseCommand):
                 role=role,
                 password=password,
                 is_staff=is_admin,
-                # is_staff alone only grants login to /admin/; without is_superuser
-                # (or per-model permissions) the index page shows "you don't have
-                # permission to view or edit anything".
+                # is_staff alone gets an empty admin index.
                 is_superuser=is_admin,
             )
             created_users.append((username, password))
