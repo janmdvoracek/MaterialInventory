@@ -172,6 +172,12 @@ button, .btn {
     text-decoration: none;
 }
 button:hover, .btn:hover { background: var(--brand-green-dark); }
+/* The `display` above is an author rule, so it beats the UA stylesheet's
+   `[hidden] { display: none }` however specific that is — without this, a
+   button carrying `hidden` still renders. „− odebrat řádek" is the one that
+   does, on a section down to one row (see `_job_form_fields.html`), and with
+   job_rows.js off there is nothing else to hide it. */
+button[hidden], .btn[hidden] { display: none; }
 .messages { list-style: none; padding: 0; }
 .messages li { padding: 0.75rem; border-radius: 6px; margin-bottom: 0.5rem; }
 .messages .success { background: var(--success-bg); color: var(--success-text); }

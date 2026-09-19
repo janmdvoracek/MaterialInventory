@@ -43,12 +43,14 @@ it off.
 
 ## Tech stack
 
-Django 6.1, PostgreSQL 16, server-rendered Django templates. **No JavaScript at
-all** — not a build step, not a framework, not a CDN tag: every page is a plain
-form POST, so the app depends on no CDN and stays quick on a phone over patchy
-mobile data. Even the
-*„+ další řádek"* / *„− odebrat řádek"* buttons on the entry form are submits that
-come back with a resized form, not script.
+Django 6.1, PostgreSQL 16, server-rendered Django templates. **No build step, no
+framework, no CDN tag** — every page is a plain form POST, so the app depends on
+nothing it does not serve itself and stays quick on a phone over patchy mobile
+data. There is exactly **one script**, `static/js/job_rows.js`, and it is pure
+enhancement: it resizes a section of the entry form in place instead of
+round-tripping. The *„+ další řádek"* / *„− odebrat řádek"* buttons under it are
+still ordinary submits answered by the server, so the form works unchanged with
+the script blocked or broken.
 WhiteNoise serves static files; Gunicorn runs the app in production. Ruff
 handles linting and formatting.
 
@@ -111,7 +113,7 @@ Full column reference: [docs/development.md](docs/development.md#seeding-data).
 ## Common commands
 
 ```bash
-python manage.py test                  # full suite (314 tests, needs Postgres)
+python manage.py test                  # full suite (326 tests, needs Postgres)
 python manage.py test workorders       # one app
 ruff check . && ruff format .          # lint and format
 docker compose up --build              # full stack

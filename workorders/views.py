@@ -209,10 +209,16 @@ def _valid_job_rows(request, order_form, formsets):
 
 
 def _job_context(order_form, formsets, **extra):
-    """The job page's context: the job form, `sections` in render order, and each formset by name."""
+    """The job page's context: the job form, `sections` in render order, and each formset by name.
+
+    The two row bounds go out as well, so `job_rows.js` reads the floor and the
+    cap off the page instead of restating them.
+    """
     return {
         'order_form': order_form,
         'sections': [(section, formsets[section.prefix]) for section in JOB_SECTIONS],
+        'min_rows': MIN_ROWS_PER_SECTION,
+        'max_rows': MAX_ROWS_PER_SECTION,
         **{section.context_name: formsets[section.prefix] for section in JOB_SECTIONS},
         **extra,
     }

@@ -13,6 +13,7 @@ from accounts.models import User
 from machines.models import Machine
 from materials.models import Material
 
+from .forms import JOB_SECTIONS
 from .models import MachineUsage, StockMovement, WorkerHours, WorkOrder
 from .reports import MY_JOBS_LIMIT, _last_month
 from .views import MAX_ROWS_PER_SECTION, MIN_ROWS_PER_SECTION
@@ -2362,8 +2363,11 @@ class DuplicateRowTests(ReviewFixtureMixin, TestCase):
 
     Two halves are tested here: the rule (`clean()`, on the POST) and the help
     (an unbound page does not offer what another row already took). The second
-    is presentation and can only be as fresh as the last render — there is no
-    JavaScript in this app — which is exactly why the first exists.
+    is presentation, and server-side it can only be as fresh as the last
+    render, which is exactly why the first exists. `job_rows.js` narrows the
+    same lists live as the dropdowns change, but it is enhancement and the
+    suite runs no browser, so everything below is the server's own behaviour —
+    the half that has to be right whether or not the script loads.
     """
 
     def _submit(self, **kwargs):
@@ -2797,14 +2801,23 @@ class RowButtonTests(ReviewFixtureMixin, TestCase):
         self.assertEqual(len(response.context['consumed_formset'].forms), MIN_ROWS_PER_SECTION)
 
     def test_the_remove_button_is_hidden_on_a_section_down_to_one_row(self):
+        """Rendered `hidden`, not left out: `job_rows.js` toggles it back when
+        it grows the section, so the element has to be there to toggle.
+
+        With the script off this is the same experience as omitting it — the
+        UA stylesheet hides `[hidden]` and nothing in app.css sets a `display`
+        on `.row-controls button` to override that. The floor itself is
+        `_resized_section`'s, not this attribute's; see
+        `test_the_last_row_is_never_removed`.
+        """
         self.client.force_login(self.worker)
         # Two machine rows, so that section still has one to spare and its own
         # button stays up — hiding is per section, not per page.
         response = self._press('remove_consumed', **{'machines-TOTAL_FORMS': '2'})
-        self.assertNotContains(response, 'name="remove_consumed"')
-        # The way back is still offered.
+        self.assertContains(response, 'name="remove_consumed" data-remove-row formnovalidate hidden')
+        # The way back is still offered, and the roomier section keeps both.
         self.assertContains(response, 'name="add_consumed"')
-        self.assertContains(response, 'name="remove_machines"')
+        self.assertContains(response, 'name="remove_machines" data-remove-row formnovalidate>')
 
     def test_no_section_ever_comes_back_empty(self):
         """The floor holds for the sections nobody pressed, too — otherwise a
@@ -2844,6 +2857,117 @@ class RowButtonTests(ReviewFixtureMixin, TestCase):
         work_order.refresh_from_db()
         # The job still has the one line item it was recorded with.
         self.assertEqual(work_order.movements.count(), 2)
+
+
+class RowTemplateTests(ReviewFixtureMixin, TestCase):
+    """The contract `static/js/job_rows.js` clones a row from.
+
+    The script itself is not tested and cannot be: the suite drives views
+    through `self.client` and there is no browser runner in this project, which
+    is exactly why the server round-trip above stays and why the script is only
+    ever an enhancement on top of it. What *is* testable is everything the
+    script reads off the page, and that is what breaks silently — a renamed
+    attribute or an `empty_form` that stopped receiving its `form_kwargs` makes
+    „+ další řádek" quietly stop adding rows, or add ones with the wrong
+    dropdown, with nothing failing anywhere.
+    """
+
+    def _page(self, user=None):
+        self.client.force_login(user or self.worker)
+        return self.client.get(reverse('transform_create'))
+
+    def test_every_section_renders_a_row_template(self):
+        response = self._page()
+        for prefix, field in (
+            ('workers', 'user'),
+            ('consumed', 'material'),
+            ('produced', 'material'),
+            ('machines', 'machine'),
+        ):
+            self.assertContains(response, f'{prefix}-__prefix__-{field}')
+
+    def test_the_template_is_inert_until_a_copy_is_inserted(self):
+        """It sits inside the <form>, so if it were ordinary markup the browser
+        would post `__prefix__` rows and the formset would choke on them."""
+        response = self._page()
+        self.assertContains(response, '<template data-row-template>')
+
+    def test_the_row_bounds_are_rendered_rather_than_restated(self):
+        """The floor and the cap the script honours are the view's own
+        constants, so the two implementations cannot drift apart."""
+        response = self._page()
+        self.assertContains(
+            response,
+            f'data-job-section data-min-rows="{MIN_ROWS_PER_SECTION}" data-max-rows="{MAX_ROWS_PER_SECTION}"',
+            count=len(JOB_SECTIONS),
+        )
+
+    def test_the_template_row_is_not_narrowed_by_the_hiding(self):
+        """`_hide_taken_choices` touches `formset.forms` and must not reach
+        `empty_form`: a row the script adds has to offer the whole catalog, and
+        it is the script that hides from it live."""
+        work_order = self.submit_job(self.worker)
+        self.client.force_login(self.manager)
+        formset = self.client.get(reverse('job_edit', args=[work_order.pk])).context['consumed_formset']
+        # The spare row is narrowed, as DuplicateRowTests asserts.
+        self.assertNotIn(self.material_raw, formset.forms[1].fields['material'].queryset)
+        self.assertIn(self.material_raw, formset.empty_form.fields['material'].queryset)
+
+    def test_the_template_row_gets_the_collaborator_pair(self):
+        """`empty_form` is built from the formset's `form_kwargs`, so a manager
+        recording for a worker gets a template row scoped to that author — not
+        one offering the author themselves."""
+        self.client.force_login(self.manager)
+        response = self.client.post(
+            reverse('transform_create'),
+            dict(
+                job_payload(
+                    [{'material': self.material_raw, 'quantity': Decimal('5')}],
+                    [{'material': self.material_finished, 'quantity': Decimal('5')}],
+                ),
+                add_workers='',
+                author=str(self.worker.pk),
+            ),
+        )
+        choices = response.context['worker_formset'].empty_form.fields['user'].queryset
+        self.assertNotIn(self.worker, choices)
+        self.assertIn(self.manager, choices)
+        self.assertIn(self.other_worker, choices)
+
+    def test_the_template_row_honours_keep_on_the_edit_form(self):
+        """Same `keep` the real rows get, so a retired record the job names
+        stays reachable on a row the script adds."""
+        work_order = self.submit_job(self.worker)
+        self.material_raw.is_active = False
+        self.material_raw.save(update_fields=['is_active'])
+        self.client.force_login(self.manager)
+        formset = self.client.get(reverse('job_edit', args=[work_order.pk])).context['consumed_formset']
+        self.assertIn(self.material_raw, formset.empty_form.fields['material'].queryset)
+
+    def test_both_job_pages_load_the_script(self):
+        """It is linked from the shared partial, so neither page can lose it."""
+        work_order = self.submit_job(self.worker)
+        self.client.force_login(self.manager)
+        for url in (reverse('transform_create'), reverse('job_edit', args=[work_order.pk])):
+            self.assertContains(self.client.get(url), 'js/job_rows.js')
+
+    def test_the_script_reaches_for_nothing_off_the_server(self):
+        """The htmx <script> this app used to carry pointed at unpkg.com, which
+        the depot could not necessarily reach. One committed file, no CDN."""
+        source = (settings.BASE_DIR / 'static' / 'js' / 'job_rows.js').read_text(encoding='utf-8')
+        self.assertNotIn('http://', source)
+        self.assertNotIn('https://', source)
+
+    def test_the_stylesheet_actually_hides_a_hidden_button(self):
+        """`button, .btn` sets a `display`, and an author rule beats the UA
+        stylesheet's `[hidden] { display: none }` at any specificity — so
+        without an explicit rule the `hidden` on „− odebrat řádek" does
+        nothing and a section down to one row renders a button that cannot
+        lawfully do anything. It was broken exactly that way once; the browser
+        is the only place it shows, so this stands in for looking.
+        """
+        css = (settings.BASE_DIR / 'static' / 'css' / 'app.css').read_text(encoding='utf-8')
+        self.assertRegex(css, r'button\[hidden\][^{]*\{[^}]*display:\s*none')
 
 
 class ThemeTokenTests(TestCase):

@@ -128,12 +128,22 @@ section subclasses it with the field it applies to and the Czech complaint:
   message above. Every row keeps its own choice, or it would have no option to
   re-select and would render blank.
 
-The help can only be as fresh as the last render — there is no JavaScript in
-this app, so the list a row is showing was built when the page was. The renders
-that matter are the ones where a row is about to be filled in: „+ další řádek",
-which is the tap that asks for an empty row, and the edit form's spare row.
-Choosing the same thing twice between two renders is exactly what the rule is
-for. `DuplicateRowTests` in `workorders/tests.py` covers both halves.
+Server-side the help can only be as fresh as the last render: the list a row is
+showing was built when the page was. The renders that matter are the ones where
+a row is about to be filled in — „+ další řádek", the tap that asks for an
+empty row, and the edit form's spare row. `job_rows.js` narrows the same lists
+live as the dropdowns change, which is fresher than any render can be, but it
+is an enhancement and may not be running. Choosing the same thing twice between
+two renders is exactly what the rule is for. `DuplicateRowTests` in
+`workorders/tests.py` covers both halves.
+
+One asymmetry falls out of the two working together. A row the server rendered
+had the taken options `exclude()`d from its queryset, so they are not in the
+DOM at all and freeing one up again cannot bring them back — the script can
+only hide what is there. A row the script added carries the whole catalog and
+does behave that way. This is no worse than having no script; the alternative,
+dropping the server-side narrowing so the script owns it, would cost the
+feature entirely to anyone whose browser never ran it.
 
 ### When a job happened
 
@@ -318,7 +328,12 @@ rest of the retired catalog stays hidden, and a fresh form passes no `keep` at
 all, which is what keeps retiring something meaningful. The workers section needs
 none of this: `collaborator_queryset` never filters on `is_active`.
 
-### Resizing a section without JavaScript
+### Resizing a section
+
+Two mechanisms, one of which is allowed to fail. The server round-trip below is
+the whole feature and is described first because it is the one that is always
+there; `static/js/job_rows.js` then does the same thing without a page load,
+and is covered at the end.
 
 A formset renders a fixed number of rows. Before the row buttons, that made the
 entry form a hard cap on what could be recorded: three consumed rows, three
@@ -354,7 +369,14 @@ slow connection) nor a hand-edited `TOTAL_FORMS` can leave a heading with no row
 under it and only the add button as the way back. The template also hides
 „− odebrat řádek" once a section is down to one row, so it is never shown as a
 control that does nothing; that is presentation, and the view holds the floor
-regardless of what arrives.
+regardless of what arrives. It is rendered carrying the `hidden` attribute
+rather than left out, because the script toggles it back when it grows the
+section — which means the stylesheet has to make `hidden` stick. `button, .btn`
+sets a `display`, and an author rule beats the UA stylesheet's
+`[hidden] { display: none }` at any specificity, so `app.css` carries an
+explicit `button[hidden], .btn[hidden] { display: none }`. Without it the
+attribute does nothing at all and a one-row section shows a button that cannot
+lawfully work; `RowTemplateTests` pins the rule.
 
 **The rebuilt page is unbound, and that is the point.** Asking for another row is
 not submitting the form, so the page must come back carrying what was typed and
@@ -395,6 +417,51 @@ standing, that the remove button disappears at the floor, that the typed values
 and the chosen author come back, that the date stays ISO, that nothing is written
 and nothing is scolded, and that the decoy button precedes the first
 „+ další řádek" in the rendered page.
+
+#### The script on top of it
+
+`static/js/job_rows.js` intercepts those two clicks and resizes the section in
+the DOM instead. It is **enhancement only**: the buttons stay real submits, and
+with the script missing, blocked or broken every paragraph above still
+describes what happens. That is not courtesy — the suite drives views through
+`self.client` and runs no browser, so the server path is the only one it can
+see, and the script is deliberately kept to what can go wrong without taking
+correctness with it.
+
+It builds no markup. Each section renders Django's own `formset.empty_form`
+into a `<template>`, so the widgets, placeholders, option lists and
+`empty_label`s still come from `workorders/forms.py`; adding a row is that
+template with `__prefix__` swapped for the next index, plus a `TOTAL_FORMS`
+increment. `empty_form` is constructed from the formset's `form_kwargs`, which
+is what gets the workers template row the right `collaborator_queryset(user,
+viewer)` pair and the catalog rows their `keep` — no queryset logic is restated
+in JavaScript. It is also *not* narrowed by `_hide_taken_choices`, which only
+touches `formset.forms`, so the template carries the whole catalog and the
+script hides from it live.
+
+Four things it must keep agreeing with the server about:
+
+- **Removing takes the last row**, the same one adding appends, so indices stay
+  contiguous `0..TOTAL_FORMS-1` and the two paths cannot disagree about which
+  row went.
+- **The floor and the cap are rendered, not restated.** `_job_context` puts
+  `MIN_ROWS_PER_SECTION` / `MAX_ROWS_PER_SECTION` in the context and each
+  section carries them as `data-min-rows` / `data-max-rows`.
+- **A row and its errors are wrapped together** in `.row-block`, so removing
+  the last row takes its messages with it rather than orphaning them.
+- **The no-duplicates rule is applied per section**, by hiding and disabling
+  options other rows took — never by rewriting anything the server validates.
+  `UniqueChoiceFormSet.clean()` remains the backstop, and the asymmetry this
+  creates is described under the duplicate rule above.
+
+`RowTemplateTests` in `workorders/tests.py` covers the contract rather than the
+script: that every section renders a template with `__prefix__` names, that the
+bounds are rendered and match the constants, that `empty_form` escapes the
+hiding and honours `form_kwargs` and `keep`, that both job pages link the file,
+that it names no external URL, and that `app.css` really hides a `hidden`
+button. The script's own behaviour is not tested and would need a browser
+runner this project does not have — which is the reason it is only ever allowed
+to be an optimisation.
 
 ### `WorkerHours` vs `MachineUsage`
 
@@ -835,17 +902,25 @@ multiplies the `Sum` by the number of matched collaborators.
 - **No REST API.** `rest_framework` was installed and configured for session
   auth, but there were never any serializers, viewsets or routes. It and the
   `REST_FRAMEWORK` settings block are gone.
-- **No JavaScript.** Every page is a plain form POST. Even resizing a formset
-  section round-trips through the server rather than scripting the DOM — see
-  "Resizing a section without JavaScript" above. `django_htmx`
-  and `widget_tweaks` were installed and never used — no template carried an
-  `hx-*` attribute or loaded the tag library — so both are gone, along with the
-  htmx middleware and the `<script src="https://unpkg.com/htmx.org">` tag in
-  `base.html`. That tag was worth removing on its own: the deployment was
-  LAN-only at the time, and it made every page load reach for a CDN the depot
-  may not have been able to see. (It is a public VPS now, so the CDN is
-  reachable again — which changes nothing, because nothing uses htmx.) The only
-  script the app serves is the admin's own.
+- **No JavaScript framework, and only one script of the app's own.**
+  `static/js/job_rows.js` resizes a section of the job form in the DOM; every
+  other page is a plain form POST with no script at all. It is **progressive
+  enhancement and nothing more** — the „+ další řádek" / „− odebrat řádek"
+  buttons remain ordinary submits that the server still answers by re-rendering
+  the page one row bigger or smaller (see "Resizing a section without
+  JavaScript" above, which is still what happens when the script does not run).
+  That arrangement is not politeness: the suite drives views through
+  `self.client` and runs no browser, so the server path is the only one it can
+  see and has to stay correct on its own. `django_htmx` and `widget_tweaks`
+  were installed and never used — no template carried an `hx-*` attribute or
+  loaded the tag library — so both are gone, along with the htmx middleware and
+  the `<script src="https://unpkg.com/htmx.org">` tag in `base.html`. That tag
+  was worth removing on its own: the deployment was LAN-only at the time, and
+  it made every page load reach for a CDN the depot may not have been able to
+  see. (It is a public VPS now, so the CDN is reachable again — which changes
+  nothing, because nothing uses htmx.) The rule it stands for survives: the app
+  serves its own script from `static/`, never a third party's from a CDN, and
+  `RowTemplateTests` fails if a URL appears in the file.
 - **No CSS framework, and no per-template CSS.** All styling is one file,
   `static/css/app.css`, loaded by `base.html`. No template carries an inline
   `style=` attribute or a `<style>` block. Colours are custom properties
