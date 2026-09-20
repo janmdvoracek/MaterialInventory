@@ -70,7 +70,7 @@ class Migration(migrations.Migration):
             name='StockMovement',
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('movement_type', models.CharField(choices=[('TRANSFORM_CONSUME', 'Zpracování – spotřeba'), ('TRANSFORM_PRODUCE', 'Zpracování – výroba')], max_length=20, verbose_name='typ pohybu')),
+                ('movement_type', models.CharField(choices=[('TRANSFORM_CONSUME', 'Spotřeba'), ('TRANSFORM_PRODUCE', 'Výroba')], max_length=20, verbose_name='typ pohybu')),
                 ('quantity', models.DecimalField(decimal_places=3, help_text='Množství se znaménkem: kladné pro vyrobený materiál, záporné pro spotřebovaný.', max_digits=12, verbose_name='množství')),
                 ('created_by', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='stock_movements', to=settings.AUTH_USER_MODEL, verbose_name='vytvořil')),
                 ('material', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='movements', to='materials.material', verbose_name='materiál')),

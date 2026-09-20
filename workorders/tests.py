@@ -1366,8 +1366,8 @@ class MaterialDashboardTests(TestCase):
         self._job(consumed=[(self.raw, Decimal('5'))], produced=[(self.finished, Decimal('5'))])
         response = self.client.get(reverse('material_dashboard'))
         self.assertEqual(len(response.context['page_obj'].object_list), 2)
-        self.assertContains(response, 'Zpracování – spotřeba')
-        self.assertContains(response, 'Zpracování – výroba')
+        self.assertContains(response, 'Spotřeba')
+        self.assertContains(response, 'Výroba')
         self.assertContains(response, self.worker.username)
 
 
@@ -3114,8 +3114,8 @@ class StockMovementModelTests(StockMovementTestCase):
     def test_movement_type_labels_are_czech(self):
         consumed = self._line_item(Decimal('-1'), StockMovement.MovementType.TRANSFORM_CONSUME)
         produced = self._line_item(Decimal('1'))
-        self.assertEqual(consumed.get_movement_type_display(), 'Zpracování – spotřeba')
-        self.assertEqual(produced.get_movement_type_display(), 'Zpracování – výroba')
+        self.assertEqual(consumed.get_movement_type_display(), 'Spotřeba')
+        self.assertEqual(produced.get_movement_type_display(), 'Výroba')
 
     def test_only_the_two_transform_types_remain(self):
         # Receipt, shipment and adjustment went with stock tracking.

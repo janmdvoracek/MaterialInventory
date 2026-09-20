@@ -58,8 +58,8 @@ class StockMovement(models.Model):
     """
 
     class MovementType(models.TextChoices):
-        TRANSFORM_CONSUME = 'TRANSFORM_CONSUME', 'Zpracování – spotřeba'
-        TRANSFORM_PRODUCE = 'TRANSFORM_PRODUCE', 'Zpracování – výroba'
+        TRANSFORM_CONSUME = 'TRANSFORM_CONSUME', 'Spotřeba'
+        TRANSFORM_PRODUCE = 'TRANSFORM_PRODUCE', 'Výroba'
 
     material = models.ForeignKey(
         'materials.Material', on_delete=models.PROTECT, related_name='movements', verbose_name='materiál'
