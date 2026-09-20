@@ -106,18 +106,100 @@ class PasswordChangeTests(TestCase):
 
 
 class AdminLinkTests(TestCase):
-    def test_admin_link_shown_to_staff_user(self):
-        user = User.objects.create_user(username='manager', password='pw', role=User.Role.MANAGER, is_staff=True)
+    """The header link follows `has_admin_access`, the same property the gate in
+    `accounts.middleware` reads, so a visible „Administrace“ can never lead to
+    the 404 that gate serves.
+    """
+
+    def _header(self, user):
         self.client.force_login(user)
-        html = self.client.get(reverse('transform_create')).content.decode()
+        return self.client.get(reverse('transform_create')).content.decode()
+
+    def test_admin_link_shown_to_admin_user(self):
+        user = User.objects.create_superuser(username='admin', password='pw', role=User.Role.ADMIN)
+        html = self._header(user)
         self.assertIn(reverse('admin:index'), html)
         self.assertIn('Administrace', html)
 
+    def test_admin_link_hidden_from_staff_user_who_is_not_an_admin(self):
+        # `is_staff` alone is what Django asks for and is no longer enough here:
+        # such a user would follow the link into a 404.
+        user = User.objects.create_user(username='manager', password='pw', role=User.Role.MANAGER, is_staff=True)
+        self.assertNotIn('Administrace', self._header(user))
+
     def test_admin_link_hidden_from_non_staff_user(self):
         user = User.objects.create_user(username='worker', password='pw', role=User.Role.WORKER, is_staff=False)
+        self.assertNotIn('Administrace', self._header(user))
+
+
+class AdminGateTests(TestCase):
+    """/admin/ is served only to a session that already belongs to an admin.
+
+    The deployment is a public VPS, so Django's own admin login form would be
+    the one page on the internet where guessing a password is worth the effort.
+    `AdminSessionRequiredMiddleware` 404s the whole prefix instead — including
+    /admin/login/, which is the point — leaving the app's own /login/, which
+    django-axes rate-limits, as the only login form there is.
+    """
+
+    def setUp(self):
+        self.index = reverse('admin:index')
+        self.login = reverse('admin:login')
+        self.users = reverse('admin:accounts_user_changelist')
+
+    def test_anonymous_gets_404_not_a_login_form(self):
+        for url in (self.index, self.login, self.users):
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 404)
+                self.assertNotIn(b'name="password"', response.content)
+
+    def test_anonymous_cannot_post_to_the_admin_login(self):
+        # A 404 on GET would be worth little if the form still accepted guesses.
+        response = self.client.post(self.login, {'username': 'admin', 'password': 'pw'})
+        self.assertEqual(response.status_code, 404)
+
+    def test_worker_gets_404(self):
+        self.client.force_login(User.objects.create_user(username='worker', password='pw'))
+        self.assertEqual(self.client.get(self.index).status_code, 404)
+
+    def test_manager_gets_404_even_when_staff(self):
+        user = User.objects.create_user(username='manager', password='pw', role=User.Role.MANAGER, is_staff=True)
         self.client.force_login(user)
-        html = self.client.get(reverse('transform_create')).content.decode()
-        self.assertNotIn('Administrace', html)
+        for url in (self.index, self.users):
+            with self.subTest(url=url):
+                self.assertEqual(self.client.get(url).status_code, 404)
+
+    def test_admin_user_gets_the_admin(self):
+        user = User.objects.create_superuser(username='admin', password='pw', role=User.Role.ADMIN)
+        self.client.force_login(user)
+        for url in (self.index, self.users):
+            with self.subTest(url=url):
+                self.assertEqual(self.client.get(url).status_code, 200)
+
+    def test_bootstrap_superuser_gets_the_admin_despite_worker_role(self):
+        # `createsuperuser` sets no role, so the default WORKER must not lock
+        # them out of the admin they were created to run.
+        self.client.force_login(User.objects.create_superuser(username='root', password='pw'))
+        self.assertEqual(self.client.get(self.index).status_code, 200)
+
+    def test_gate_covers_the_whole_prefix_not_just_registered_models(self):
+        response = self.client.get(f'{self.index}jsi18n/')
+        self.assertEqual(response.status_code, 404)
+
+    def test_the_slashless_path_is_not_redirected_either(self):
+        # APPEND_SLASH turns a 404 for /admin into a 301 to /admin/, which hands
+        # back exactly the confirmation the 404 withholds. The gate sits above
+        # CommonMiddleware so that never runs; this test is what pins that order.
+        response = self.client.get(self.index.rstrip('/'))
+        self.assertEqual(response.status_code, 404)
+
+    def test_the_rest_of_the_app_is_untouched(self):
+        # The gate reads request.user for admin paths only; everything else must
+        # behave exactly as before, login redirect included.
+        response = self.client.get(reverse('transform_create'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse('login'), response.url)
 
 
 class AdminIndexTests(TestCase):

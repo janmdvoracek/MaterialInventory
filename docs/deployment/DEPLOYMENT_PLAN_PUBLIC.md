@@ -128,9 +128,11 @@ explicitly.
   much better reason than before: on this host, published means published to the
   internet.
 - **The Tailscale section.** Its whole purpose was reaching a LAN-only app from
-  outside; the app is now reachable by design. A VPN remains the right answer
-  for one narrower question — keeping `/admin/` off the open internet — and the
-  `Caddyfile` carries a commented `route` block for the source-IP variant.
+  outside; the app is now reachable by design. The narrower question it would
+  still have answered — keeping `/admin/` off the open internet — is answered in
+  the app instead (see below), so a VPN and the `Caddyfile`'s commented
+  source-IP `route` block are both optional extra layers now rather than the
+  only mitigations.
 
 ## Security posture — what the perimeter was carrying
 
@@ -169,10 +171,31 @@ matters once the login form is public:
 2. **Seeded temporary passwords.** `seed_data` prints one random password per
    user; any that were handed out informally and never changed are now
    internet-facing credentials. The runbook says to treat them that way.
-3. **`/admin/` on the open internet.** The superuser surface, and the only page
-   where guessing a password is worth an attacker's time. The commented
-   source-IP block in `Caddyfile` is the cheap mitigation; a VPN is the thorough
-   one.
+3. **`/admin/` on the open internet — done, in the app.** It was the superuser
+   surface and the only page where guessing a password was worth an attacker's
+   time, sitting at the URL every scanner tries first.
+   `accounts/middleware.py::AdminSessionRequiredMiddleware` now answers **404**
+   for the whole prefix unless the request already carries an admin's session.
+
+   Covering `/admin/login/` is the point of doing it as middleware rather than
+   per-`ModelAdmin`: with no admin login form served at all, the app's own
+   `/login/` — Czech, and rate-limited by axes — is the only login form on the
+   internet, so the two mitigations reinforce each other instead of leaving a
+   second, unlimited door.
+
+   **404 rather than a redirect to `/login/`** is the one judgement call. A
+   redirect would be friendlier to a logged-out admin, and would also confirm to
+   a scanner that the admin is here; an admin is one visit to the app away
+   either way, so the trade goes to hiding it. The cost is a 404 that looks like
+   a broken URL to someone who has not logged in yet, which the runbook states
+   under [Before you point DNS at it](DEPLOYMENT.md#before-you-point-dns-at-it).
+
+   The header link reads the same `User.has_admin_access` the gate does, so a
+   visible „Administrace“ can never lead to that 404. What this does *not*
+   replace: the source-IP block or a VPN, both of which keep the admin
+   unreachable even from a stolen admin session's device — they are simply no
+   longer the only thing standing between the superuser surface and the
+   internet.
 4. **No password reset and no email backend.** Unchanged from the LAN plan, and
    still workable — an admin resets, or `changepassword` over SSH — but the
    second admin account (runbook step 11) stops being a nicety.
@@ -186,6 +209,7 @@ matters once the login form is public:
 **New**
 - `Caddyfile` — the reverse proxy and TLS config; bind-mounted, not baked into
   the image
+- `accounts/middleware.py` — the `/admin/` gate
 - `templates/registration/lockout.html` — the Czech lockout page
 - `DEPLOYMENT_PLAN_PUBLIC.md` — this file
 

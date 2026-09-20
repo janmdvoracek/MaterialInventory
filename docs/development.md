@@ -60,7 +60,7 @@ python manage.py test materials.tests.MaterialModelTests           # one class
 python manage.py test materials.tests.MaterialModelTests.test_material_str
 ```
 
-337 tests, roughly three and a half minutes. Postgres must be reachable.
+346 tests, roughly three and a half minutes. Postgres must be reachable.
 
 ### How the tests are written
 
@@ -102,6 +102,15 @@ single transaction and hides the interleaving such a test exists to exercise.
 **`AdminCzechTests`** (in `accounts/tests.py`) fails if the admin drifts back
 to English — including if `locale/cs/LC_MESSAGES/django.mo` is stale. See
 [localization.md](localization.md#the-admin).
+
+**`AdminGateTests`** (in `accounts/tests.py`) fails if `/admin/` becomes
+reachable without an admin session — anonymously, as a worker, or as an
+`is_staff` manager — and `AdminLinkTests` fails if the header link stops
+agreeing with that gate. The deployment is public, so this is the difference
+between a superuser login form on the internet and none at all; see
+[architecture.md](architecture.md#the-admin-is-a-404-unless-you-are-already-an-admin).
+`scripts/smoke_prod_stack.sh` re-checks the same 404 through the built image
+behind Caddy, which is the only place middleware order is exercised for real.
 
 ## Translations
 

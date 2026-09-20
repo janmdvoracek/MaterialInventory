@@ -817,12 +817,14 @@ the first two held nothing but `# Create your views here.` and were removed.
 | `MANAGER` | no | + Přehled (approve/edit/delete), + Stroje, + Materiál, + everyone's records |
 | `ADMIN` | **yes / yes** | + Django admin |
 
-Two gates:
+Three gates:
 
 - `accounts/decorators.py::role_required(*roles)` on the view. Anonymous users
   get the login redirect; authenticated users with the wrong role get a 403 —
   not a bounce back to login, which would be a confusing dead end.
 - `User.is_manager_or_admin` for conditional UI and query scoping.
+- `accounts/middleware.py::AdminSessionRequiredMiddleware` on `/admin/` itself,
+  below.
 
 **The `/jobs/` review views, `machine_dashboard` and `material_dashboard` all
 use `role_required`** — a worker who types one of those URLs gets a 403, not a
@@ -857,6 +859,68 @@ logging in to `/admin/` and then shows an empty "you don't have permission"
 index — worse than no access at all. Both `seed_data` and
 `CustomUserAdmin.save_model` derive the two flags from `role`, so they stay
 consistent however the account was created.
+
+### The admin is a 404 unless you are already an admin
+
+The deployment is a public VPS. Django's admin answers its own login form to
+anonymous requests, which puts a password form — the superuser one — at the URL
+every scanner on the internet tries first.
+`accounts/middleware.py::AdminSessionRequiredMiddleware` answers **404** for
+everything under the admin prefix unless the request already carries an admin
+session:
+
+```python
+@property
+def has_admin_access(self):
+    return self.is_active and self.is_staff and (self.is_superuser or self.role == self.Role.ADMIN)
+```
+
+Being middleware, it covers every admin URL at once rather than depending on
+each `ModelAdmin` — `/admin/login/` included, which is the point: there is no
+admin login form on the internet at all, leaving the app's own `/login/`, which
+django-axes rate-limits, as the only one. The way in is to log in to the app
+first and then open `/admin/`; an admin already working in the app just follows
+the header link.
+
+Five details worth keeping:
+
+- **404 rather than a redirect to `/login/`.** A redirect would be friendlier to
+  a logged-out admin — and would confirm to a scanner that the admin is here.
+  The admin is one visit to the app away either way, so the trade goes to
+  hiding it. The cost is that `/admin/` typed while logged out looks like a
+  broken URL; the runbook says to expect that.
+- **Its position in `MIDDLEWARE` is load-bearing.** It goes *above*
+  `CommonMiddleware`: `APPEND_SLASH` turns any 404 for `/admin` into a 301 to
+  `/admin/`, which hands back exactly the confirmation the 404 withholds. Above
+  `CsrfViewMiddleware` too, so an anonymous POST to `/admin/login/` is refused
+  as a 404 rather than a 403. That puts it above `AuthenticationMiddleware`, so
+  it resolves the user itself with `django.contrib.auth.get_user` — precisely
+  what that middleware's lazy `request.user` calls — and needs only
+  `SessionMiddleware` above it. Moving it down breaks the slashless case
+  silently, so both the suite and `scripts/smoke_prod_stack.sh` request
+  `/admin` without its slash.
+- **The prefix is read from `reverse('admin:index')`**, not hardcoded, so
+  mounting the admin somewhere else stays covered. Lazily, on the first request:
+  `reverse()` needs the URLconf loaded, which it is not while middleware is
+  being instantiated.
+- **The user is resolved only for paths under the prefix**, so no other request
+  in the app pays for a session lookup it would not otherwise make.
+- **The header link reads the same property.** `base.html` shows
+  „Administrace“ on `user.has_admin_access`, not on `is_staff`, so a visible
+  link can never lead to the 404 — a manager given `is_staff` by hand sees no
+  link and gets no admin, which is the rule the role table above already
+  stated.
+
+What it does **not** do is make the admin a secret: `collectstatic` publishes
+Django's own admin CSS at `/static/admin/`, so a determined scanner can still
+tell the app has one. The gate is access control — there is no admin login form
+to guess against — and the hiding is a side benefit, not something to lean on.
+The `Caddyfile`'s commented source-IP block and a VPN are still the answers if
+the admin must be unreachable even to a stolen session.
+
+`AdminGateTests` and `AdminLinkTests` in `accounts/tests.py` cover it, and
+`scripts/smoke_prod_stack.sh` re-checks the 404 against the built image behind
+Caddy, anonymously and as a logged-in non-admin.
 
 ### How worker scoping is enforced
 

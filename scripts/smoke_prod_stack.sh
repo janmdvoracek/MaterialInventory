@@ -3,7 +3,8 @@
 # Smoke test of docker-compose.prod.yml (db, web, Caddy), run by CI's
 # `docker-build` job. Checks: both configs validate, hashed static files are
 # served, `check --deploy` reports only W021, HTTP redirects to HTTPS, HTTPS
-# answers 200 with HSTS, and a login POST works through the proxy.
+# answers 200 with HSTS, a login POST works through the proxy, and /admin/ is
+# a 404 to anyone who is not logged in as an admin.
 #
 # Does NOT catch a removed FORWARDED_ALLOW_IPS or empty CSRF_TRUSTED_ORIGINS
 # (both tested; both still pass).
@@ -121,5 +122,17 @@ read -r status location < <(curl -k -s -c "$jar" -b "$jar" -o /dev/null -w '%{ht
     || fail "login POST answered $status — 403 is the CSRF origin check (Origin vs. the scheme and host Django sees), 200 is refused credentials"
 [ "$(http_status -b "$jar" "$BASE/")" = 200 ] || fail "logged in, but the session did not authenticate the next request"
 ok "login POST through the proxy works"
+
+# The gate is middleware, so the image carries it; this checks it survived the
+# route through Caddy. The smoke user is a plain worker, hence the second call.
+# The slashless /admin must 404 too: a 301 means the gate was moved below
+# CommonMiddleware, whose APPEND_SLASH then confirms the admin is there.
+for url in "$BASE/admin/" "$BASE/admin" "$BASE/admin/login/"; do
+    [ "$(http_status "$url")" = 404 ] \
+        || fail "$url is reachable without a session — AdminSessionRequiredMiddleware is not in MIDDLEWARE"
+done
+[ "$(http_status -b "$jar" "$BASE/admin/")" = 404 ] \
+    || fail "/admin/ answered a logged-in non-admin — the gate must read has_admin_access, not is_authenticated"
+ok "/admin/ is 404 for anonymous and non-admin requests"
 
 echo "production stack smoke test passed"

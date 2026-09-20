@@ -117,7 +117,7 @@ Full column reference: [docs/development.md](docs/development.md#seeding-data).
 ## Common commands
 
 ```bash
-python manage.py test                  # full suite (337 tests, needs Postgres)
+python manage.py test                  # full suite (346 tests, needs Postgres)
 python manage.py test workorders       # one app
 ruff check . && ruff format .          # lint and format
 docker compose up --build              # full stack
@@ -139,11 +139,17 @@ editing the URL does not widen what they can see. The Review pages and the
 Machines page are gated in the view with `role_required`, so a worker who types
 one of those URLs gets a 403 rather than a scoped-down page.
 
+**`/admin/` answers 404 unless you are already logged in as an Admin.** The
+deployment is public, so Django's own admin login form — the superuser one, at
+the URL every scanner tries first — is not served at all: log in to the app
+first, then open the admin (the header link appears for Admins). Details in
+[docs/architecture.md](docs/architecture.md#the-admin-is-a-404-unless-you-are-already-an-admin).
+
 ## Project layout
 
 ```
 config/       Django project — settings, root URLconf, WSGI/ASGI
-accounts/     Custom User model, roles, role_required decorator, Czech auth forms
+accounts/     Custom User model, roles, role_required decorator, the /admin/ gate, Czech auth forms
 materials/    Material catalog + the seed_data command (materials, machines, users)
 machines/     Machine catalog with its hourly and per-tonne rates
 workorders/   Jobs and their StockMovement line items; Transform form, review dashboard, machine and material pages, time-worked reporting, all URLs (views.py: jobs; reports.py: reports)

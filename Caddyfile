@@ -18,8 +18,11 @@
 
 	encode zstd gzip
 
-	# OPTIONAL: restrict /admin/ to known IPs. Replace the `reverse_proxy` line
-	# above with this block (`route` keeps the order written).
+	# OPTIONAL, and a second layer rather than the only one: the app already
+	# 404s /admin/ for anyone not logged in as an admin
+	# (accounts/middleware.py::AdminSessionRequiredMiddleware). This restricts
+	# the prefix to known addresses on top of that — replace the `reverse_proxy`
+	# line above with this block (`route` keeps the order written).
 	#
 	# route {
 	# 	@admin_denied {

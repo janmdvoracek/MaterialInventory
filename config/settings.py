@@ -60,6 +60,12 @@ MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    # 404s /admin/ unless the session is an admin's, so the admin login form is
+    # never served on the public internet. Below SessionMiddleware, which it
+    # reads the user through, and deliberately *above* CommonMiddleware, whose
+    # APPEND_SLASH would otherwise 301 /admin to /admin/ and confirm the admin
+    # is there. It resolves the user itself; see the module docstring.
+    'accounts.middleware.AdminSessionRequiredMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',

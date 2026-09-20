@@ -10,24 +10,41 @@ Steps 1–16 are the first install and run once. After that you only need
 
 **What this deployment still does not have:** no email backend and no
 password-reset flow. Login rate limiting *is* in place — `django-axes`, see
-[Lockouts](#lockouts) — but two gaps the LAN perimeter used to cover are still
-open, so read [Before you point DNS at it](#before-you-point-dns-at-it)
-**before** step 2, not after step 16.
+[Lockouts](#lockouts) — and so is the `/admin/` gate, which is why only one of
+the gaps the LAN perimeter used to cover is still open. Read
+[Before you point DNS at it](#before-you-point-dns-at-it) **before** step 2, not
+after step 16.
 
 ---
 
 ## Before you point DNS at it
 
-Two gaps that the old LAN deployment closed with the network rather than with
-code. Neither blocks the steps below, and both are cheaper to decide now than
+One gap that the old LAN deployment closed with the network rather than with
+code. It does not block the steps below, and it is cheaper to decide now than
 after the URL has been handed out.
 
 | Gap | Consequence once public | Options |
 |---|---|---|
 | **Seeded temporary passwords** | `seed_data` prints one random password per user; if they were handed out and never changed, they are now internet-facing credentials. | Reset every account before go-live, and require a change at first login. |
-| **`/admin/` publicly reachable** | The superuser surface is on the open internet, and the only page where guessing a password is worth an attacker's time. | Restrict it by source IP in `Caddyfile` — a commented `route` block is already there — or keep admin access on a VPN. |
 
-Both are judgement calls rather than blockers.
+It is a judgement call rather than a blocker.
+
+**The second gap, `/admin/` on the open internet, is closed in the app.**
+`accounts/middleware.py::AdminSessionRequiredMiddleware` answers **404** for
+every URL under `/admin/` — `/admin/login/` included — unless the request
+already carries an admin's session, so the superuser login form is not served
+on the internet at all and the app's own rate-limited `/login/` is the only
+login form there is. Two consequences for the steps below:
+
+- **You reach the admin by logging in to the app first**, at
+  `https://<domain>/login/`, and then opening `https://<domain>/admin/` (or
+  following the *Administrace* link in the header). Opening `/admin/` while
+  logged out gives a 404, not a login page — that is the gate working, not a
+  broken deployment.
+- **The `Caddyfile`'s commented source-IP `route` block is now optional.** It
+  restricts `/admin/` to known addresses on top of the gate; a VPN remains the
+  thorough version. Neither is needed to keep the admin off the open web any
+  more.
 
 ## 1. Provision and lock down the VPS
 
@@ -255,10 +272,14 @@ any password that has been read aloud or sent over chat as already compromised.
 dcp exec web python manage.py createsuperuser
 ```
 
-Then open `https://<domain>/admin/` and set that account's **role to `ADMIN`**.
-`createsuperuser` leaves `role` at the `WORKER` default; superusers bypass the
-role checks so the app still works, but an account whose displayed role
-contradicts its access is a trap for whoever looks next.
+Then log in at `https://<domain>/login/` with that account and open
+`https://<domain>/admin/` — in that order, because the admin is a 404 to anyone
+not already logged in as an admin (see
+[Before you point DNS at it](#before-you-point-dns-at-it)). Set the account's
+**role to `ADMIN`**. `createsuperuser` leaves `role` at the `WORKER` default;
+superusers bypass the role checks so both the app and the admin still work, but
+an account whose displayed role contradicts its access is a trap for whoever
+looks next.
 
 **Create a second admin account.** There is no password-reset flow and no email
 backend: a forgotten password is reset by another admin, or from the server with
@@ -293,7 +314,7 @@ Anything else means something did not take:
 ## 13. Verify from the internet
 
 From a device that is **not** on the office network — a phone on cellular data
-is ideal — open `https://<domain>` and check all six:
+is ideal — open `https://<domain>` and check all seven:
 
 1. The browser shows a valid certificate with no warning.
 2. The login page loads, with the logo and the background image.
@@ -303,6 +324,11 @@ is ideal — open `https://<domain>` and check all six:
 5. The material dropdown lists `Štěrk` between `Struska` and `Zemina`, not after
    `Zemina` — the visible half of step 8.
 6. `http://<domain>` redirects to HTTPS rather than serving anything.
+7. **In a private window, with nobody logged in**, `https://<domain>/admin/`
+   answers **404** and shows no login form — and so does
+   `https://<domain>/admin` without the slash, which must not redirect. A login
+   form here means `AdminSessionRequiredMiddleware` is not in `MIDDLEWARE`; a
+   301 on the slashless one means it was moved below `CommonMiddleware`.
 
 A missing static manifest shows up here as a 500, not as a missing image.
 
