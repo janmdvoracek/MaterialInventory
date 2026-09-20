@@ -28,7 +28,9 @@ and code are in English.
 
 The summary table on each of those last three downloads as a CSV that opens
 straight into Excel — semicolon-delimited, UTF-8 BOM, comma decimals — over
-whatever filter the page is showing.
+whatever filter the page is showing. Materials has a second download under its
+line items, the one row-level export: every row the filter allows, not the page
+on screen.
 
 A job is written as a single transaction: its material line items, every
 participant's hours, and any machine usage all land together or not at all.
@@ -115,7 +117,7 @@ Full column reference: [docs/development.md](docs/development.md#seeding-data).
 ## Common commands
 
 ```bash
-python manage.py test                  # full suite (330 tests, needs Postgres)
+python manage.py test                  # full suite (337 tests, needs Postgres)
 python manage.py test workorders       # one app
 ruff check . && ruff format .          # lint and format
 docker compose up --build              # full stack

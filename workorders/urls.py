@@ -15,6 +15,9 @@ urlpatterns = [
     path('machines/export/', reports.machine_dashboard_export, name='machine_dashboard_export'),
     path('materials/export/', reports.material_dashboard_export, name='material_dashboard_export'),
     path('hours/export/', reports.time_worked_export, name='time_worked_export'),
+    # The one row-level download: Materiál's line items, the whole filtered set
+    # rather than the page on screen.
+    path('materials/detail/export/', reports.material_detail_export, name='material_detail_export'),
     # Manager review of recorded jobs. Every view behind these is gated by
     # role_required, not just hidden from the nav.
     path('jobs/', views.job_dashboard, name='job_dashboard'),

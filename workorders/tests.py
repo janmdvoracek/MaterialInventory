@@ -16,7 +16,7 @@ from materials.models import Material
 
 from .forms import JOB_SECTIONS
 from .models import MachineUsage, StockMovement, WorkerHours, WorkOrder
-from .reports import MY_JOBS_LIMIT, _last_month
+from .reports import HISTORY_PAGE_SIZE, MY_JOBS_LIMIT, _last_month
 from .views import MAX_ROWS_PER_SECTION, MIN_ROWS_PER_SECTION
 
 
@@ -1552,13 +1552,15 @@ class TimeWorkedTests(TestCase):
         self.assertEqual([o.pk for o in response.context['page_obj'].object_list], [own.pk])
 
 
-class SummaryExportTests(TestCase):
-    """The „Stáhnout do CSV / Excelu" download under each summary table.
+class TableExportTests(TestCase):
+    """The „Stáhnout do CSV / Excelu" download under each exported table.
 
-    Three things to hold: the file opens in Excel on a Czech machine (BOM,
-    semicolons, comma decimals), it carries exactly the table the filter was
-    showing, and it is gated like the page it hangs off — a worker must not be
-    able to fetch a report the page itself would refuse them.
+    Three summaries — „Souhrn" on Hodiny, „Stav strojů", „Souhrn materiálů" —
+    and one detail table, Materiál's „Detail položek". Three things to hold:
+    the file opens in Excel on a Czech machine (BOM, semicolons, comma
+    decimals), it carries exactly the table the filter was showing, and it is
+    gated like the page it hangs off — a worker must not be able to fetch a
+    report the page itself would refuse them.
     """
 
     def setUp(self):
@@ -1719,17 +1721,95 @@ class SummaryExportTests(TestCase):
         self.assertEqual(rows[1:], [['worker', '2,0', '1']])
 
     def test_worker_cannot_reach_the_manager_only_exports(self):
-        # Hiding the link is not access control; both are gated like their pages.
+        # Hiding the link is not access control; all three are gated like their
+        # pages. The detail file is the most worth gating: it names every job's
+        # author and description, not just totals.
         self.client.force_login(self.worker)
-        self.assertEqual(self.client.get(reverse('machine_dashboard_export')).status_code, 403)
-        self.assertEqual(self.client.get(reverse('material_dashboard_export')).status_code, 403)
+        for name in ('machine_dashboard_export', 'material_dashboard_export', 'material_detail_export'):
+            with self.subTest(name=name):
+                self.assertEqual(self.client.get(reverse(name)).status_code, 403)
 
     def test_exports_require_login(self):
-        for name in ('time_worked_export', 'machine_dashboard_export', 'material_dashboard_export'):
+        for name in (
+            'time_worked_export',
+            'machine_dashboard_export',
+            'material_dashboard_export',
+            'material_detail_export',
+        ):
             with self.subTest(name=name):
                 response = self.client.get(reverse(name))
                 self.assertEqual(response.status_code, 302)
                 self.assertIn('/login/', response.url)
+
+    def test_detail_export_carries_the_line_items(self):
+        # „Detail položek" one row per line item, in the page's own order and
+        # with the same columns — the file is the table, not a rearrangement.
+        work_order = self._job(quantity=Decimal('12.5'))
+        self.client.force_login(self.manager)
+        rows = self._rows(self.client.get(reverse('material_detail_export')))
+        self.assertEqual(rows[0], ['Provedeno', 'Materiál', 'Druh', 'Množství (t)', 'Zakázka', 'Kým'])
+        today = date.today().isoformat()
+        self.assertEqual(
+            rows[1:],
+            [
+                [today, 'Frakce 8/16', 'Výroba', '12,50', 'job', 'worker'],
+                [today, 'Štěrk', 'Spotřeba', '12,50', 'job', 'worker'],
+            ],
+        )
+        self.assertEqual(work_order.movements.count(), 2)
+
+    def test_detail_export_is_every_row_not_one_page(self):
+        # The page paginates at HISTORY_PAGE_SIZE; a file holding the first 50
+        # of 60 rows under the heading of the whole filter would be worse than
+        # no file at all.
+        for _ in range(HISTORY_PAGE_SIZE):
+            self._job(quantity=Decimal('1'))
+        self.client.force_login(self.manager)
+        rows = self._rows(self.client.get(reverse('material_detail_export')))
+        self.assertEqual(len(rows) - 1, HISTORY_PAGE_SIZE * 2)
+
+    def test_detail_export_follows_the_filter_and_hides_pending_jobs(self):
+        # Same two rules as every other download, and for the same reason: it
+        # is built from `_filtered_material_movements`, the page's own helper.
+        self._job(quantity=Decimal('4'), performed_on=date.today() - timedelta(days=40))
+        self._job(quantity=Decimal('9'), status=WorkOrder.Status.PENDING)
+        self._job(quantity=Decimal('1.5'))
+        self.client.force_login(self.manager)
+        response = self.client.get(
+            reverse('material_detail_export'), {'date_from': (date.today() - timedelta(days=7)).isoformat()}
+        )
+        quantities = [row[3] for row in self._rows(response)[1:]]
+        self.assertEqual(quantities, ['1,50', '1,50'])
+
+    def test_detail_export_leaves_a_missing_description_blank(self):
+        # The page prints „—" there; a dash is text in a column meant for text
+        # the reader filters on, and blank is the same statement without it.
+        WorkOrder.objects.filter(pk=self._job(quantity=Decimal('2')).pk).update(description='')
+        self.client.force_login(self.manager)
+        self.assertEqual(self._rows(self.client.get(reverse('material_detail_export')))[1][4], '')
+
+    def test_detail_export_is_a_bom_csv_named_for_the_day(self):
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('material_detail_export'))
+        self.assertTrue(response.content.startswith(b'\xef\xbb\xbf'))
+        self.assertEqual(
+            response['Content-Disposition'],
+            f'attachment; filename="detail-polozek-{date.today().isoformat()}.csv"',
+        )
+
+    def test_invalid_filter_exports_a_header_and_nothing_else_on_the_detail_too(self):
+        self._job(quantity=Decimal('5'))
+        self.client.force_login(self.manager)
+        rows = self._rows(self.client.get(reverse('material_detail_export'), {'date_from': 'not-a-date'}))
+        self.assertEqual(len(rows), 1)
+
+    def test_both_material_downloads_are_linked_from_the_page(self):
+        # One under each table, each carrying the filter that was on screen.
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('material_dashboard'), {'date_from': '2026-01-01'})
+        for name in ('material_dashboard_export', 'material_detail_export'):
+            with self.subTest(name=name):
+                self.assertContains(response, f'{reverse(name)}?date_from=2026-01-01')
 
 
 class EmptyLabelTests(TestCase):

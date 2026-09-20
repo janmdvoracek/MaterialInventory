@@ -284,6 +284,45 @@ def material_dashboard_export(request):
     )
 
 
+@role_required(*REVIEWER_ROLES)
+def material_detail_export(request):
+    """„Detail položek" as a CSV — the one row-level download.
+
+    Every other export is a summary table; this one is the line items behind
+    Materiál's, because they are the only rows in the app that name what a job
+    consumed and produced and a manager reconciling a month needs them one per
+    line rather than totalled.
+
+    It is the whole filtered set, not the page that happened to be on screen:
+    `page_obj` paginates at `HISTORY_PAGE_SIZE`, and a file holding rows 1–50
+    of 300 under a heading that says otherwise is worse than no file. The
+    filter is what the download follows, exactly as it does above.
+    """
+    _, movements = _filtered_material_movements(request)
+    return _csv_response(
+        'detail-polozek',
+        ['Provedeno', 'Materiál', 'Druh', 'Množství (t)', 'Zakázka', 'Kým'],
+        [
+            [
+                # ISO, like the „Provedeno" column on the page, which writes
+                # its format explicitly rather than taking the locale's (see
+                # localization.md). Excel reads an ISO date under `cs` too.
+                movement.work_order.performed_on.isoformat(),
+                movement.material.name,
+                movement.get_movement_type_display(),
+                # Positive, like the page: the form asked for a positive
+                # number even though a consumed row is stored negative.
+                _csv_number(movement.typed_quantity, 2),
+                # The page prints „—" for a job with no description; a blank
+                # cell is the same thing without the text in a data column.
+                movement.work_order.description,
+                movement.work_order.created_by.username,
+            ]
+            for movement in movements
+        ],
+    )
+
+
 @login_required
 def time_worked_export(request):
     """Hodiny's „Souhrn" as a CSV, scoped exactly like the page."""

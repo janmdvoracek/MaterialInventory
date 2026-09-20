@@ -684,12 +684,24 @@ answers it. Its queryset is every material rather than the active ones, because
 narrowing to a retired material is the only way to see its history — the
 summary above is what restricts itself to `is_active=True`.
 
-### Each summary table downloads as a CSV
+### Each exported table downloads as a CSV
 
 Hodiny, Stroje and Materiál each carry a „Stáhnout do CSV / Excelu" button at
 the foot of their **summary** card — „Souhrn", „Stav strojů", „Souhrn
-materiálů". The paginated detail rows underneath are not exported; they are the
-working-out, and the summary is the report.
+materiálů" — and Materiál carries a second one under „Detail položek".
+
+**That detail table is the one exception, and it is deliberate.** Everywhere
+else the paginated rows underneath a summary are the working-out and the
+summary is the report. Materiál's rows are not working-out: they are the only
+place in the app that says what a single job consumed and produced, one line at
+a time, which is what a manager reconciling a month against delivery notes
+actually needs. Stroje's usage rows have no such reading — the totals *are* the
+question there — so they stay unexported.
+
+**The detail file is every row the filter allows, not the page on screen.** The
+table paginates at `HISTORY_PAGE_SIZE`; a file holding rows 1–50 of 300 under
+the heading of the whole filter would be worse than no file. The summaries have
+no equivalent trap, being one row per material or machine.
 
 The link carries the page's own `querystring`, so the file is the table that
 was on screen — pick "minulý měsíc", then download last month. Each export view
@@ -700,6 +712,7 @@ rather than merely intended:
 |---|---|---|
 | „Stav strojů" | `machine_dashboard_export` | `_filtered_machine_usages` + `_machine_summary` |
 | „Souhrn materiálů" | `material_dashboard_export` | `_filtered_material_movements` + `_material_summary` |
+| „Detail položek" | `material_detail_export` | `_filtered_material_movements` |
 | „Souhrn" (hodiny) | `time_worked_export` | `_time_worked_scope` |
 
 `_time_worked_scope` was extracted out of `time_worked` for this: Hodiny scopes
@@ -711,8 +724,9 @@ exactly as it is out of the page, and an invalid filter exports a header row
 and nothing else.
 
 Each export carries the same gate as its page: `time_worked_export` is
-`login_required` (a worker downloads their own row), the other two are
-`role_required(MANAGER, ADMIN)`.
+`login_required` (a worker downloads their own row), the other three are
+`role_required(MANAGER, ADMIN)`. The detail file is the one most worth gating —
+it names every job's author and description, not just totals.
 
 **The file format answers "CSV or Excel" once, and adds no dependency.**
 `_csv_response` writes `;`-delimited rows behind a UTF-8 BOM:
@@ -729,7 +743,14 @@ Each export carries the same gate as its page: `time_worked_export` is
 - **An unknown exports blank, not `—`.** A NULL `MachineUsage.tons` or an unset
   rate renders as a dash on the page, but a dash in a spreadsheet cell is text
   that breaks a column of numbers; blank stays out of a `SUM`. A real zero is
-  passed in by the caller, matching the page's `|default:"0"`.
+  passed in by the caller, matching the page's `|default:"0"`. The same applies
+  to text: a job with no description exports an empty cell rather than the
+  page's `—`, which would otherwise be a value the reader has to filter around.
+- **Dates go out ISO**, as `performed_on.isoformat()`, which is what the
+  „Provedeno" column already renders. Template dates are written with an
+  explicit format for exactly this reason (see
+  [localization.md](localization.md)), and Excel under `cs` reads an ISO date
+  as a date.
 
 openpyxl would buy cell formatting nobody asked for and a dependency the app
 otherwise does without.

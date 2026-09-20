@@ -50,6 +50,8 @@
         </tbody>
     </table>
     </div>
+    {# Every row the filter allows, not just this page of them. #}
+    <a class="btn" href="{% url 'material_detail_export' %}?{{ querystring }}">Stáhnout do CSV / Excelu</a>
 </div>
 {% include "workorders/_pagination.html" %}
 {% endblock %}

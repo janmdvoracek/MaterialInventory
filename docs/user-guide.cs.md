@@ -350,15 +350,28 @@ pak klepněte na tlačítko.
 | **Hodiny** | Tabulka **Souhrn** — pracovník, hodiny, počet zakázek |
 | **Stroje** | Tabulka **Stav strojů** — stroj, hodiny, tuny, obě sazby a tři sloupce s cenou |
 | **Materiál** | Tabulka **Souhrn materiálů** — spotřebováno, vyrobeno, rozdíl |
+| **Materiál** | Tabulka **Detail položek** — datum, materiál, druh, množství, zakázka, kdo ji zapsal |
 
-Stahuje se **souhrn**, ne dlouhý seznam jednotlivých záznamů pod ním.
+Na **Materiálu** jsou tedy tlačítka dvě, každé pod svou tabulkou. To druhé,
+pod **Detailem položek**, stáhne jednotlivé řádky — co která zakázka
+spotřebovala a co vyrobila, řádek po řádku. Hodí se, když si měsíc potřebujete
+odsouhlasit s dodacími listy; souhrn na to nestačí, protože v něm je z každého
+materiálu jen jedno číslo.
+
+Do tohoto souboru se stáhnou **všechny řádky, které filtr pustí** — ne jenom ta
+stránka, kterou máte zrovna otevřenou. Pod tabulkou se čísluje po padesáti
+řádcích, v souboru je jich tolik, kolik jich filtru odpovídá.
+
+Na ostatních stránkách se stahuje **souhrn**, ne dlouhý seznam jednotlivých
+záznamů pod ním.
 
 Soubor se jmenuje například `souhrn-hodin-2026-09-06.csv` — datum ke konci je
 den, kdy jste ho stáhli, aby se dva soubory ve stažených nepřepsaly. Otevřete
 ho poklepáním; Excel ho rozdělí do sloupců sám a čísla v něm umí sečíst.
 Prázdná buňka ve sloupci **Tun**, u sazby nebo v některém ze sloupců s cenou
 znamená **není známo** (na stránce je na jejím místě pomlčka) — nulu tam
-schválně nepíšeme, aby vám nepokazila součet.
+schválně nepíšeme, aby vám nepokazila součet. V detailu položek je ze stejného
+důvodu prázdný i sloupec **Zakázka** u zakázky, u které nikdo nevyplnil popis.
 
 Do souboru se dostane přesně to, co je na stránce: **jen schválené zakázky**,
 a pracovník si stáhne jenom své vlastní hodiny. Když je filtr špatně vyplněný
