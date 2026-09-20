@@ -32,6 +32,15 @@ MIN_ROWS_PER_SECTION / MAX_ROWS_PER_SECTION, so the two implementations cannot
 disagree about the floor or the cap. A row and its errors are wrapped together
 in `.row-block`, so removing the last row takes its messages with it.
 
+**static/js/searchable_select.js is the second enhancement and works the same
+way**: it hides each row's <select> behind a text box that narrows its options
+as you type, writing the pick back to the select — which keeps its name, its
+value and its place in the POST. With that script off the rows are plain
+dropdowns. It is loaded here for the same reason as the other, finds rows added
+by job_rows.js through a MutationObserver rather than a call, and reads its
+choices off the rendered <select>, so the option lists still come only from
+workorders/forms.py.
+
 „Zapsat za" is guarded because it is manager-only: `job_edit` builds
 `WorkOrderForm` without a `user`, so the field is not there. The hours label
 comes from the form, because each page means something different by it.
@@ -100,3 +109,4 @@ pressed.
 </div>
 {% endfor %}
 <script src="{% static 'js/job_rows.js' %}" defer></script>
+<script src="{% static 'js/searchable_select.js' %}" defer></script>

@@ -335,13 +335,14 @@ The test job uses plain storage and never requests a `/static/` URL, but CI's
 `docker-build` job does: `scripts/smoke_prod_stack.sh` runs the production stack
 and fetches the hashed `app.css` the login page links.
 
-> **`static/js/job_rows.js` is not covered by that check**, and deliberately so:
-> the smoke script fetches the *login* page, and the only pages linking the
-> script are behind authentication. The hashed-`app.css` assertion already
-> proves manifest storage is active in the image, and `.dockerignore` excludes
-> only `static/xlsx/`, so `static/js/` ships — but the script is enhancement
-> and a 404 on it degrades the job form to its server round-trip rather than
-> breaking anything. Worth one manual `curl` after a deploy that touches it.
+> **Neither `static/js/job_rows.js` nor `static/js/searchable_select.js` is
+> covered by that check**, and deliberately so: the smoke script fetches the
+> *login* page, and the only pages linking them are behind authentication. The
+> hashed-`app.css` assertion already proves manifest storage is active in the
+> image, and `.dockerignore` excludes only `static/xlsx/`, so `static/js/`
+> ships — but both are enhancement, and a 404 degrades the job form to its
+> server round-trip and its dropdowns to plain `<select>`s rather than breaking
+> anything. Worth one manual `curl` after a deploy that touches them.
 
 To check by hand before pushing, run that script in a clean worktree (see its
 header), or do it step by step:

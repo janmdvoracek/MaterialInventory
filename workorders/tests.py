@@ -4,6 +4,7 @@ import re
 from datetime import date, timedelta
 from decimal import Decimal
 
+from django import forms
 from django.conf import settings
 from django.test import TestCase
 from django.urls import NoReverseMatch, reverse
@@ -2944,19 +2945,24 @@ class RowTemplateTests(ReviewFixtureMixin, TestCase):
         formset = self.client.get(reverse('job_edit', args=[work_order.pk])).context['consumed_formset']
         self.assertIn(self.material_raw, formset.empty_form.fields['material'].queryset)
 
-    def test_both_job_pages_load_the_script(self):
-        """It is linked from the shared partial, so neither page can lose it."""
+    def test_both_job_pages_load_the_scripts(self):
+        """They are linked from the shared partial, so neither page can lose
+        one — and a page carrying job_rows.js without searchable_select.js
+        would add rows whose dropdowns are the only ones you cannot search."""
         work_order = self.submit_job(self.worker)
         self.client.force_login(self.manager)
         for url in (reverse('transform_create'), reverse('job_edit', args=[work_order.pk])):
-            self.assertContains(self.client.get(url), 'js/job_rows.js')
+            response = self.client.get(url)
+            for script in ('js/job_rows.js', 'js/searchable_select.js'):
+                self.assertContains(response, script)
 
-    def test_the_script_reaches_for_nothing_off_the_server(self):
+    def test_no_script_reaches_for_anything_off_the_server(self):
         """The htmx <script> this app used to carry pointed at unpkg.com, which
-        the depot could not necessarily reach. One committed file, no CDN."""
-        source = (settings.BASE_DIR / 'static' / 'js' / 'job_rows.js').read_text(encoding='utf-8')
-        self.assertNotIn('http://', source)
-        self.assertNotIn('https://', source)
+        the depot could not necessarily reach. Committed files, no CDN."""
+        for name in ('job_rows.js', 'searchable_select.js'):
+            source = (settings.BASE_DIR / 'static' / 'js' / name).read_text(encoding='utf-8')
+            self.assertNotIn('http://', source, name)
+            self.assertNotIn('https://', source, name)
 
     def test_the_stylesheet_actually_hides_a_hidden_button(self):
         """`button, .btn` sets a `display`, and an author rule beats the UA
@@ -2968,6 +2974,61 @@ class RowTemplateTests(ReviewFixtureMixin, TestCase):
         """
         css = (settings.BASE_DIR / 'static' / 'css' / 'app.css').read_text(encoding='utf-8')
         self.assertRegex(css, r'button\[hidden\][^{]*\{[^}]*display:\s*none')
+
+
+class SearchablePickerTests(ReviewFixtureMixin, TestCase):
+    """The contract `static/js/searchable_select.js` reads off a row.
+
+    Like job_rows.js it is enhancement and, for the same reason, untested in
+    itself: there is no browser runner here. What it reads off the page is
+    testable, and it is what breaks silently — the script hides each row's
+    `<select>` behind a text box, so a row that stopped matching its
+    assumptions loses its picker altogether rather than raising anywhere.
+    """
+
+    def _page(self):
+        self.client.force_login(self.worker)
+        return self.client.get(reverse('transform_create'))
+
+    def test_every_row_has_exactly_one_select(self):
+        """`.item-row select` is how the script finds the picker; a second
+        dropdown in a row would silently get one too, over a field whose
+        `empty_label` is not a placeholder."""
+        for section in JOB_SECTIONS:
+            pickers = [
+                name for name, field in section.row_form().fields.items() if isinstance(field, forms.ModelChoiceField)
+            ]
+            self.assertEqual(len(pickers), 1, section.prefix)
+
+    def test_the_first_option_is_the_empty_label(self):
+        """It carries no value and is the row's only label (see
+        `EmptyLabelTests`), so the script lifts it out as the text box's
+        placeholder rather than offering it as something to pick."""
+        response = self._page()
+        for label in ('Pracovník', 'Materiál', 'Stroj'):
+            self.assertContains(response, f'<option value="" selected>{label}</option>')
+
+    def test_every_row_select_is_identified(self):
+        """The listbox id is derived from the select's, so two rows on one page
+        cannot end up sharing one."""
+        response = self._page()
+        for prefix, field in (
+            ('workers', 'user'),
+            ('consumed', 'material'),
+            ('produced', 'material'),
+            ('machines', 'machine'),
+        ):
+            self.assertContains(response, f'id="id_{prefix}-0-{field}"')
+
+    def test_the_stylesheet_carries_the_picker_rules(self):
+        """The list is absolutely positioned against `.combo`; without the
+        stylesheet it renders as a bullet list pushing the rows below it down,
+        and the hidden select reappears under it. The browser is the only place
+        that shows, so this stands in for looking."""
+        css = (settings.BASE_DIR / 'static' / 'css' / 'app.css').read_text(encoding='utf-8')
+        self.assertRegex(css, r'\.combo\s*\{[^}]*position:\s*relative')
+        self.assertRegex(css, r'\.combo-list\s*\{[^}]*position:\s*absolute')
+        self.assertRegex(css, r'\.combo select\[hidden\][^{]*\{[^}]*display:\s*none')
 
 
 class ThemeTokenTests(TestCase):

@@ -463,6 +463,58 @@ button. The script's own behaviour is not tested and would need a browser
 runner this project does not have — which is the reason it is only ever allowed
 to be an optimisation.
 
+### Searching a dropdown
+
+`static/js/searchable_select.js` is the second script, and it is the same
+bargain as the first. The depot's material catalog is long enough that finding
+a fraction in a dropdown means scrolling past a dozen others, so each row's
+`<select>` is hidden behind a text box that narrows the options as you type.
+The four sections — spolupracovníci, spotřebováno, vyrobeno, stroje — are all
+of it; no other dropdown in the app is enhanced, because no other one is long.
+
+**The `<select>` is still what the form posts.** It keeps its `name`, its
+`value` and its place in the page; `hidden` is not `disabled`, so it is
+submitted exactly as before, and the text box has no `name` and posts nothing.
+Nothing in `workorders/views.py` or `workorders/forms.py` knows this file
+exists. With it missing, blocked or broken every row is the plain dropdown it
+always was — the same arrangement job_rows.js is held to, and for the same
+reason: the suite drives views through `self.client` and runs no browser.
+
+It invents no choices either. The options, their labels, their order and the
+`empty_label` that becomes the box's placeholder are all read off the rendered
+`<select>`, and read again every time the list opens. That is what makes it
+agree with `_hide_taken_choices` and with job_rows.js for free: an option
+another row took is `hidden` by the time the list is built, so it is not
+offered, and a row always keeps its own. Committing a pick writes the value to
+the select and dispatches a `change` event, which is what job_rows.js listens
+for — so choosing through the box re-hides the option elsewhere exactly as
+choosing from the dropdown did.
+
+Four smaller decisions worth knowing:
+
+- **Matching is case- and diacritic-insensitive**, folded through
+  `normalize('NFD')`, because „ster" has to find „Štěrk" from a phone keyboard.
+  Matches are substrings, kept in the catalog order the depot already knows.
+- **An emptied box blanks the row.** A half-typed one reverts on the way out,
+  so the text can never disagree with what the select holds; tabbing away with
+  the list open takes the highlighted row, which is what it has been offering
+  all along.
+- **Rows added by job_rows.js are found with a `MutationObserver`** on the
+  section, not by a call from the other file, so neither script depends on the
+  other being loaded — or loaded first. `<template>` contents are a separate
+  document fragment and are not matched by `querySelectorAll`, so the clone
+  source stays exactly as Django rendered it.
+- **Enter is left alone when the list is closed**, so it still saves the job
+  through the decoy submit; with the list open it takes the highlighted option
+  instead of submitting a form the reader has not finished.
+
+`SearchablePickerTests` in `workorders/tests.py` covers the contract rather
+than the script, the same way `RowTemplateTests` does: that a row has exactly
+one `<select>` for it to find, that the first option is the valueless
+`empty_label` it lifts out as the placeholder, that each select carries the id
+the listbox is keyed off, and that `app.css` carries the three rules without
+which the list renders as a bullet list shoving the rows below it down.
+
 ### `WorkerHours` vs `MachineUsage`
 
 Two unrelated numbers. Do not derive one from the other.
@@ -902,10 +954,13 @@ multiplies the `Sum` by the number of matched collaborators.
 - **No REST API.** `rest_framework` was installed and configured for session
   auth, but there were never any serializers, viewsets or routes. It and the
   `REST_FRAMEWORK` settings block are gone.
-- **No JavaScript framework, and only one script of the app's own.**
-  `static/js/job_rows.js` resizes a section of the job form in the DOM; every
-  other page is a plain form POST with no script at all. It is **progressive
-  enhancement and nothing more** — the „+ další řádek" / „− odebrat řádek"
+- **No JavaScript framework, and two scripts of the app's own — both on the
+  same page.** `static/js/job_rows.js` resizes a section of the job form in the
+  DOM and `static/js/searchable_select.js` makes its four dropdowns
+  type-to-narrow; every other page is a plain form POST with no script at all.
+  Both are **progressive enhancement and nothing more** — the searchable
+  pickers hide a `<select>` that is still what the form posts, and the
+  „+ další řádek" / „− odebrat řádek"
   buttons remain ordinary submits that the server still answers by re-rendering
   the page one row bigger or smaller (see "Resizing a section without
   JavaScript" above, which is still what happens when the script does not run).
@@ -919,8 +974,8 @@ multiplies the `Sum` by the number of matched collaborators.
   it made every page load reach for a CDN the depot may not have been able to
   see. (It is a public VPS now, so the CDN is reachable again — which changes
   nothing, because nothing uses htmx.) The rule it stands for survives: the app
-  serves its own script from `static/`, never a third party's from a CDN, and
-  `RowTemplateTests` fails if a URL appears in the file.
+  serves its own scripts from `static/`, never a third party's from a CDN, and
+  `RowTemplateTests` fails if a URL appears in either file.
 - **No CSS framework, and no per-template CSS.** All styling is one file,
   `static/css/app.css`, loaded by `base.html`. No template carries an inline
   `style=` attribute or a `<style>` block. Colours are custom properties

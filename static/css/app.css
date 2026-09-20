@@ -264,3 +264,33 @@ tr.row-pending > td { background: var(--row-pending-bg); }
     clip-path: inset(50%);
     white-space: nowrap;
 }
+/* The searchable pickers on the job form (static/js/searchable_select.js). A
+   row's <select> is hidden and a text box filters its options in front of it;
+   with the script off, none of this is in the page and the plain <select>
+   renders as it always did. The `select[hidden]` rule is belt and braces — no
+   author rule above sets a `display` on select, so the UA stylesheet would
+   already hide it, but the sibling rule for buttons exists precisely because
+   that assumption is easy to break by accident. */
+.combo select[hidden] { display: none; }
+.combo { position: relative; }
+.combo-list {
+    position: absolute;
+    z-index: 5;
+    top: calc(100% + 2px);
+    left: 0;
+    right: 0;
+    max-height: 13rem;
+    overflow-y: auto;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--input-border);
+    border-radius: 6px;
+    box-shadow: 0 4px 12px var(--shadow);
+}
+.combo-option, .combo-empty { padding: 0.65rem 0.75rem; font-size: 1rem; }
+.combo-option { cursor: pointer; }
+.combo-option.active { background: var(--btn-secondary-bg); }
+.combo-empty { color: var(--text-muted); }
