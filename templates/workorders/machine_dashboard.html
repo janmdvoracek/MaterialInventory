@@ -33,6 +33,60 @@
     <a class="btn" href="{% url 'machine_dashboard_export' %}?{{ querystring }}">Stáhnout do CSV / Excelu</a>
 </div>
 <div class="card">
+    <h2>Tankování</h2>
+    {# Its own card, and its own table: fuel is not derived from motohodiny or  #}
+    {# tonnage, and a job may record nothing but fill-ups. The zeros here are   #}
+    {# real zeros, unlike the tonnage above — `litres` is never null, so a      #}
+    {# machine reading 0 l was simply not refuelled in this range.              #}
+    <div class="table-scroll">
+    <table>
+        <thead>
+            <tr><th>Stroj</th><th>Počet tankování</th><th>Natankováno (l)</th></tr>
+        </thead>
+        <tbody>
+        {% for machine in refuel_machines %}
+            <tr>
+                <td>{{ machine.name }}</td>
+                <td>{{ machine.filtered_refuels }}</td>
+                <td>{{ machine.filtered_litres|floatformat:2 }} l</td>
+            </tr>
+        {% empty %}
+            <tr><td colspan="3">Žádné stroje neodpovídají zadaným filtrům.</td></tr>
+        {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr><th>Celkem</th><th></th><th>{{ refuel_total_litres|floatformat:2 }} l</th></tr>
+        </tfoot>
+    </table>
+    </div>
+    <a class="btn" href="{% url 'machine_refuel_export' %}?{{ querystring }}">Stáhnout do CSV / Excelu</a>
+</div>
+<div class="card">
+    <h2>Detail tankování</h2>
+    <div class="table-scroll">
+    <table>
+        <thead>
+            <tr><th>Provedeno</th><th>Stroj</th><th>Litry</th><th>Zakázka</th><th>Kým</th></tr>
+        </thead>
+        <tbody>
+        {% for refuel in fuel_page.page_obj %}
+            <tr>
+                <td>{{ refuel.work_order.performed_on|date:"Y-m-d" }}</td>
+                <td>{{ refuel.machine.name }}</td>
+                <td>{{ refuel.litres|floatformat:2 }} l</td>
+                <td>{{ refuel.work_order.description|default:"—" }}</td>
+                <td>{{ refuel.work_order.created_by.username }}</td>
+            </tr>
+        {% empty %}
+            <tr><td colspan="5">Žádné záznamy neodpovídají zadaným filtrům.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+{# Its own page parameter, so paging the fill-ups leaves the usage rows put. #}
+{% include "workorders/_pagination.html" with page_obj=fuel_page.page_obj querystring=fuel_page.querystring page_param=fuel_page.page_param %}
+<div class="card">
     <h2>Detail používání strojů</h2>
     <div class="table-scroll">
     <table>

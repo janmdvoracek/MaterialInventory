@@ -211,9 +211,13 @@ nav.bottom a {
     overflow-wrap: break-word;
 }
 nav.bottom a:hover, nav.bottom a:active { color: var(--brand-green); }
-.item-row { display: flex; gap: 0.5rem; align-items: flex-end; margin-bottom: 0.5rem; }
+/* A row wraps rather than crushing its boxes: the machines section is four
+   fields wide (stroj, motohodiny, tuny, litry) and four of them side by side on
+   a phone leaves nothing legible. The basis is what decides how many fit, so the
+   two-field material rows still sit on one line. */
+.item-row { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: flex-end; margin-bottom: 0.5rem; }
 .date-override { margin-top: 1rem; }
-.item-row > div { flex: 1; }
+.item-row > div { flex: 1 1 7rem; }
 /* Jobs still waiting for a manager are the whole point of the Prehled page,
    so they have to stand out from the rest of the table. */
 tr.row-pending > td { background: var(--row-pending-bg); }

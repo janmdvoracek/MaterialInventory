@@ -15,8 +15,8 @@ from machines.models import Machine
 from materials.models import Material
 
 from .forms import JOB_SECTIONS, NOTES_MAX_LENGTH
-from .models import MachineUsage, StockMovement, WorkerHours, WorkOrder
-from .reports import HISTORY_PAGE_SIZE, MY_JOBS_LIMIT, _last_month
+from .models import MachineRefuel, MachineUsage, StockMovement, WorkerHours, WorkOrder
+from .reports import FUEL_PAGE_PARAM, HISTORY_PAGE_SIZE, MY_JOBS_LIMIT, _last_month
 from .views import MAX_ROWS_PER_SECTION, MIN_ROWS_PER_SECTION
 
 
@@ -77,8 +77,12 @@ class TransformCreateTests(TestCase):
             data[f'produced-{i}-quantity'] = str(row['quantity'])
         for i, row in enumerate(machine_rows):
             data[f'machines-{i}-machine'] = row['machine'].pk
-            data[f'machines-{i}-hours'] = str(row['hours'])
-            data[f'machines-{i}-tons'] = str(row.get('tons', '5'))
+            if 'hours' in row:
+                data[f'machines-{i}-hours'] = str(row['hours'])
+                # Tuny go with the motohodiny; a row naming only litres is a fill-up.
+                data[f'machines-{i}-tons'] = str(row.get('tons', '5'))
+            if 'litres' in row:
+                data[f'machines-{i}-litres'] = str(row['litres'])
         self.client.force_login(self.worker)
         return self.client.post(reverse('transform_create'), data)
 
@@ -601,6 +605,14 @@ class WorkOrderAdminTests(TestCase):
             'machine_usages-MAX_NUM_FORMS': '1000',
             'machine_usages-0-machine': self.machine.pk,
             'machine_usages-0-hours': '3',
+            # Fuel is its own inline, so its own management form; a missing one
+            # is a 200 with an invalid formset rather than a saved job.
+            'machine_refuels-TOTAL_FORMS': '1',
+            'machine_refuels-INITIAL_FORMS': '0',
+            'machine_refuels-MIN_NUM_FORMS': '0',
+            'machine_refuels-MAX_NUM_FORMS': '1000',
+            'machine_refuels-0-machine': self.machine.pk,
+            'machine_refuels-0-litres': '45',
             'worker_hours-TOTAL_FORMS': '1',
             'worker_hours-INITIAL_FORMS': '0',
             'worker_hours-MIN_NUM_FORMS': '0',
@@ -623,6 +635,10 @@ class WorkOrderAdminTests(TestCase):
         usage = MachineUsage.objects.get(work_order=work_order)
         self.assertEqual(usage.machine, self.machine)
         self.assertEqual(usage.hours, Decimal('3'))
+
+        refuel = MachineRefuel.objects.get(work_order=work_order)
+        self.assertEqual(refuel.machine, self.machine)
+        self.assertEqual(refuel.litres, Decimal('45'))
 
         # Labour hours are correctable from the admin as well as the form.
         entry = WorkerHours.objects.get(work_order=work_order)
@@ -1898,8 +1914,12 @@ def job_payload(
         data[f'produced-{i}-quantity'] = str(row['quantity'])
     for i, row in enumerate(machine_rows):
         data[f'machines-{i}-machine'] = row['machine'].pk
-        data[f'machines-{i}-hours'] = str(row['hours'])
-        data[f'machines-{i}-tons'] = str(row.get('tons', '5'))
+        if 'hours' in row:
+            data[f'machines-{i}-hours'] = str(row['hours'])
+            # Tuny go with the motohodiny; a row naming only litres is a fill-up.
+            data[f'machines-{i}-tons'] = str(row.get('tons', '5'))
+        if 'litres' in row:
+            data[f'machines-{i}-litres'] = str(row['litres'])
     return data
 
 
@@ -3355,7 +3375,7 @@ class RowErrorVisibilityTests(ReviewFixtureMixin, TestCase):
         response = self._submit(**{'machines-0-hours': '0.3'})
         self.assertEqual(response.status_code, 200)
         self.assertFalse(WorkOrder.objects.exists())
-        self.assertNotContains(response, 'Vyplňte stroj, motohodiny a tuny')
+        self.assertNotContains(response, 'Vyplňte motohodiny i tuny')
         self.assertContains(response, 'Hodiny:')
 
     def test_a_genuinely_half_filled_row_still_says_so(self):
@@ -3382,7 +3402,9 @@ class DescriptionAndNotesTests(ReviewFixtureMixin, TestCase):
     """„Popis" is required, „Poznámky" is optional and holds a paragraph.
 
     Both render on the shared partial, so both pages get them at once; the
-    required one has to be refused with a message rather than stored blank.
+    required one has to be refused with a message rather than stored blank. The
+    one submission „Popis" is not asked of is a fuel-only job, which has no work
+    to label — see MachineRefuelTests.
     """
 
     def _submit(self, url=None, **overrides):
@@ -3496,3 +3518,373 @@ class HoursWidthTests(ReviewFixtureMixin, TestCase):
         response = self._submit(hours='9999999999.5')
         self.assertRedirects(response, reverse('transform_create'))
         self.assertEqual(WorkerHours.objects.get(user=self.worker).hours, Decimal('9999999999.50'))
+
+
+class MachineRefuelTests(ReviewFixtureMixin, TestCase):
+    """Fuel is a fourth record type, in its own table, on the machines section.
+
+    Three things to hold. A machine row's two halves are independent: motohodiny
+    and tuny still go together, litres stand alone, and one row can carry both.
+    A submission that is nothing but fill-ups is a whole valid job, which means
+    it is exempt from the mass balance and from the two job fields every other
+    job must answer. And `job_edit` has to put both halves back on one row per
+    machine, because the section refuses a machine twice.
+    """
+
+    def _submit(self, machine_rows, url=None, **overrides):
+        """A balanced job carrying `machine_rows`, unless a test empties the material sections."""
+        payload = job_payload(
+            [{'material': self.material_raw, 'quantity': Decimal('5')}],
+            [{'material': self.material_finished, 'quantity': Decimal('5')}],
+            machine_rows=machine_rows,
+        )
+        payload.update(overrides)
+        return self.client.post(url or reverse('transform_create'), payload)
+
+    def _fuel_only(self, machine_rows, url=None, **overrides):
+        """Just machines and litres: no materials, no motohodiny, no „Popis", no hours."""
+        payload = job_payload([], [], machine_rows=machine_rows, description='', hours='')
+        payload.update(overrides)
+        return self.client.post(url or reverse('transform_create'), payload)
+
+    def test_a_machine_row_records_litres_alongside_hours(self):
+        self.client.force_login(self.worker)
+        response = self._submit(
+            [{'machine': self.machine_a, 'hours': Decimal('2'), 'tons': Decimal('5'), 'litres': Decimal('40.5')}]
+        )
+        self.assertRedirects(response, reverse('transform_create'))
+        # One row in, two tables out: the usage and the fill-up are not derived
+        # from each other and nothing checks one against the other.
+        self.assertEqual(MachineUsage.objects.get().hours, Decimal('2.00'))
+        refuel = MachineRefuel.objects.get()
+        self.assertEqual(refuel.machine, self.machine_a)
+        self.assertEqual(refuel.litres, Decimal('40.50'))
+
+    def test_a_row_naming_only_litres_records_no_usage(self):
+        self.client.force_login(self.worker)
+        response = self._submit([{'machine': self.machine_a, 'litres': Decimal('30')}])
+        self.assertRedirects(response, reverse('transform_create'))
+        self.assertEqual(MachineRefuel.objects.get().litres, Decimal('30.00'))
+        # A machine that was only refuelled did not run: no hours to invent.
+        self.assertFalse(MachineUsage.objects.exists())
+
+    def test_hours_without_tons_is_still_refused(self):
+        # The usage half keeps its own all-or-nothing rule; litres relaxing the
+        # row must not relax that too.
+        self.client.force_login(self.worker)
+        response = self._submit([{'machine': self.machine_a, 'hours': Decimal('2'), 'tons': ''}])
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(WorkOrder.objects.exists())
+        self.assertContains(response, 'Vyplňte motohodiny i tuny')
+
+    def test_litres_without_a_machine_is_refused(self):
+        self.client.force_login(self.worker)
+        response = self._submit([], **{'machines-0-litres': '30'})
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(WorkOrder.objects.exists())
+        self.assertContains(response, 'Vyberte stroj')
+
+    def test_a_machine_with_nothing_beside_it_is_refused(self):
+        # Naming a machine and leaving every number blank says nothing at all,
+        # and would write neither a usage row nor a fill-up.
+        self.client.force_login(self.worker)
+        response = self._submit([{'machine': self.machine_a}])
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(WorkOrder.objects.exists())
+        self.assertContains(response, 'natankované litry')
+
+    def test_a_job_of_nothing_but_fill_ups_is_valid(self):
+        self.client.force_login(self.worker)
+        response = self._fuel_only(
+            [
+                {'machine': self.machine_a, 'litres': Decimal('60')},
+                {'machine': self.machine_b, 'litres': Decimal('45.5')},
+            ]
+        )
+        self.assertRedirects(response, reverse('transform_create'))
+        work_order = WorkOrder.objects.get()
+        self.assertEqual(
+            sorted((r.machine.name, r.litres) for r in work_order.machine_refuels.all()),
+            [('Crusher A', Decimal('60.00')), ('Excavator B', Decimal('45.50'))],
+        )
+        # Nothing else is written — including no hours row for the author, whose
+        # „Moje hodiny" could not have been answered (its minimum is half an hour).
+        self.assertFalse(StockMovement.objects.exists())
+        self.assertFalse(MachineUsage.objects.exists())
+        self.assertFalse(WorkerHours.objects.exists())
+        self.assertEqual(work_order.description, '')
+        # Still an ordinary job otherwise: dated, authored and awaiting review.
+        self.assertEqual(work_order.created_by, self.worker)
+        self.assertEqual(work_order.performed_on, timezone.localdate())
+        self.assertEqual(work_order.status, WorkOrder.Status.PENDING)
+
+    def test_a_fuel_only_job_needs_no_material_rows(self):
+        """The mass balance is skipped rather than passed: there are no totals.
+
+        Without the exemption „Přidejte alespoň jednu položku…" would refuse the
+        submission, which is the whole reason `_is_fuel_only` exists.
+        """
+        self.client.force_login(self.worker)
+        response = self._fuel_only([{'machine': self.machine_a, 'litres': Decimal('20')}])
+        self.assertRedirects(response, reverse('transform_create'))
+        self.assertEqual(MachineRefuel.objects.count(), 1)
+
+    def test_a_job_that_also_records_work_still_needs_its_fields(self):
+        # The exemption is only for a job that records nothing else. Add any
+        # motohodiny and the row stops being a bare fill-up.
+        self.client.force_login(self.worker)
+        response = self._fuel_only(
+            [{'machine': self.machine_a, 'hours': Decimal('2'), 'tons': Decimal('5'), 'litres': Decimal('20')}]
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(WorkOrder.objects.exists())
+        self.assertContains(response, 'Toto pole je třeba vyplnit.')
+        self.assertContains(response, 'Přidejte alespoň jednu položku')
+
+    def test_material_rows_without_a_description_are_still_refused(self):
+        # Same rule from the other side: material rows are work, so the job's
+        # own fields come back.
+        self.client.force_login(self.worker)
+        response = self._submit([], description='', hours='')
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(WorkOrder.objects.exists())
+        self.assertContains(response, 'Toto pole je třeba vyplnit.')
+
+    def test_a_fuel_only_job_may_still_carry_a_description(self):
+        # Not asked for is not the same as refused — the four list pages read
+        # that column, so a worker who types one keeps it.
+        self.client.force_login(self.worker)
+        response = self._fuel_only([{'machine': self.machine_a, 'litres': Decimal('20')}], description='Tankování')
+        self.assertRedirects(response, reverse('transform_create'))
+        self.assertEqual(WorkOrder.objects.get().description, 'Tankování')
+
+    def test_the_same_machine_refuelled_twice_in_one_job_is_refused(self):
+        # Same rule as the motohodiny: two rows for one machine are two halves
+        # of a number that belongs on one row.
+        self.client.force_login(self.worker)
+        response = self._fuel_only(
+            [
+                {'machine': self.machine_a, 'litres': Decimal('20')},
+                {'machine': self.machine_a, 'litres': Decimal('25')},
+            ]
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(MachineRefuel.objects.exists())
+        self.assertContains(response, 'Sečtěte motohodiny, tuny a litry')
+
+    def test_the_form_renders_the_litres_box_on_both_pages(self):
+        work_order = self.submit_job(self.worker)
+        self.client.force_login(self.manager)
+        for url in (reverse('transform_create'), reverse('job_edit', args=[work_order.pk])):
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertContains(response, 'name="machines-0-litres"')
+
+    def test_edit_prefills_both_halves_on_one_row(self):
+        work_order = self.submit_job(
+            self.worker,
+            machine_rows=[{'machine': self.machine_a, 'hours': Decimal('2'), 'tons': Decimal('5'), 'litres': '40'}],
+        )
+        self.client.force_login(self.manager)
+        formset = self.client.get(reverse('job_edit', args=[work_order.pk])).context['machine_formset']
+        self.assertEqual(
+            formset.forms[0].initial,
+            {'machine': self.machine_a.pk, 'hours': Decimal('2'), 'tons': Decimal('5'), 'litres': Decimal('40')},
+        )
+
+    def test_edit_prefills_a_fill_up_that_has_no_usage_row(self):
+        """A fuel-only job's row has litres and nothing else, and must come back
+        that way — a row rendered blank would be saved as blank and the fill-up
+        would vanish while the page reported success."""
+        self.client.force_login(self.worker)
+        self._fuel_only([{'machine': self.machine_a, 'litres': Decimal('60')}])
+        work_order = WorkOrder.objects.get()
+        self.client.force_login(self.manager)
+        formset = self.client.get(reverse('job_edit', args=[work_order.pk])).context['machine_formset']
+        self.assertEqual(formset.forms[0].initial, {'machine': self.machine_a.pk, 'litres': Decimal('60')})
+
+    def test_editing_a_fuel_only_job_rewrites_its_litres(self):
+        self.client.force_login(self.worker)
+        self._fuel_only([{'machine': self.machine_a, 'litres': Decimal('60')}])
+        work_order = WorkOrder.objects.get()
+        self.client.force_login(self.manager)
+        response = self._fuel_only(
+            [{'machine': self.machine_a, 'litres': Decimal('75')}],
+            url=reverse('job_edit', args=[work_order.pk]),
+        )
+        self.assertRedirects(response, reverse('job_detail', args=[work_order.pk]))
+        self.assertEqual(MachineRefuel.objects.get().litres, Decimal('75.00'))
+
+    def test_edit_keeps_a_retired_machine_that_only_a_fill_up_names(self):
+        """Same data-loss trap as the usage rows: a picker that excludes the
+        stored machine renders the row empty and saving it drops the fill-up."""
+        self.client.force_login(self.worker)
+        self._fuel_only([{'machine': self.machine_a, 'litres': Decimal('60')}])
+        self.machine_a.is_active = False
+        self.machine_a.save(update_fields=['is_active'])
+        self.client.force_login(self.manager)
+        work_order = WorkOrder.objects.get()
+        formset = self.client.get(reverse('job_edit', args=[work_order.pk])).context['machine_formset']
+        self.assertIn(self.machine_a, formset.forms[0].fields['machine'].queryset)
+
+    def test_deleting_the_job_takes_its_fill_ups_with_it(self):
+        self.client.force_login(self.worker)
+        self._fuel_only([{'machine': self.machine_a, 'litres': Decimal('60')}])
+        work_order = WorkOrder.objects.get()
+        self.client.force_login(self.manager)
+        self.client.post(reverse('job_delete', args=[work_order.pk]))
+        self.assertFalse(MachineRefuel.objects.exists())
+
+    def test_the_job_pages_show_the_fill_ups(self):
+        work_order = self.submit_job(
+            self.worker,
+            machine_rows=[{'machine': self.machine_a, 'hours': Decimal('2'), 'tons': Decimal('5'), 'litres': '40'}],
+        )
+        self.client.force_login(self.manager)
+        for name in ('job_detail', 'job_delete'):
+            with self.subTest(page=name):
+                response = self.client.get(reverse(name, args=[work_order.pk]))
+                self.assertContains(response, 'Tankování')
+
+
+class MachineRefuelReportTests(TestCase):
+    """The „Tankování" card on Stroje: per-machine litres, the fill-ups, the CSV.
+
+    It answers to the page's one filter card, counts only approved jobs, and is
+    gated exactly like the rest of Stroje.
+    """
+
+    def setUp(self):
+        self.worker = User.objects.create_user(username='worker', password='pw', role=User.Role.WORKER)
+        self.manager = User.objects.create_user(username='manager', password='pw', role=User.Role.MANAGER)
+        self.machine = Machine.objects.create(name='Crusher A')
+        self.other = Machine.objects.create(name='Excavator B')
+        self.retired = Machine.objects.create(name='Old Loader', is_active=False)
+        self.client.force_login(self.manager)
+
+    def _refuel(self, litres, machine=None, performed_on=None, status=WorkOrder.Status.APPROVED):
+        work_order = WorkOrder.objects.create(created_by=self.worker, description='job', status=status)
+        if performed_on is not None:
+            WorkOrder.objects.filter(pk=work_order.pk).update(performed_on=performed_on)
+        return MachineRefuel.objects.create(work_order=work_order, machine=machine or self.machine, litres=litres)
+
+    def _summary(self, **params):
+        return {
+            row.name: row for row in self.client.get(reverse('machine_dashboard'), params).context['refuel_machines']
+        }
+
+    def test_litres_are_summed_per_machine(self):
+        self._refuel(Decimal('40'))
+        self._refuel(Decimal('25.5'))
+        self._refuel(Decimal('10'), machine=self.other)
+        rows = self._summary()
+        self.assertEqual(rows['Crusher A'].filtered_litres, Decimal('65.50'))
+        self.assertEqual(rows['Crusher A'].filtered_refuels, 2)
+        self.assertEqual(rows['Excavator B'].filtered_litres, Decimal('10.00'))
+
+    def test_the_card_renders_the_czech_decimal_comma(self):
+        self._refuel(Decimal('65.5'))
+        response = self.client.get(reverse('machine_dashboard'))
+        self.assertContains(response, 'Tankování')
+        self.assertContains(response, '65,50 l')
+
+    def test_a_machine_never_refuelled_reads_a_real_zero(self):
+        # Unlike the tonnage on the other card, litres are not nullable, so a
+        # zero here means "not refuelled in range" and not "unknown".
+        self._refuel(Decimal('40'))
+        self.assertEqual(self._summary()['Excavator B'].filtered_litres, Decimal('0'))
+
+    def test_retired_machines_are_left_out(self):
+        self.assertNotIn('Old Loader', self._summary())
+
+    def test_pending_jobs_are_invisible(self):
+        self._refuel(Decimal('40'), status=WorkOrder.Status.PENDING)
+        self.assertEqual(self._summary()['Crusher A'].filtered_litres, Decimal('0'))
+
+    def test_the_date_filter_narrows_the_totals(self):
+        # Dated by the job, like every other row type: `job_edit` rewrites the
+        # rows, so their own insert time would drift to the day of a correction.
+        self._refuel(Decimal('40'), performed_on=date.today() - timedelta(days=40))
+        self._refuel(Decimal('15'))
+        rows = self._summary(date_from=(date.today() - timedelta(days=7)).isoformat())
+        self.assertEqual(rows['Crusher A'].filtered_litres, Decimal('15.00'))
+        self.assertEqual(rows['Crusher A'].filtered_refuels, 1)
+
+    def test_naming_a_machine_narrows_the_card_to_it(self):
+        self._refuel(Decimal('40'))
+        self.assertEqual(list(self._summary(machine=self.other.pk)), ['Excavator B'])
+
+    def test_an_invalid_filter_shows_no_machines(self):
+        self._refuel(Decimal('40'))
+        response = self.client.get(reverse('machine_dashboard'), {'date_from': 'not-a-date'})
+        self.assertEqual(list(response.context['refuel_machines']), [])
+        self.assertEqual(response.context['refuel_total_litres'], Decimal('0'))
+
+    def test_the_total_follows_the_filter(self):
+        self._refuel(Decimal('40'), performed_on=date.today() - timedelta(days=40))
+        self._refuel(Decimal('15'))
+        self._refuel(Decimal('5'), machine=self.other)
+        response = self.client.get(
+            reverse('machine_dashboard'), {'date_from': (date.today() - timedelta(days=7)).isoformat()}
+        )
+        self.assertEqual(response.context['refuel_total_litres'], Decimal('20.00'))
+
+    def test_the_detail_table_lists_the_fill_ups(self):
+        self._refuel(Decimal('40'))
+        response = self.client.get(reverse('machine_dashboard'))
+        self.assertContains(response, 'Detail tankování')
+        self.assertEqual(len(response.context['fuel_page']['page_obj'].object_list), 1)
+
+    def test_each_detail_table_pages_on_its_own_parameter(self):
+        """Stroje holds two paginated tables. One shared `page` would move both,
+        so the fill-ups carry their own — and its links have to keep the other
+        table's parameter and the filters."""
+        for _ in range(HISTORY_PAGE_SIZE + 1):
+            self._refuel(Decimal('1'))
+        response = self.client.get(reverse('machine_dashboard'), {FUEL_PAGE_PARAM: '2', 'page': '1'})
+        fuel_page = response.context['fuel_page']
+        self.assertEqual(fuel_page['page_obj'].number, 2)
+        self.assertEqual(fuel_page['page_param'], FUEL_PAGE_PARAM)
+        # Its own parameter dropped, the other table's kept.
+        self.assertNotIn(FUEL_PAGE_PARAM, fuel_page['querystring'])
+        self.assertIn('page=1', fuel_page['querystring'])
+        # And the usage table is unmoved by a fuel page link.
+        self.assertEqual(response.context['page_obj'].number, 1)
+
+    def test_a_date_preset_resets_both_tables_to_page_one(self):
+        response = self.client.get(reverse('machine_dashboard'), {'page': '2', FUEL_PAGE_PARAM: '3'})
+        for preset in response.context['date_presets']:
+            with self.subTest(preset=preset['key']):
+                self.assertNotIn('page=', preset['querystring'])
+
+    def test_the_export_carries_the_summary_table(self):
+        self._refuel(Decimal('40'))
+        self._refuel(Decimal('25.5'))
+        response = self.client.get(reverse('machine_refuel_export'))
+        rows = list(csv.reader(io.StringIO(response.content.decode('utf-8-sig')), delimiter=';'))
+        self.assertEqual(rows[0], ['Stroj', 'Počet tankování', 'Natankováno (l)'])
+        self.assertIn(['Crusher A', '2', '65,50'], rows)
+        self.assertEqual(
+            response['Content-Disposition'],
+            f'attachment; filename="tankovani-{date.today().isoformat()}.csv"',
+        )
+
+    def test_the_export_follows_the_page_filter(self):
+        self._refuel(Decimal('40'), performed_on=date.today() - timedelta(days=40))
+        self._refuel(Decimal('15'))
+        response = self.client.get(
+            reverse('machine_refuel_export'), {'date_from': (date.today() - timedelta(days=7)).isoformat()}
+        )
+        rows = list(csv.reader(io.StringIO(response.content.decode('utf-8-sig')), delimiter=';'))
+        self.assertIn(['Crusher A', '1', '15,00'], rows)
+
+    def test_an_invalid_filter_exports_only_a_header(self):
+        self._refuel(Decimal('40'))
+        response = self.client.get(reverse('machine_refuel_export'), {'date_from': 'not-a-date'})
+        rows = list(csv.reader(io.StringIO(response.content.decode('utf-8-sig')), delimiter=';'))
+        self.assertEqual(len(rows), 1)
+
+    def test_a_worker_cannot_reach_the_export(self):
+        # Gated like the page it hangs off; hiding the nav link is not access control.
+        self.client.force_login(self.worker)
+        self.assertEqual(self.client.get(reverse('machine_refuel_export')).status_code, 403)

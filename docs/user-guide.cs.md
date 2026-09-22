@@ -44,7 +44,7 @@ Ve spodní části obrazovky je menu, ze kterého se dostanete všude:
 | **Zpracování** | Z jednoho materiálu vznikl jiný — hlavní formulář |
 | **Hodiny** | Odpracované hodiny lidí |
 | **Přehled** | Všechna zapsaná zpracování ke schválení — vidí jen vedoucí |
-| **Stroje** | Motohodiny, tuny, sazby a cena strojů — vidí jen vedoucí |
+| **Stroje** | Motohodiny, tuny, sazby, cena a tankování strojů — vidí jen vedoucí |
 | **Materiál** | Kolik tun se kterého materiálu spotřebovalo a vyrobilo — vidí jen vedoucí |
 
 Po přihlášení se rovnou otevře **Zpracování**. Stejně tak se tam vrátíte
@@ -153,22 +153,49 @@ zpětně, přepište ho na den, kdy se práce skutečně dělala.
 
 **4. Stroje**
 
-Vyplňte **Stroj**, počet **Hodin** (motohodin) a **Tuny**, které stroj
-zpracoval. Pokud šel materiál přes více strojů za sebou, použijte více řádků.
-**Každý stroj uveďte jen jednou** — vybraný stroj se v nabídce dalšího řádku
-neobjeví a dva řádky se stejným strojem aplikace odmítne; běžel-li na zakázce
-víckrát, sečtěte motohodiny i tuny do jednoho řádku. Na další řádky se dostanete
-tlačítkem **„+ další řádek"** pod nimi a přebytečný odeberete tlačítkem
-**„− odebrat řádek"**. Stroje jsou nepovinné — pokud se žádný nepoužil,
-nechte řádky prázdné. Jakmile ale řádek začnete vyplňovat, musí být vyplněný
-celý.
+Řádek stroje má čtyři pole: **Stroj**, **Hodiny** (motohodiny), **Tuny**, které
+stroj zpracoval, a **Natankováno (l)**. Pokud šel materiál přes více strojů za
+sebou, použijte více řádků. **Každý stroj uveďte jen jednou** — vybraný stroj se
+v nabídce dalšího řádku neobjeví a dva řádky se stejným strojem aplikace odmítne;
+běžel-li na zakázce víckrát, sečtěte motohodiny, tuny i litry do jednoho řádku.
+Na další řádky se dostanete tlačítkem **„+ další řádek"** pod nimi a přebytečný
+odeberete tlačítkem **„− odebrat řádek"**. Stroje jsou nepovinné — pokud se žádný
+nepoužil, nechte řádky prázdné.
+
+**Motohodiny a tuny patří k sobě, litry stojí samostatně.** Řádek tedy můžete
+vyplnit třemi způsoby:
+
+- **Stroj + hodiny + tuny** — stroj běžel; litry nechte prázdné, pokud se
+  netankovalo.
+- **Stroj + litry** — jen se tankovalo. Hodiny ani tuny vyplňovat nemusíte.
+- **Stroj + hodiny + tuny + litry** — běžel i se tankoval, oboje na jednom řádku.
+
+Co aplikace odmítne: hodiny bez tun (nebo tuny bez hodin), litry bez vybraného
+stroje, a stroj, u kterého není vyplněné vůbec nic.
 
 > Tuny u stroje se **nezapočítávají** do kontroly součtů spotřeby a výroby.
 > Když materiál projde třemi stroji za sebou, projde každý z nich stejné
-> množství — proto se tato čísla nesčítají do celkové výroby.
+> množství — proto se tato čísla nesčítají do celkové výroby. Litry se
+> nezapočítávají nikam a z motohodin se nepočítají.
 
-> Celá zakázka se ukládá najednou — položky, hodiny lidí i hodiny strojů. Po
-> uložení se formulář vyprázdní a můžete zapsat další zakázku.
+**4b. Jen tankování, bez zpracování**
+
+**Když jste jen tankovali, stačí zapsat stroje a litry — a nic jiného.** Takový
+zápis je platná zakázka: nemusíte vyplňovat spotřebu ani výrobu (kontrola součtů
+se na něj nevztahuje, protože není co srovnávat), nemusíte vyplnit **Popis** ani
+**Moje hodiny**. Stačí **Datum provedení**, které je předvyplněné na dnešek, a
+libovolný počet řádků *Stroj + Natankováno (l)*.
+
+- Žádné odpracované hodiny se u takové zakázky nezapíšou.
+- **Popis** můžete vyplnit, i když se nevyžaduje — v přehledech se pak zobrazí
+  místo pomlčky, takže se lépe hledá.
+- Schvaluje se úplně stejně jako každá jiná zakázka a objeví se i v **Přehledu**.
+- Jakmile na takový zápis přidáte motohodiny nebo položku materiálu, přestává
+  to být „jen tankování" — **Popis**, **Moje hodiny** i kontrola součtů se
+  vrátí.
+
+> Celá zakázka se ukládá najednou — položky, hodiny lidí, hodiny strojů i
+> tankování. Po uložení se formulář vyprázdní a můžete zapsat další zakázku.
 
 ## Schvalování
 
@@ -195,18 +222,19 @@ Zakázky, které čekají na schválení, jsou **žlutě** zvýrazněné; nahoř
 čekajících. Filtrovat lze podle stavu, pracovníka a data.
 
 Klepnutím na **Detail** otevřete celou zakázku se vším, co bylo ve formuláři
-vyplněno — hodiny všech lidí, spotřeba, výroba i stroje s motohodinami a tunami.
-Dole jsou akce:
+vyplněno — hodiny všech lidí, spotřeba, výroba, stroje s motohodinami a tunami
+i **tankování**. Dole jsou akce:
 
 | Akce | Co udělá |
 |---|---|
 | **Schválit** | Zakázka se započítá do Hodin i Strojů. |
 | **Upravit** | Otevře stejný formulář jako Zpracování, předvyplněný. Uložením se řádky přepíšou. **Schválení tím nevzniká** — po opravě je ještě potřeba schválit. |
-| **Smazat** | Nevratně smaže celou zakázku i její řádky. Její hodiny i tuny tím ze Strojů a Hodin zmizí. |
+| **Smazat** | Nevratně smaže celou zakázku i její řádky. Její hodiny, tuny i natankované litry tím ze Strojů a Hodin zmizí. |
 
 Při úpravě platí stejná pravidla jako při zápisu — hlavně že se **součty
-spotřeby a výroby musí rovnat**. Pole *hodiny* patří tomu, kdo zakázku zapsal,
-ne vám.
+spotřeby a výroby musí rovnat**; u zakázky, která je jen tankování, se
+nekontrolují, stejně jako při zápisu. Pole *hodiny* patří tomu, kdo zakázku
+zapsal, ne vám.
 
 ## Stroje
 
@@ -245,13 +273,31 @@ Naopak **0,00** je odpověď: naceněný stroj, který v daném období neběže
 nestál.
 
 Stránka má stejnou stavbu jako **Hodiny**: nahoře **filtr**, pod ním tabulka
-**Stav strojů** a úplně dole **Detail používání strojů** — jednotlivé záznamy
-(datum, stroj, hodiny, tuny, zakázka a kdo ji zapsal), ze kterých se čísla
-nahoře skládají. Filtr platí pro obě tabulky najednou, takže si můžete číslo
-přečíst a hned pod ním vidět, z čeho vzniklo.
+**Stav strojů**, potom **Tankování** a **Detail tankování** a úplně dole
+**Detail používání strojů** — jednotlivé záznamy (datum, stroj, hodiny, tuny,
+zakázka a kdo ji zapsal), ze kterých se čísla nahoře skládají. Filtr platí pro
+všechny tabulky najednou, takže si můžete číslo přečíst a hned pod ním vidět,
+z čeho vzniklo.
+
+**Tankování** je samostatná tabulka: u každého stroje **počet tankování** a
+**natankované litry** za zvolené období, dole celkový součet za všechny stroje.
+Pod ní je **Detail tankování** — jednotlivá tankování s datem, strojem, počtem
+litrů, zakázkou a tím, kdo ji zapsal.
+
+- Litry se **nepočítají** z motohodin ani z tun; berou se jen z toho, co někdo
+  ve **Zpracování** vyplnil do pole *Natankováno (l)*.
+- Stejně jako u ostatních čísel se počítají jen **schválené** zakázky.
+- **0,00 l** je odpověď: ten stroj se v daném období netankoval. Pomlčka tady
+  nikdy není, litry se buď zapsaly, nebo se netankovalo.
+- **Detail tankování** a **Detail používání strojů** se stránkují každý zvlášť —
+  přechod na další stránku jedné tabulky s druhou nehýbe.
+
+Obě souhrnné tabulky — **Stav strojů** i **Tankování** — mají vlastní tlačítko
+**Stáhnout do CSV / Excelu**; stáhne se přesně to, co máte nastavené filtrem.
 
 Filtrovat lze podle stroje, data a podle toho, kdo zakázku zapsal
-(**Vytvořil**). **Bez filtru vidíte všechny stroje.** Když vyberete konkrétní
+(**Vytvořil**); filtr se vztahuje i na tabulky s tankováním.
+**Bez filtru vidíte všechny stroje.** Když vyberete konkrétní
 stroj, zůstane v tabulce jen on; když omezíte datum, stroje zůstanou všechny
 a čísla se přepočítají za dané období — stroj s **0 h** tedy znamená, že v tom
 období neběžel.

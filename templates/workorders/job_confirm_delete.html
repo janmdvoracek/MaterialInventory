@@ -5,8 +5,9 @@
     <h1>Smazat zpracování #{{ work_order.pk }}?</h1>
     <p>
         Zaznamenal {{ work_order.created_by.username }}, {{ work_order.created_at|date:"Y-m-d H:i" }}.
-        Smazání je nevratné — zmizí položky spotřeby i výroby, odpracované hodiny
-        a využití strojů, a motohodiny se strojům odečtou.
+        Smazání je nevratné — zmizí položky spotřeby i výroby, odpracované hodiny,
+        využití strojů i tankování. Stroje samy žádné součty neukládají, takže se
+        jen přestanou tyto řádky počítat do přehledu Stroje.
     </p>
     <div class="table-scroll">
     <table>
@@ -15,6 +16,7 @@
             <tr><td>Položky spotřeby</td><td>{{ consumed|length }}</td></tr>
             <tr><td>Položky výroby</td><td>{{ produced|length }}</td></tr>
             <tr><td>Řádky strojů</td><td>{{ machine_usages|length }}</td></tr>
+            <tr><td>Tankování</td><td>{{ machine_refuels|length }}</td></tr>
             <tr><td>Odpracované hodiny</td><td>{{ work_order.worker_hours.count }}</td></tr>
         </tbody>
     </table>

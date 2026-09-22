@@ -20,7 +20,7 @@ from machines.models import Machine
 from materials.models import Material
 
 from .forms import MachineFilterForm, MaterialFilterForm, TimeWorkedFilterForm, participation_filter
-from .models import MachineUsage, StockMovement, WorkerHours, WorkOrder
+from .models import MachineRefuel, MachineUsage, StockMovement, WorkerHours, WorkOrder
 
 HISTORY_PAGE_SIZE = 50
 # A worker's own recent jobs on Hodiny: a status check, not a history.
@@ -45,15 +45,24 @@ DATE_PRESETS = (
 
 @role_required(*REVIEWER_ROLES)
 def machine_dashboard(request):
-    """Stroje: the filter, per-machine totals, and the usage rows behind them."""
+    """Stroje: the filter, per-machine totals, the usage rows, and the fill-ups.
+
+    Two paginated tables, so each carries its own page parameter — see
+    `_paginated`. Both halves answer to the one filter card at the top.
+    """
     form, usages = _filtered_machine_usages(request)
-    machines = _machine_summary(usages, form)
+    _, refuels = _filtered_machine_refuels(request)
     return render(
         request,
         'workorders/machine_dashboard.html',
         {
             'form': form,
-            'machines': machines,
+            'machines': _machine_summary(usages, form),
+            'refuel_machines': _refuel_summary(refuels, form),
+            # Sum returns None on an empty (or invalidly filtered) set; a fuel
+            # report totalling nothing has genuinely had nothing put in it.
+            'refuel_total_litres': refuels.aggregate(total=Sum('litres'))['total'] or Decimal('0'),
+            'fuel_page': _paginated(request, refuels, FUEL_PAGE_PARAM),
             **_list_page_context(request, usages),
         },
     )
@@ -117,6 +126,44 @@ def _filtered_machine_usages(request):
     return form, form.filter(usages)
 
 
+def _filtered_machine_refuels(request):
+    """Stroje's fill-up rows: the same filter and the same approved-only rule.
+
+    `MachineFilterForm` applies unchanged — its three lookups (`machine`,
+    `work_order__created_by`, `work_order__performed_on`) all read the same on
+    this table, so the fuel card and the usage card cannot disagree about what
+    the filter means.
+    """
+    form = MachineFilterForm(request.GET or None)
+    refuels = (
+        MachineRefuel.objects.filter(work_order__status=WorkOrder.Status.APPROVED)
+        .select_related('machine', 'work_order', 'work_order__created_by')
+        .order_by('-work_order__performed_on', '-id')
+    )
+    return form, form.filter(refuels)
+
+
+def _refuel_summary(refuels, form):
+    """Litres and fill-up count per active machine over `refuels`.
+
+    Every active machine is listed and narrowed by the `machine` filter, exactly
+    like `_machine_summary` — a machine that ran last week and was never
+    refuelled is an answer, not an omission. Unlike the tonnage there, the zeros
+    are real zeros: `MachineRefuel.litres` is not nullable, so a `Sum` of None
+    only ever means "no fill-ups in range".
+    """
+    if form.is_bound and not form.is_valid():
+        return Machine.objects.none()
+    machines = Machine.objects.filter(is_active=True)
+    if form.is_bound and form.cleaned_data.get('machine'):
+        machines = machines.filter(pk=form.cleaned_data['machine'].pk)
+    in_scope = Q(refuels__in=refuels.values('pk'))
+    return machines.annotate(
+        filtered_litres=Coalesce(Sum('refuels__litres', filter=in_scope), Decimal('0')),
+        filtered_refuels=Count('refuels', filter=in_scope),
+    ).order_by('name')
+
+
 @role_required(*REVIEWER_ROLES)
 def material_dashboard(request):
     """Materiál: the filter, per-material tonnage, and the line items behind it."""
@@ -165,6 +212,29 @@ def _filtered_material_movements(request):
     return form, form.filter(movements)
 
 
+# One page parameter per paginated table: Stroje holds two, and paging one must
+# leave the other where it was. `_date_preset_links` drops both, since a new
+# range starts at page one in either table.
+PAGE_PARAM = 'page'
+FUEL_PAGE_PARAM = 'fuel_page'
+PAGE_PARAMS = (PAGE_PARAM, FUEL_PAGE_PARAM)
+
+
+def _paginated(request, rows, param=PAGE_PARAM):
+    """One table's `page_obj`, the `querystring` its page links carry, and its `page_param`.
+
+    The querystring keeps every other parameter — the filters, and the other
+    table's page — and drops only this table's own.
+    """
+    querystring = request.GET.copy()
+    querystring.pop(param, None)
+    return {
+        'page_obj': Paginator(rows, HISTORY_PAGE_SIZE).get_page(request.GET.get(param)),
+        'querystring': querystring.urlencode(),
+        'page_param': param,
+    }
+
+
 def _date_preset_links(request):
     """One quick-range link per `DATE_PRESETS` entry.
 
@@ -176,7 +246,8 @@ def _date_preset_links(request):
     links = []
     for key, label, span in DATE_PRESETS:
         params = request.GET.copy()
-        params.pop('page', None)
+        for param in PAGE_PARAMS:
+            params.pop(param, None)
         value = []
         for field, day in zip(('date_from', 'date_to'), span(today)):
             if day is None:
@@ -197,12 +268,14 @@ def _date_preset_links(request):
 
 
 def _list_page_context(request, rows):
-    """`page_obj`, `querystring` (minus `page`) and `date_presets` — every filtered list needs all three."""
-    querystring = request.GET.copy()
-    querystring.pop('page', None)
+    """A filtered list page's three keys: the paginated rows, their querystring and the date presets.
+
+    `_paginated` supplies the first two (plus `page_param`, which
+    `_pagination.html` reads); taking only part of this is the failure that is
+    hard to spot, since the filter then vanishes on page two.
+    """
     return {
-        'page_obj': Paginator(rows, HISTORY_PAGE_SIZE).get_page(request.GET.get('page')),
-        'querystring': querystring.urlencode(),
+        **_paginated(request, rows),
         'date_presets': _date_preset_links(request),
     }
 
@@ -261,6 +334,20 @@ def machine_dashboard_export(request):
                 _csv_number(machine.filtered_total_cost, 2),
             ]
             for machine in _machine_summary(usages, form)
+        ],
+    )
+
+
+@role_required(*REVIEWER_ROLES)
+def machine_refuel_export(request):
+    """„Tankování" as a CSV, built from the same helpers as the card."""
+    form, refuels = _filtered_machine_refuels(request)
+    return _csv_response(
+        'tankovani',
+        ['Stroj', 'Počet tankování', 'Natankováno (l)'],
+        [
+            [machine.name, machine.filtered_refuels, _csv_number(machine.filtered_litres, 2)]
+            for machine in _refuel_summary(refuels, form)
         ],
     )
 

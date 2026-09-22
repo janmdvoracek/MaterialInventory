@@ -13,6 +13,8 @@ urlpatterns = [
     # page, so a download is whatever was on screen; each is gated exactly like
     # the page it belongs to.
     path('machines/export/', reports.machine_dashboard_export, name='machine_dashboard_export'),
+    # Stroje's second summary table, the fuel one, downloads on its own terms.
+    path('machines/fuel/export/', reports.machine_refuel_export, name='machine_refuel_export'),
     path('materials/export/', reports.material_dashboard_export, name='material_dashboard_export'),
     path('hours/export/', reports.time_worked_export, name='time_worked_export'),
     # The one row-level download: Materiál's line items, the whole filtered set

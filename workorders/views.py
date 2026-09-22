@@ -1,6 +1,7 @@
 """Recording a job (Zpracování) and reviewing it (Přehled and the job pages)."""
 
 from decimal import Decimal
+from typing import NamedTuple
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -14,8 +15,23 @@ from django.views.decorators.http import require_POST
 from accounts.decorators import REVIEWER_ROLES, role_required
 
 from .forms import JOB_SECTIONS, JobFilterForm, WorkOrderForm, job_row_formset
-from .models import MachineUsage, StockMovement, WorkerHours, WorkOrder
+from .models import MachineRefuel, MachineUsage, StockMovement, WorkerHours, WorkOrder
 from .reports import _list_page_context
+
+
+class JobRows(NamedTuple):
+    """Everything one submission records, split the way the tables are.
+
+    `usages` and `refuels` both come off the machines section: a row carrying
+    motohodiny is a `MachineUsage`, a row carrying litres is a `MachineRefuel`,
+    and one row can be both or either (see `MachineUsageForm.check_row`).
+    """
+
+    consumed: list
+    produced: list
+    usages: list
+    refuels: list
+    worker_hours: dict
 
 
 def _collect_rows(formsets):
@@ -24,8 +40,40 @@ def _collect_rows(formsets):
     def filled(prefix, field):
         return [form.cleaned_data for form in formsets[prefix] if form.cleaned_data.get(field)]
 
-    worker_hours = {row['user']: row['hours'] for row in filled('workers', 'user')}
-    return filled('consumed', 'material'), filled('produced', 'material'), filled('machines', 'machine'), worker_hours
+    machine_rows = filled('machines', 'machine')
+    return JobRows(
+        consumed=filled('consumed', 'material'),
+        produced=filled('produced', 'material'),
+        usages=[row for row in machine_rows if row.get('hours') is not None],
+        refuels=[row for row in machine_rows if row.get('litres') is not None],
+        worker_hours={row['user']: row['hours'] for row in filled('workers', 'user')},
+    )
+
+
+def _is_fuel_only(rows):
+    """True when the submission records nothing but fill-ups.
+
+    Such a job has no consumed and produced totals to balance, nobody's hours to
+    record and no work to label, so the mass balance and the two otherwise
+    required job fields are not asked of it. It is still an ordinary
+    `WorkOrder`: dated, reviewed and listed like any other.
+    """
+    return bool(rows.refuels) and not (rows.consumed or rows.produced or rows.usages or rows.worker_hours)
+
+
+# Required on every job except a fuel-only one; see `WorkOrderForm`.
+WORK_FIELDS = ('description', 'hours')
+
+
+def _require_work_fields(order_form):
+    """Put Django's own "required" complaint on any of `WORK_FIELDS` left empty.
+
+    Reuses each field's own message rather than a hardcoded Czech string, so it
+    comes from the same catalog as every other required field on the page.
+    """
+    for name in WORK_FIELDS:
+        if order_form.cleaned_data.get(name) in (None, ''):
+            order_form.add_error(name, order_form.fields[name].error_messages['required'])
 
 
 def _balance_error(consumed_rows, produced_rows):
@@ -43,17 +91,21 @@ def _balance_error(consumed_rows, produced_rows):
     return None
 
 
-def _write_job_rows(work_order, author, own_hours, consumed_rows, produced_rows, machine_rows, worker_hours):
-    """Replace the job's hours, line items and machine usage with the submitted rows.
+def _write_job_rows(work_order, author, own_hours, rows):
+    """Replace the job's hours, line items, machine usage and fill-ups with the submitted rows.
 
-    Call inside `transaction.atomic()`. The rows belong to `author`, not the editor.
+    Call inside `transaction.atomic()`. The rows belong to `author`, not the
+    editor. `own_hours` is None on a fuel-only job, which nobody claimed hours
+    for, and then the author gets no `WorkerHours` row at all.
     """
     # Derived from the hours rows, so the two can't disagree.
-    work_order.collaborators.set(worker_hours.keys())
+    work_order.collaborators.set(rows.worker_hours.keys())
     work_order.worker_hours.all().delete()
+    hours_rows = list(rows.worker_hours.items())
+    if own_hours is not None:
+        hours_rows.insert(0, (author, own_hours))
     WorkerHours.objects.bulk_create(
-        WorkerHours(work_order=work_order, user=user, hours=hours)
-        for user, hours in [(author, own_hours), *worker_hours.items()]
+        WorkerHours(work_order=work_order, user=user, hours=hours) for user, hours in hours_rows
     )
 
     work_order.movements.all().delete()
@@ -66,17 +118,24 @@ def _write_job_rows(work_order, author, own_hours, consumed_rows, produced_rows,
             quantity=sign * row['quantity'],
             movement_type=movement_type,
         )
-        for rows, sign, movement_type in (
-            (consumed_rows, -1, StockMovement.MovementType.TRANSFORM_CONSUME),
-            (produced_rows, 1, StockMovement.MovementType.TRANSFORM_PRODUCE),
+        for section_rows, sign, movement_type in (
+            (rows.consumed, -1, StockMovement.MovementType.TRANSFORM_CONSUME),
+            (rows.produced, 1, StockMovement.MovementType.TRANSFORM_PRODUCE),
         )
-        for row in rows
+        for row in section_rows
     )
 
     work_order.machine_usages.all().delete()
     MachineUsage.objects.bulk_create(
         MachineUsage(work_order=work_order, machine=row['machine'], hours=row['hours'], tons=row['tons'])
-        for row in machine_rows
+        for row in rows.usages
+    )
+
+    # Its own table, written from the same rows: a machine that was only
+    # refuelled has a fill-up here and nothing above.
+    work_order.machine_refuels.all().delete()
+    MachineRefuel.objects.bulk_create(
+        MachineRefuel(work_order=work_order, machine=row['machine'], litres=row['litres']) for row in rows.refuels
     )
 
 
@@ -196,16 +255,21 @@ def _job_forms(request, *, author, viewer, order_form_user=None, keep=None, init
 def _valid_job_rows(request, order_form, formsets):
     """The submitted rows, or None if any form is invalid or the job doesn't balance.
 
-    The balance error has no field, so it goes on `messages`.
+    A fuel-only job skips both the mass balance and `WORK_FIELDS`; anything that
+    records work is held to both. The balance error has no field, so it goes on
+    `messages`.
     """
     if not (order_form.is_valid() and all(formset.is_valid() for formset in formsets.values())):
         return None
     rows = _collect_rows(formsets)
-    error = _balance_error(rows[0], rows[1])
-    if error:
-        messages.error(request, error)
-        return None
-    return rows
+    if _is_fuel_only(rows):
+        return rows
+    _require_work_fields(order_form)
+    balance_error = _balance_error(rows.consumed, rows.produced)
+    if balance_error:
+        messages.error(request, balance_error)
+    # add_error() has already marked the form invalid, so its errors render.
+    return None if balance_error or order_form.errors else rows
 
 
 def _job_context(order_form, formsets, **extra):
@@ -247,7 +311,7 @@ def transform_create(request):
                     reviewed_at=timezone.now() if approved else None,
                     reviewed_by=request.user if approved else None,
                 )
-                _write_job_rows(work_order, author, order_form.cleaned_data['hours'], *rows)
+                _write_job_rows(work_order, author, order_form.cleaned_data['hours'], rows)
             messages.success(
                 request,
                 'Zpracování bylo zaznamenáno.'
@@ -313,6 +377,7 @@ def job_detail(request, pk):
             'consumed': consumed,
             'produced': produced,
             'machine_usages': work_order.machine_usages.select_related('machine'),
+            'machine_refuels': work_order.machine_refuels.select_related('machine'),
             'worker_hours': work_order.worker_hours.select_related('user'),
         },
     )
@@ -326,18 +391,22 @@ def job_edit(request, pk):
     author = work_order.created_by
     consumed, produced = _job_line_items(work_order)
     usages = list(work_order.machine_usages.all())
-    # Keep retired records the job names selectable; see `_offer_recorded`.
+    refuels = list(work_order.machine_refuels.all())
+    # Keep retired records the job names selectable; see `_offer_recorded`. A
+    # machine the job only refuelled counts, or its fill-up would be dropped.
     keep = {
         'consumed': [movement.material_id for movement in consumed],
         'produced': [movement.material_id for movement in produced],
-        'machines': [usage.machine_id for usage in usages],
+        'machines': [usage.machine_id for usage in usages] + [refuel.machine_id for refuel in refuels],
     }
     order_form, formsets, submitted = _job_forms(
         request,
         author=author,
         viewer=request.user,
         keep=keep,
-        initial=_edit_initial(work_order, author, consumed, produced, usages) if request.method == 'GET' else None,
+        initial=_edit_initial(work_order, author, consumed, produced, usages, refuels)
+        if request.method == 'GET'
+        else None,
     )
     if submitted:
         rows = _valid_job_rows(request, order_form, formsets)
@@ -347,7 +416,7 @@ def job_edit(request, pk):
                 work_order.notes = order_form.cleaned_data['notes']
                 work_order.performed_on = order_form.cleaned_data['performed_on']
                 work_order.save(update_fields=['description', 'notes', 'performed_on'])
-                _write_job_rows(work_order, author, order_form.cleaned_data['hours'], *rows)
+                _write_job_rows(work_order, author, order_form.cleaned_data['hours'], rows)
             messages.success(request, 'Zpracování bylo upraveno.')
             return redirect('job_detail', pk=work_order.pk)
     # Set on every path, since an invalid POST re-renders too.
@@ -355,7 +424,29 @@ def job_edit(request, pk):
     return render(request, 'workorders/job_edit.html', _job_context(order_form, formsets, work_order=work_order))
 
 
-def _edit_initial(work_order, author, consumed, produced, usages):
+def _machine_section_rows(usages, refuels):
+    """The machines section as the form takes it: one row per machine, runtime and fuel merged.
+
+    The two live in separate tables and either can be there without the other —
+    a fuel-only job has fill-ups and no usage — while the section refuses a
+    machine twice, so they are zipped back into one row each. Fill-ups are
+    summed for the same reason the duplicate message says to: only an admin edit
+    can put one machine on two of them, and one row is all there is to render.
+    """
+    rows = {}
+    for usage in usages:
+        rows[usage.machine_id] = {'machine': usage.machine_id, 'hours': usage.hours, 'tons': usage.tons}
+    for refuel in refuels:
+        row = rows.setdefault(refuel.machine_id, {'machine': refuel.machine_id})
+        row['litres'] = (row.get('litres') or Decimal('0')) + refuel.litres
+    # Trimmed here rather than per field, since which of them a row carries varies.
+    return [
+        {key: _trim(value) if isinstance(value, Decimal) else value for key, value in row.items()}
+        for row in rows.values()
+    ]
+
+
+def _edit_initial(work_order, author, consumed, produced, usages, refuels):
     """`job_edit`'s pre-fill: the job as recorded, quantities as they were typed."""
     own_hours = work_order.worker_hours.filter(user=author).first()
     return {
@@ -367,10 +458,7 @@ def _edit_initial(work_order, author, consumed, produced, usages):
         },
         'consumed': [{'material': m.material_id, 'quantity': _trim(m.typed_quantity)} for m in consumed],
         'produced': [{'material': m.material_id, 'quantity': _trim(m.typed_quantity)} for m in produced],
-        'machines': [
-            {'machine': u.machine_id, 'hours': _trim(u.hours), 'tons': _trim(u.tons) if u.tons is not None else None}
-            for u in usages
-        ],
+        'machines': _machine_section_rows(usages, refuels),
         'workers': [
             {'user': row.user_id, 'hours': _trim(row.hours)} for row in work_order.worker_hours.exclude(user=author)
         ],
@@ -406,5 +494,6 @@ def job_delete(request, pk):
             'consumed': consumed,
             'produced': produced,
             'machine_usages': work_order.machine_usages.select_related('machine'),
+            'machine_refuels': work_order.machine_refuels.select_related('machine'),
         },
     )

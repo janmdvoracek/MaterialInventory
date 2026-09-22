@@ -139,3 +139,36 @@ class MachineUsage(models.Model):
 
     def __str__(self):
         return f'{self.machine} - {self.hours}h (WorkOrder #{self.work_order_id})'
+
+
+class MachineRefuel(models.Model):
+    """Fuel put into one machine on a single job, in litres.
+
+    Its own table rather than a column on `MachineUsage`, because the two are
+    independent: a machine can be refuelled on a job that ran no hours at all —
+    a job may be nothing but fill-ups — so a refuel row has to be able to exist
+    with no usage row beside it. Litres are not part of the mass balance and no
+    report derives them from hours or tonnage.
+
+    Like `MachineUsage` and `StockMovement` it carries no timestamp of its own;
+    its date is its job's `performed_on`, because `job_edit` rewrites every row.
+    """
+
+    work_order = models.ForeignKey(
+        WorkOrder, on_delete=models.CASCADE, related_name='machine_refuels', verbose_name='zakázka'
+    )
+    machine = models.ForeignKey(
+        'machines.Machine', on_delete=models.PROTECT, related_name='refuels', verbose_name='stroj'
+    )
+    # Not nullable, unlike `MachineUsage.tons`: the column is new but a refuel
+    # row only ever exists because someone typed a number into it, so there is
+    # no "unknown" to represent and a zero total is a real zero.
+    litres = models.DecimalField(max_digits=12, decimal_places=2, verbose_name='natankované litry')
+
+    class Meta:
+        ordering = ['-id']
+        verbose_name = 'tankování'
+        verbose_name_plural = 'tankování'
+
+    def __str__(self):
+        return f'{self.machine} - {self.litres} l (WorkOrder #{self.work_order_id})'

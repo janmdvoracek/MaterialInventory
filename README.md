@@ -20,22 +20,22 @@ and code are in English.
 
 | | |
 |---|---|
-| **Transform** (*Zpracování*) | The main form, and the landing page. One job consumes some materials and produces others — crushing, sorting, cutting — logs the submitter's own hours, names collaborators with their hours, and records machine motohodiny and the tonnage each machine processed. |
+| **Transform** (*Zpracování*) | The main form, and the landing page. One job consumes some materials and produces others — crushing, sorting, cutting — logs the submitter's own hours, names collaborators with their hours, and records machine motohodiny, the tonnage each machine processed, and the litres of fuel put into it. A submission that is **nothing but fill-ups** is a valid job on its own: no materials, no hours, no balance to keep. |
 | **Review** (*Přehled*) | Every recorded job with everything that was typed into the form, filterable, with the ones awaiting a decision highlighted. A manager approves, corrects or deletes from here. Manager/Admin only. |
-| **Machines** (*Stroje*) | One filter over hours and tonnage per machine, its two rates (Kč/hod, Kč/t), what those come to in money — per hours, per tonnes, and in total — and the individual usage rows behind it all. Manager/Admin nav entry. |
+| **Machines** (*Stroje*) | One filter over hours and tonnage per machine, its two rates (Kč/hod, Kč/t), what those come to in money — per hours, per tonnes, and in total — and the individual usage rows behind it all. Plus a *Tankování* card over the same filter: litres and fill-up count per machine, and the individual fill-ups. Manager/Admin nav entry. |
 | **Materials** (*Materiál*) | Tonnage consumed, produced and net per material over a date range, and the individual line items behind those totals — "how much 8/16 did we make last month?". Manager/Admin only. |
 | **Hours** (*Hodiny*) | Hours worked per person, for payroll and job costing. For a worker, also their own last few jobs with the review status of each. |
 
-The summary table on each of those last three downloads as a CSV that opens
-straight into Excel — semicolon-delimited, UTF-8 BOM, comma decimals — over
-whatever filter the page is showing. Materials has a second download under its
-line items, the one row-level export: every row the filter allows, not the page
-on screen.
+Each summary table on those last three downloads as a CSV that opens straight
+into Excel — semicolon-delimited, UTF-8 BOM, comma decimals — over whatever
+filter the page is showing; Machines has two, one per summary card. Materials has
+a further download under its line items, the one row-level export: every row the
+filter allows, not the page on screen.
 
 A job is written as a single transaction: its material line items, every
-participant's hours, and any machine usage all land together or not at all.
-Labour hours and machine motohodiny are deliberately separate numbers — neither
-is derived from the other. See [docs/architecture.md](docs/architecture.md).
+participant's hours, any machine usage and any fill-ups all land together or not
+at all. Labour hours, machine motohodiny, tonnage and litres are four
+deliberately separate numbers — none is derived from another. See [docs/architecture.md](docs/architecture.md).
 
 **A job a worker submits does not count until a manager approves it.** It is
 recorded straight away and shows up highlighted on the Review page, but the
@@ -117,7 +117,7 @@ Full column reference: [docs/development.md](docs/development.md#seeding-data).
 ## Common commands
 
 ```bash
-python manage.py test                  # full suite (354 tests, needs Postgres)
+python manage.py test                  # full suite (388 tests, needs Postgres)
 python manage.py test workorders       # one app
 ruff check . && ruff format .          # lint and format
 docker compose up --build              # full stack

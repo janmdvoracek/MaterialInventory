@@ -68,6 +68,7 @@ WorkOrder #17  "Crushing gravel"
 ├── StockMovement  TRANSFORM_PRODUCE  +14 t  Gravel 8/16 @ Yard
 ├── StockMovement  TRANSFORM_PRODUCE  +6 t   Gravel 4/8  @ Yard
 ├── MachineUsage   Crusher  3.5 h, 20 t
+├── MachineRefuel  Crusher  40 l
 ├── WorkerHours    novak 6 h,  svoboda 4 h
 └── collaborators  [svoboda]
 ```
@@ -77,6 +78,9 @@ is enforced. **A submission must carry at least one consumed row and one
 produced row, and their totals must be exactly equal**; otherwise
 `transform_create` re-renders the form with an error and writes nothing at all —
 not the line items, not the hours, not the machine usage.
+
+**One kind of submission is exempt, and only one**: a job that is nothing but
+fill-ups. See [A job that is only fuel](#a-job-that-is-only-fuel).
 
 The comparison is between *totals*, not between matching rows, because the
 normal case is one input crushed into several output fractions. Equality is
@@ -175,7 +179,15 @@ since a refused submission with no message on the page looks exactly like a
 button that did nothing.
 
 Older rows predate the requirement and may still hold an empty description;
-nothing backfills them, and the pages keep printing „—" for one.
+nothing backfills them, and the pages keep printing „—" for one. So does a
+fuel-only job, which is not asked for either field — see
+[A job that is only fuel](#a-job-that-is-only-fuel).
+
+Both fields carry `required=False` on `WorkOrderForm` and are re-imposed by
+`_require_work_fields` once the rows are known, because the form alone cannot
+tell a job that records work from one that records a tank of diesel. The error
+is Django's own `required` message, taken off the field, so it reads the same as
+every other required field on the page and comes from the same catalog.
 
 ### When a job happened
 
@@ -566,9 +578,88 @@ the motohodiny on Stroje. That is not a reconciliation bug.
 machine put through on that job. **It is not part of the mass balance.** Chained
 machines each handle the same material, so the tonnage column sums to a multiple
 of the job's consumed total, not to it — nothing compares the two. The Transform
-form requires it on any machine row that names a machine, but the column is
+form requires it on any machine row that records motohodiny, but the column is
 nullable because rows written before it existed have no answer (unknown, not
 zero), and the history table renders those as a dash.
+
+`MachineRefuel.litres` is a fourth, and it lives in its own table.
+
+### `MachineRefuel`: fuel is not runtime
+
+One machine's fill-up on one job, in litres. Like every other row hanging off a
+job it has no timestamp of its own — its date is the job's `performed_on`,
+because `job_edit` deletes and rewrites every row and an insert time would drift
+to the day of a correction.
+
+**It is a separate table rather than a `litres` column on `MachineUsage`**, and
+the reason is not tidiness: the two rows do not imply each other. A machine can
+be refuelled on a job it did not run — a whole job can be nothing but tanking up
+— so a fill-up has to be able to exist with no usage row beside it. A nullable
+column on `MachineUsage` would have meant inventing a usage row with no hours to
+hang the litres off, and `hours` is not nullable.
+
+Nothing derives litres from motohodiny or tonnage, and nothing compares them.
+Unlike `tons`, `litres` is **not nullable**: the column is new, but a fill-up
+row only ever exists because somebody typed a number into it, so there is no
+*unknown* to represent and a total of zero is a real zero.
+
+### One machine row, two halves
+
+Both live on the Transform form's *Použité stroje* section, which is now four
+fields wide: stroj, motohodiny, tuny, natankováno (l). `MachineUsageForm` is
+therefore the one row form that does **not** follow `RowForm`'s all-or-nothing
+rule, and overrides `check_row` instead of it:
+
+| Row | Means |
+|---|---|
+| everything blank | no row |
+| machine + hours + tons | a `MachineUsage` |
+| machine + litres | a `MachineRefuel`, and no usage row |
+| machine + hours + tons + litres | both, from one row |
+| machine + one of hours/tons | refused — the usage half is still all-or-nothing |
+| machine alone | refused — it says nothing |
+| litres with no machine | refused |
+
+`RowForm.clean()` keeps the early return on `self.errors` that stops the row's
+own complaint printing over a field error; only the rule itself moved into an
+overridable hook.
+
+The no-duplicates rule is unchanged and covers both halves at once: a machine
+named twice is refused, so a machine refuelled twice on one job is one row
+carrying the sum. `_collect_rows` splits the section's rows into `JobRows.usages`
+(those with motohodiny) and `JobRows.refuels` (those with litres), and
+`_write_job_rows` writes each list to its own table.
+
+`job_edit` has to put them back together: `_machine_section_rows(usages, refuels)`
+merges the two tables into one row per machine, since the section refuses a
+machine twice. `keep` collects the machines named by *either* table, or a retired
+machine that only a fill-up names would render with nothing selected and the
+fill-up would be dropped on save while the page reported success — the same
+data-loss trap the usage rows carry.
+
+### A job that is only fuel
+
+**A submission carrying nothing but fill-ups is a complete, valid job.** Someone
+tanks up three machines and records that; there is no transformation involved.
+`_is_fuel_only(rows)` is true when there is at least one fill-up and no consumed
+rows, no produced rows, no motohodiny and no collaborator hours, and such a job
+is exempt from three things that every other submission must answer:
+
+- **the mass balance**, because there are no consumed and produced totals to
+  compare — not two totals that happen to match;
+- **„Popis"**, the job's label;
+- **„Moje hodiny"**, which could not be answered honestly anyway: its minimum is
+  half an hour, so there is no way to say "I did not work on this". No
+  `WorkerHours` row is written for the author at all, which is what `own_hours`
+  being `None` means in `_write_job_rows`.
+
+It stays an ordinary `WorkOrder` in every other respect: dated, authored,
+`PENDING` until a manager approves it, listed on Přehled, and shown on the job
+detail page. Not being *asked* for a description is not the same as refusing
+one — a worker who types one keeps it, and the four list columns read it.
+
+Add any motohodiny or any material row and the exemption is gone: the submission
+records work, and the balance and both fields come back.
 
 ### `collaborators`
 
@@ -589,9 +680,10 @@ person with hours who is not a collaborator.
 
 ### Machine totals are derived, never stored
 
-`Machine` carries no running counter. Both figures on Stroje are annotations
-over the `MachineUsage` rows the page's filter allows:
-`Sum('usages__hours')` and `Sum('usages__tons')`.
+`Machine` carries no running counter. Every figure on Stroje is an annotation
+over the rows the page's filter allows: `Sum('usages__hours')` and
+`Sum('usages__tons')` from `MachineUsage`, and `Sum('refuels__litres')` with
+`Count('refuels')` from `MachineRefuel`.
 
 There used to be a `Machine.total_hours` column, maintained by
 `MachineUsage.save()`/`.delete()` with `F()` expressions and a `select_for_update()`
@@ -603,8 +695,8 @@ with the page anyway. **No page read it**, so the column and the model methods
 were dropped. `MachineUsage` is now an ordinary
 model, and `_write_job_rows` just bulk-deletes its rows.
 
-Every row hanging off a job — line items, machine usage, worker hours —
-cascades when the job is deleted, so `job_delete` is a plain
+Every row hanging off a job — line items, machine usage, fill-ups, worker
+hours — cascades when the job is deleted, so `job_delete` is a plain
 `work_order.delete()` and the admin's delete page and „delete selected" action
 do the same thing. The line items' FK used to be `PROTECT`, left over
 from when they were stock history, which made the admin refuse to delete any
@@ -623,6 +715,10 @@ reason: those are one dataset at two zoom levels, so a reader can see a number
 and then what it consists of without changing page and re-entering the filter.
 The old `/machines/history/` page was exactly the bottom third of it and is
 gone.
+
+Fuel repeats that shape below it as a second pair of cards, *Tankování* and
+*Detail tankování*, under the same filter — see
+[The fuel card](#the-fuel-card).
 
 `_machine_summary(usages, form)` totals the *filtered* rows
 (`usages__in=usages.values('pk')`), so the two tables can never disagree. Two
@@ -675,6 +771,37 @@ filtered rows, priced. In the CSV export all three go through `_csv_number`, so
 an unknown is a blank cell rather than a `0` that Excel would sum as a machine
 that cost nothing.
 
+#### The fuel card
+
+*Tankování* is `_refuel_summary(refuels, form)`: litres and fill-up count per
+machine over the rows the page's own filter allows
+(`refuels__in=refuels.values('pk')`), with a *Celkem* row under it. It repeats
+`_machine_summary`'s two rules deliberately — every active machine is listed, and
+naming one in the filter narrows the card to it — because "which machines did we
+fuel last week" and "which ran" are the same question about the same fleet, and a
+machine at `0 l` answers it.
+
+It differs from the card above it in one way: **the zeros are real zeros.**
+`litres` is not nullable, so a `Sum` coming back `None` can only mean "no
+fill-ups in range" and is `Coalesce`d to `0` — there is no *unknown* to render as
+a dash the way `tons` has. That also lets `_refuel_summary` stay a queryset,
+where `_machine_summary` has to be a list for `_machine_costs`.
+
+`_filtered_machine_refuels` applies `MachineFilterForm` unchanged: its three
+lookups (`machine`, `work_order__created_by`, `work_order__performed_on`) read
+identically on `MachineRefuel`, so the fuel card and the usage card cannot
+disagree about what the filter means. Both are approved-only, and an invalid
+filter returns `Machine.objects.none()` and a total of `0`.
+
+**Stroje is the one page with two paginated tables**, so each carries its own
+page parameter — `_paginated(request, rows, param)` returns `page_obj`, the
+`querystring` its links carry, and `page_param`, dropping only *that* table's
+parameter and keeping the filters and the other table's page. `_list_page_context`
+is now that helper plus `date_presets`, and `_pagination.html` reads `page_param`
+rather than writing `page` into the link. `_date_preset_links` drops both, since
+a new date range starts at page one in either table. One shared `page` would have
+moved both tables at once and made one of the two links lie.
+
 ### Materiál is the same page with `Material` in place of `Machine`
 
 `material_dashboard` is Stroje's shape applied to the line items: a filter, a
@@ -720,7 +847,8 @@ summary above is what restricts itself to `is_active=True`.
 
 Hodiny, Stroje and Materiál each carry a „Stáhnout do CSV / Excelu" button at
 the foot of their **summary** card — „Souhrn", „Stav strojů", „Souhrn
-materiálů" — and Materiál carries a second one under „Detail položek".
+materiálů" — Stroje carries a second one under „Tankování", its other summary,
+and Materiál carries one under „Detail položek".
 
 **That detail table is the one exception, and it is deliberate.** Everywhere
 else the paginated rows underneath a summary are the working-out and the
@@ -728,7 +856,7 @@ summary is the report. Materiál's rows are not working-out: they are the only
 place in the app that says what a single job consumed and produced, one line at
 a time, which is what a manager reconciling a month against delivery notes
 actually needs. Stroje's usage rows have no such reading — the totals *are* the
-question there — so they stay unexported.
+question there — so they stay unexported, and so do the fill-ups.
 
 **The detail file is every row the filter allows, not the page on screen.** The
 table paginates at `HISTORY_PAGE_SIZE`; a file holding rows 1–50 of 300 under
@@ -743,6 +871,7 @@ rather than merely intended:
 | Export | Name | Built from |
 |---|---|---|
 | „Stav strojů" | `machine_dashboard_export` | `_filtered_machine_usages` + `_machine_summary` |
+| „Tankování" | `machine_refuel_export` | `_filtered_machine_refuels` + `_refuel_summary` |
 | „Souhrn materiálů" | `material_dashboard_export` | `_filtered_material_movements` + `_material_summary` |
 | „Detail položek" | `material_detail_export` | `_filtered_material_movements` |
 | „Souhrn" (hodiny) | `time_worked_export` | `_time_worked_scope` |
@@ -756,7 +885,7 @@ exactly as it is out of the page, and an invalid filter exports a header row
 and nothing else.
 
 Each export carries the same gate as its page: `time_worked_export` is
-`login_required` (a worker downloads their own row), the other three are
+`login_required` (a worker downloads their own row), the other four are
 `role_required(MANAGER, ADMIN)`. The detail file is the one most worth gating —
 it names every job's author and description, not just totals.
 

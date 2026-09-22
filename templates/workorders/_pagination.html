@@ -1,8 +1,15 @@
-{# Page links for `page_obj`, carrying the filters along in `querystring`. #}
+{% comment %}
+Page links for `page_obj`, carrying the filters along in `querystring`.
+
+`page_param` is the query parameter this table pages on, because a page can hold
+two independent tables — Stroje holds the machine usages and the fill-ups — and
+paging one has to leave the other where it was. `_paginated` supplies all three
+keys, and a page's second table includes this template with its own set of them.
+{% endcomment %}
 {% if page_obj.has_other_pages %}
 <p>
-    {% if page_obj.has_previous %}<a href="?{{ querystring }}&page={{ page_obj.previous_page_number }}">Předchozí</a>{% endif %}
+    {% if page_obj.has_previous %}<a href="?{{ querystring }}&{{ page_param }}={{ page_obj.previous_page_number }}">Předchozí</a>{% endif %}
     Stránka {{ page_obj.number }} z {{ page_obj.paginator.num_pages }}
-    {% if page_obj.has_next %}<a href="?{{ querystring }}&page={{ page_obj.next_page_number }}">Další</a>{% endif %}
+    {% if page_obj.has_next %}<a href="?{{ querystring }}&{{ page_param }}={{ page_obj.next_page_number }}">Další</a>{% endif %}
 </p>
 {% endif %}

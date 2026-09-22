@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import MachineUsage, StockMovement, WorkerHours, WorkOrder
+from .models import MachineRefuel, MachineUsage, StockMovement, WorkerHours, WorkOrder
 
 
 # Line items are edited only through this inline, never registered on their own.
@@ -14,6 +14,15 @@ class MachineUsageInline(admin.TabularInline):
     model = MachineUsage
     extra = 1
     fields = ('machine', 'hours', 'tons')
+
+
+# Fuel is its own table, so its own inline — and, like every other row type, it
+# is never registered top-level: a fill-up exists only as part of a job, and a
+# second „Tankování" section in the index would shadow the worker form's.
+class MachineRefuelInline(admin.TabularInline):
+    model = MachineRefuel
+    extra = 1
+    fields = ('machine', 'litres')
 
 
 class WorkerHoursInline(admin.TabularInline):
@@ -30,7 +39,7 @@ class WorkOrderAdmin(admin.ModelAdmin):
     # Review fields are written by `job_approve`.
     readonly_fields = ('created_by', 'reviewed_at', 'reviewed_by')
     # No `filter_horizontal` for collaborators: its JavaScript labels aren't translated to Czech.
-    inlines = [MovementInline, MachineUsageInline, WorkerHoursInline]
+    inlines = [MovementInline, MachineUsageInline, MachineRefuelInline, WorkerHoursInline]
 
     def save_model(self, request, obj, form, change):
         if not obj.pk and not obj.created_by_id:

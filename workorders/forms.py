@@ -54,8 +54,20 @@ def collaborator_queryset(user, viewer=None):
 
 
 class WorkOrderForm(forms.Form):
+    """The job's own fields. „Popis" and „Moje hodiny" are required in practice.
+
+    Both carry `required=False` here and are re-imposed by
+    `_require_work_fields` once the rows are known, because a job that is
+    nothing but fill-ups has neither to give: there is no work to label and
+    nobody's hours to record (`hours` cannot even be answered — its minimum is
+    half an hour). The form alone cannot tell the two cases apart, so the view
+    decides; the errors still land on these fields, where the shared partial
+    already renders them.
+    """
+
     description = forms.CharField(
         max_length=255,
+        required=False,
         label='Popis',
         widget=forms.TextInput(attrs={'placeholder': 'Popis provedené práce'}),
     )
@@ -68,7 +80,9 @@ class WorkOrderForm(forms.Form):
         label='Poznámky',
         widget=forms.Textarea(attrs={'rows': 4, 'placeholder': 'Doplňující poznámky (volitelné)'}),
     )
-    hours = _hours_field(label='Moje hodiny', widget=forms.NumberInput(attrs={'placeholder': 'Odpracované hodiny'}))
+    hours = _hours_field(
+        required=False, label='Moje hodiny', widget=forms.NumberInput(attrs={'placeholder': 'Odpracované hodiny'})
+    )
     # `format` is required: the cs locale would render 02.09.2026, which
     # <input type="date"> shows as blank.
     performed_on = forms.DateField(
@@ -161,7 +175,7 @@ class MaterialRowFormSet(UniqueChoiceFormSet):
 
 class MachineRowFormSet(UniqueChoiceFormSet):
     unique_field = 'machine'
-    duplicate_error = 'Stroj „{name}“ je vybraný víckrát. Sečtěte motohodiny a tuny do jednoho řádku.'
+    duplicate_error = 'Stroj „{name}“ je vybraný víckrát. Sečtěte motohodiny, tuny a litry do jednoho řádku.'
 
 
 class WorkerRowFormSet(UniqueChoiceFormSet):
@@ -189,10 +203,19 @@ class RowForm(forms.Form):
             # A failed field is missing from cleaned_data and would look
             # half-filled, burying the real error under `incomplete_error`.
             return cleaned_data
+        self.check_row(cleaned_data)
+        return cleaned_data
+
+    def check_row(self, cleaned_data):
+        """The row's own rule: blank, or filled in completely.
+
+        A hook rather than inline, because `MachineUsageForm` has two halves
+        that stand alone and so cannot use this rule. The early return above
+        stays in one place either way.
+        """
         filled = [cleaned_data.get(name) for name in self.fields]
         if any(filled) and not all(filled):
             raise forms.ValidationError(self.incomplete_error)
-        return cleaned_data
 
 
 class MovementItemForm(RowForm):
@@ -216,8 +239,19 @@ class MovementItemForm(RowForm):
 
 
 class MachineUsageForm(RowForm):
+    """One machine on a job: what it ran, and/or the fuel put into it.
+
+    Two independent halves, which is why this row does not follow `RowForm`'s
+    all-or-nothing rule. Motohodiny and tuny go together — one without the other
+    is a half-typed usage row — but litres stand alone, so „stroj + litry" is a
+    complete row that writes a `MachineRefuel` and no `MachineUsage`. That is
+    what lets a whole job be nothing but fill-ups; see `_is_fuel_only`.
+    """
+
     catalog_field = 'machine'
-    incomplete_error = 'Vyplňte stroj, motohodiny a tuny, nebo řádek nechte prázdný.'
+    incomplete_error = 'Vyplňte motohodiny i tuny, nebo obojí nechte prázdné a vyplňte jen natankované litry.'
+    missing_machine_error = 'Vyberte stroj, nebo řádek nechte prázdný.'
+    nothing_recorded_error = 'U stroje vyplňte motohodiny a tuny, nebo natankované litry.'
 
     machine = forms.ModelChoiceField(
         queryset=Machine.objects.filter(is_active=True),
@@ -235,6 +269,32 @@ class MachineUsageForm(RowForm):
         label='Tuny',
         widget=forms.NumberInput(attrs={'placeholder': 'Tuny'}),
     )
+    # Litres, and no unit field to read — like every quantity in the app, the
+    # unit is hardcoded in the prompt. Far narrower than the decimal(12, 2)
+    # column, so it needs no width cap of its own (see `HOURS_MAX_DIGITS`).
+    litres = forms.DecimalField(
+        min_value=Decimal('0.01'),
+        max_digits=7,
+        decimal_places=2,
+        required=False,
+        label='Natankováno (l)',
+        widget=forms.NumberInput(attrs={'placeholder': 'Natankováno (l)'}),
+    )
+
+    def check_row(self, cleaned_data):
+        machine = cleaned_data.get('machine')
+        hours = cleaned_data.get('hours')
+        tons = cleaned_data.get('tons')
+        litres = cleaned_data.get('litres')
+        if not any((machine, hours, tons, litres)):
+            return
+        if machine is None:
+            raise forms.ValidationError(self.missing_machine_error)
+        # The usage half is all-or-nothing on its own; the fuel half is not.
+        if (hours is None) != (tons is None):
+            raise forms.ValidationError(self.incomplete_error)
+        if hours is None and litres is None:
+            raise forms.ValidationError(self.nothing_recorded_error)
 
 
 class WorkerHoursForm(RowForm):

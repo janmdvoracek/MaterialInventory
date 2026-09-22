@@ -95,6 +95,27 @@
 </div>
 
 <div class="card">
+    <h2>Tankování</h2>
+    {# Its own card because its own table: a machine may be refuelled on a job #}
+    {# it did not run on, so a fill-up has no usage row to sit beside.         #}
+    <div class="table-scroll">
+    <table>
+        <thead><tr><th>Stroj</th><th>Natankováno</th></tr></thead>
+        <tbody>
+        {% for refuel in machine_refuels %}
+            <tr>
+                <td>{{ refuel.machine.name }}</td>
+                <td>{{ refuel.litres|floatformat:2 }} l</td>
+            </tr>
+        {% empty %}
+            <tr><td colspan="2">Žádné tankování.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+
+<div class="card">
     <h2>Akce</h2>
     {# .job-actions lays the three out as one row of equal buttons; without it #}
     {# `button, .btn` (width: 100%) stacks them full-width down the card.      #}
