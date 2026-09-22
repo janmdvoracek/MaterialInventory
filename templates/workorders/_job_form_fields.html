@@ -45,6 +45,16 @@ workorders/forms.py.
 `WorkOrderForm` without a `user`, so the field is not there. The hours label
 comes from the form, because each page means something different by it.
 
+**„Fotka" is last, and both callers must open their <form> with
+`enctype="multipart/form-data"`** — the one thing this partial cannot do for
+them, and without it the browser posts the file name instead of the file. It
+sits after the sections rather than with the other job fields because a file
+input is the one control a page cannot be re-rendered carrying: whenever this
+form comes back — a row button on a browser running no JavaScript, or any
+validation error — the pick is gone and has to be made again. Last is where
+that costs the least, and the hint under it says so rather than letting a
+worker believe a photo went up with the job.
+
 **Every error this page can produce is rendered, and that is a rule rather than
 a nicety.** Nothing is written unless all five forms validate, so an error with
 nowhere to appear is a submission that vanishes: the page comes back carrying
@@ -112,5 +122,11 @@ pressed.
     </div>
 </div>
 {% endfor %}
+
+<h2>Fotka</h2>
+<label for="{{ order_form.photo.id_for_label }}">Vyberte fotku (volitelné)</label>
+{{ order_form.photo }}
+{% for error in order_form.photo.errors %}<p class="messages error">{{ error }}</p>{% endfor %}
+
 <script src="{% static 'js/job_rows.js' %}" defer></script>
 <script src="{% static 'js/searchable_select.js' %}" defer></script>

@@ -54,7 +54,7 @@ klepnutím na logo vlevo nahoře.
 
 Použijte, když se **z jednoho materiálu stane jiný** — drcení, třídění, řezání.
 
-Formulář má čtyři části:
+Formulář má pět částí:
 
 **1. Popis a vaše hodiny**
 
@@ -194,8 +194,30 @@ libovolný počet řádků *Stroj + Natankováno (l)*.
   to být „jen tankování" — **Popis**, **Moje hodiny** i kontrola součtů se
   vrátí.
 
-> Celá zakázka se ukládá najednou — položky, hodiny lidí, hodiny strojů i
-> tankování. Po uložení se formulář vyprázdní a můžete zapsat další zakázku.
+**5. Fotka**
+
+Úplně dole ve formuláři je pole **Fotka**. Je **nepovinné** a u žádné zakázky se
+nevyžaduje. Klepnutím na něj telefon nabídne fotoaparát i galerii — můžete práci
+rovnou vyfotit, nebo vybrat fotku, kterou už máte.
+
+- Jedna fotka na zakázku. Vyberete-li druhou, nahradí tu první.
+- Přijímají se běžné formáty z telefonu — `jpg`, `png`, `webp`, `heic`.
+  Dokument (třeba `pdf`) aplikace odmítne a napíše to pod polem.
+- Fotka může mít nejvýš **10 MB**. Větší aplikace odmítne, opět s hláškou u pole.
+- **Pole si fotku nepamatuje.** Pokud formulář po odeslání něco vytkne — nesedí
+  součty, chybí popis — nebo přidáte řádek, je potřeba fotku vybrat **znovu**.
+  Prohlížeče to jinak neumí a je to jediné pole formuláře, které se takto chová;
+  proto je až úplně dole.
+- Fotka se ukazuje v **detailu zakázky**, tedy v Přehledu, kam vidí jen vedoucí
+  a správci. Vedoucí ji tam při úpravě může vyměnit, nebo ji zaškrtnutím
+  políčka **Zrušit** odstranit.
+- Fotky jsou **neveřejné** — otevřít je může jen přihlášený vedoucí nebo
+  správce, stejně jako samotnou zakázku. Jako pracovník se ke své odeslané
+  fotce zpátky nedostanete, takže ji nemažte z telefonu, dokud ji potřebujete.
+
+> Celá zakázka se ukládá najednou — položky, hodiny lidí, hodiny strojů,
+> tankování i fotka. Po uložení se formulář vyprázdní a můžete zapsat další
+> zakázku.
 
 ## Schvalování
 
@@ -222,8 +244,9 @@ Zakázky, které čekají na schválení, jsou **žlutě** zvýrazněné; nahoř
 čekajících. Filtrovat lze podle stavu, pracovníka a data.
 
 Klepnutím na **Detail** otevřete celou zakázku se vším, co bylo ve formuláři
-vyplněno — hodiny všech lidí, spotřeba, výroba, stroje s motohodinami a tunami
-i **tankování**. Dole jsou akce:
+vyplněno — hodiny všech lidí, spotřeba, výroba, stroje s motohodinami a tunami,
+**tankování** a **fotku**, pokud ji pracovník přiložil. Fotka se ukazuje jen
+tady; klepnutím na ni se otevře v plné velikosti. Dole jsou akce:
 
 | Akce | Co udělá |
 |---|---|
@@ -235,6 +258,10 @@ Při úpravě platí stejná pravidla jako při zápisu — hlavně že se **sou
 spotřeby a výroby musí rovnat**; u zakázky, která je jen tankování, se
 nekontrolují, stejně jako při zápisu. Pole *hodiny* patří tomu, kdo zakázku
 zapsal, ne vám.
+
+Fotku v úpravě buď nechte být — beze změny zůstane ta stávající —, nebo vyberte
+novou, která ji nahradí, nebo zaškrtněte **Zrušit** a uložte, čímž se fotka
+odstraní. Odstraněnou ani přepsanou fotku už nelze vrátit.
 
 ## Stroje
 
@@ -471,6 +498,17 @@ Je to záměr. Kdo potřebuje vidět vše, potřebuje roli vedoucího.
 **V nabídce chybí materiál nebo stroj.**
 Nejspíš byl vyřazen. Požádejte správce, aby ho v administraci znovu označil jako
 aktivní.
+
+**Odeslal jsem formulář s fotkou a fotka tam není.**
+Formulář nejspíš něco vytkl a vrátil se zpět — prohlížeč fotku v poli neudrží.
+Vyberte ji znovu a odešlete zakázku ještě jednou. Totéž platí po přidání řádku.
+
+**„Přípona souboru … není povolena."**
+Vybraný soubor není fotka. Přijímají se `jpg`, `png`, `webp` a `heic`.
+
+**„Fotka je příliš velká (maximálně 10 MB)."**
+Fotka je nad povolenou velikostí. Vyfoťte ji znovu v nižším rozlišení, nebo
+použijte jinou.
 
 **Zapomenuté heslo.**
 Aplikace neumí obnovu hesla přes e-mail. Požádejte správce o nastavení nového.

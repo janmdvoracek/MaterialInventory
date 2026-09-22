@@ -1,12 +1,16 @@
 import csv
 import io
 import re
+import shutil
+import tempfile
 from datetime import date, timedelta
 from decimal import Decimal
 
 from django import forms
 from django.conf import settings
-from django.test import TestCase
+from django.core.files.storage import default_storage
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase, override_settings
 from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 
@@ -14,7 +18,7 @@ from accounts.models import User
 from machines.models import Machine
 from materials.models import Material
 
-from .forms import JOB_SECTIONS, NOTES_MAX_LENGTH
+from .forms import JOB_SECTIONS, NOTES_MAX_LENGTH, PHOTO_MAX_BYTES
 from .models import MachineRefuel, MachineUsage, StockMovement, WorkerHours, WorkOrder
 from .reports import FUEL_PAGE_PARAM, HISTORY_PAGE_SIZE, MY_JOBS_LIMIT, _last_month
 from .views import MAX_ROWS_PER_SECTION, MIN_ROWS_PER_SECTION
@@ -3888,3 +3892,237 @@ class MachineRefuelReportTests(TestCase):
         # Gated like the page it hangs off; hiding the nav link is not access control.
         self.client.force_login(self.worker)
         self.assertEqual(self.client.get(reverse('machine_refuel_export')).status_code, 403)
+
+
+class JobPhotoTests(ReviewFixtureMixin, TestCase):
+    """„Fotka": one optional upload per job, stored outside the public tree.
+
+    Four things to hold. The upload only arrives if both callers of the shared
+    partial are multipart, so the enctype is asserted rather than assumed. The
+    file is never public — it goes out through `protected_media`, gated like the
+    job page it appears on. An edit that sends no file keeps the stored one,
+    because a browser cannot re-send one. And the file dies with the row it
+    belongs to, which Django does not do on its own — through `_apply_photo` on
+    the form, the post_delete receiver on a deleted job, and `save_model` in the
+    admin, which writes the column through a widget of its own.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        # A real directory, since these tests are about files on disk. The
+        # override resets `default_storage`, so the model field follows it.
+        cls.media_root = tempfile.mkdtemp()
+        cls.media_override = override_settings(MEDIA_ROOT=cls.media_root)
+        cls.media_override.enable()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.media_override.disable()
+        shutil.rmtree(cls.media_root, ignore_errors=True)
+        super().tearDownClass()
+
+    def _photo(self, name='foto.jpg', size=64):
+        return SimpleUploadedFile(name, b'x' * size, content_type='image/jpeg')
+
+    def _submit(self, url=None, **overrides):
+        """A balanced job, with whatever „Fotka" the test passes."""
+        payload = job_payload(
+            [{'material': self.material_raw, 'quantity': Decimal('5')}],
+            [{'material': self.material_finished, 'quantity': Decimal('5')}],
+        )
+        payload.update(overrides)
+        return self.client.post(url or reverse('transform_create'), payload)
+
+    def _job_with_photo(self, **overrides):
+        self.client.force_login(self.worker)
+        response = self._submit(photo=self._photo(**overrides))
+        self.assertRedirects(response, reverse('transform_create'))
+        return WorkOrder.objects.get()
+
+    def test_a_job_records_no_photo_by_default(self):
+        # Optional everywhere: no upload is an empty path, not a failed job.
+        work_order = self.submit_job(self.worker)
+        self.assertFalse(work_order.photo)
+
+    def test_an_uploaded_photo_is_stored_on_the_job(self):
+        work_order = self._job_with_photo()
+        self.assertTrue(work_order.photo)
+        self.assertTrue(default_storage.exists(work_order.photo.name))
+        self.assertEqual(work_order.photo.read(), b'x' * 64)
+
+    def test_the_stored_name_is_the_app_s_and_not_the_phone_s(self):
+        # `IMG_0001.jpg` off two phones would otherwise collide every day.
+        first = self._job_with_photo(name='IMG_0001.jpg')
+        self.client.force_login(self.other_worker)
+        self._submit(photo=self._photo(name='IMG_0001.jpg'))
+        second = WorkOrder.objects.exclude(pk=first.pk).get()
+        self.assertNotIn('IMG_0001', first.photo.name)
+        self.assertNotEqual(first.photo.name, second.photo.name)
+        self.assertTrue(first.photo.name.startswith('job_photos/'))
+        self.assertTrue(first.photo.name.endswith('.jpg'))
+
+    def test_both_job_pages_post_as_multipart(self):
+        # Without the enctype the browser posts the file's *name* and the photo
+        # silently never arrives — the one part of this the partial cannot do.
+        work_order = self.submit_job(self.worker)
+        self.client.force_login(self.manager)
+        for url in (reverse('transform_create'), reverse('job_edit', args=[work_order.pk])):
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertContains(response, 'enctype="multipart/form-data"')
+                self.assertContains(response, 'name="photo"')
+
+    def test_a_file_that_is_not_a_photo_is_refused(self):
+        self.client.force_login(self.worker)
+        response = self._submit(photo=SimpleUploadedFile('poznamky.pdf', b'%PDF-1.4'))
+        self.assertEqual(response.status_code, 200)
+        # Nothing at all is written, so the complaint has to be on the page.
+        self.assertFalse(WorkOrder.objects.exists())
+        self.assertContains(response, 'Přípona souboru')
+
+    def test_a_photo_past_the_size_cap_is_refused(self):
+        self.client.force_login(self.worker)
+        response = self._submit(photo=self._photo(size=PHOTO_MAX_BYTES + 1))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(WorkOrder.objects.exists())
+        self.assertContains(response, 'Fotka je příliš velká')
+
+    def test_the_photo_is_shown_on_the_job_page(self):
+        work_order = self._job_with_photo()
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('job_detail', args=[work_order.pk]))
+        self.assertContains(response, work_order.photo.url)
+
+    def test_the_photo_is_served_to_a_reviewer(self):
+        work_order = self._job_with_photo()
+        self.client.force_login(self.manager)
+        response = self.client.get(work_order.photo.url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(b''.join(response.streaming_content), b'x' * 64)
+
+    def test_the_photo_is_not_public(self):
+        # MEDIA_ROOT is not served by the proxy or by whitenoise, so this URL is
+        # the only way in — and it carries the job page's own gate.
+        work_order = self._job_with_photo()
+        # A worker may record a job, and a photo with it, but the job pages are
+        # the manager's — so this is the same 403 `job_detail` gives them.
+        self.assertEqual(self.client.get(work_order.photo.url).status_code, 403)
+        self.client.logout()
+        response = self.client.get(work_order.photo.url)
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/login/', response.url)
+
+    def test_a_path_that_is_not_a_file_is_a_404_rather_than_a_500(self):
+        self._job_with_photo()
+        self.client.force_login(self.manager)
+        for path in ('job_photos/2026/01/nic.jpg', 'job_photos'):
+            with self.subTest(path=path):
+                # The second is a directory, which opens as an OSError of its own.
+                response = self.client.get(reverse('protected_media', args=[path]))
+                self.assertEqual(response.status_code, 404)
+
+    def test_a_path_climbing_out_of_the_media_root_is_refused(self):
+        # The storage joins through `safe_join`; nothing here has to parse paths.
+        self.client.force_login(self.manager)
+        response = self.client.get('/media/../config/settings.py')
+        self.assertEqual(response.status_code, 400)
+
+    def test_an_edit_that_sends_no_file_keeps_the_photo(self):
+        # The form carries the stored photo as `initial` precisely for this: a
+        # file input cannot be re-filled, so every edit arrives without one.
+        work_order = self._job_with_photo()
+        stored = work_order.photo.name
+        self.client.force_login(self.manager)
+        url = reverse('job_edit', args=[work_order.pk])
+        self.assertRedirects(self._submit(url=url), reverse('job_detail', args=[work_order.pk]))
+        work_order.refresh_from_db()
+        self.assertEqual(work_order.photo.name, stored)
+        self.assertTrue(default_storage.exists(stored))
+
+    def test_an_edit_can_replace_the_photo(self):
+        work_order = self._job_with_photo()
+        old = work_order.photo.name
+        self.client.force_login(self.manager)
+        url = reverse('job_edit', args=[work_order.pk])
+        # The replaced file is deleted on commit, which a TestCase never reaches.
+        with self.captureOnCommitCallbacks(execute=True):
+            self._submit(url=url, photo=self._photo(name='nova.jpg', size=10))
+        work_order.refresh_from_db()
+        self.assertNotEqual(work_order.photo.name, old)
+        self.assertEqual(work_order.photo.read(), b'x' * 10)
+        self.assertFalse(default_storage.exists(old))
+
+    def test_an_edit_can_clear_the_photo(self):
+        work_order = self._job_with_photo()
+        stored = work_order.photo.name
+        self.client.force_login(self.manager)
+        url = reverse('job_edit', args=[work_order.pk])
+        with self.captureOnCommitCallbacks(execute=True):
+            # What ClearableFileInput's „Zrušit" box posts.
+            self._submit(url=url, **{'photo-clear': 'on'})
+        work_order.refresh_from_db()
+        self.assertEqual(work_order.photo.name, '')
+        self.assertFalse(default_storage.exists(stored))
+
+    def test_the_edit_page_offers_the_stored_photo(self):
+        work_order = self._job_with_photo()
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('job_edit', args=[work_order.pk]))
+        self.assertEqual(response.context['order_form'].initial['photo'], work_order.photo)
+        self.assertContains(response, 'photo-clear')
+
+    def test_deleting_a_job_deletes_its_photo(self):
+        # Django removes neither on delete() nor on a cascade; the post_delete
+        # receiver is what does, and the admin's bulk delete goes through it too.
+        work_order = self._job_with_photo()
+        stored = work_order.photo.name
+        self.client.force_login(self.manager)
+        with self.captureOnCommitCallbacks(execute=True):
+            self.client.post(reverse('job_delete', args=[work_order.pk]))
+        self.assertFalse(WorkOrder.objects.exists())
+        self.assertFalse(default_storage.exists(stored))
+
+    def test_the_admin_does_not_leave_a_replaced_photo_behind(self):
+        # The admin writes the field through its own widget, so it needs the
+        # same cleanup `_apply_photo` does on the job form.
+        work_order = self._job_with_photo()
+        old = work_order.photo.name
+        admin_user = User.objects.create_superuser(username='sprava', password='pw')
+        self.client.force_login(admin_user)
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(
+                reverse('admin:workorders_workorder_change', args=[work_order.pk]),
+                {
+                    'description': work_order.description,
+                    'notes': '',
+                    'performed_on': work_order.performed_on.isoformat(),
+                    'status': work_order.status,
+                    'photo': self._photo(name='jina.jpg', size=8),
+                    **{
+                        f'{prefix}-{key}': value
+                        for prefix in ('movements', 'machine_usages', 'machine_refuels', 'worker_hours')
+                        for key, value in (
+                            ('TOTAL_FORMS', '0'),
+                            ('INITIAL_FORMS', '0'),
+                            ('MIN_NUM_FORMS', '0'),
+                            ('MAX_NUM_FORMS', '1000'),
+                        )
+                    },
+                },
+            )
+        self.assertEqual(response.status_code, 302)
+        work_order.refresh_from_db()
+        self.assertNotEqual(work_order.photo.name, old)
+        self.assertFalse(default_storage.exists(old))
+
+    def test_a_fuel_only_job_can_carry_a_photo(self):
+        # „Fotka" is asked of no job at all, so the one submission that answers
+        # neither „Popis" nor „Moje hodiny" may still have one.
+        self.client.force_login(self.worker)
+        payload = job_payload(
+            [], [], machine_rows=[{'machine': self.machine_a, 'litres': '40'}], description='', hours=''
+        )
+        payload['photo'] = self._photo()
+        self.assertRedirects(self.client.post(reverse('transform_create'), payload), reverse('transform_create'))
+        self.assertTrue(WorkOrder.objects.get().photo)

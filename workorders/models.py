@@ -1,6 +1,40 @@
+from uuid import uuid4
+
 from django.conf import settings
-from django.db import models
+from django.db import models, transaction
+from django.db.models.signals import post_delete
+from django.dispatch import receiver
 from django.utils import timezone
+
+
+def job_photo_path(instance, filename):
+    """Where an uploaded job photo is stored, under MEDIA_ROOT.
+
+    The name is a fresh uuid rather than the phone's: `IMG_0001.jpg` collides
+    on every second upload, and the original carries nothing worth keeping.
+    The extension stays, because it is what the browser is told the file is
+    when it is handed back. Foldered by upload month so one directory does not
+    grow without bound — by today's date, not `performed_on`, which an edit can
+    move while the stored file cannot.
+    """
+    suffix = filename.rsplit('.', 1)[-1].lower() if '.' in filename else 'jpg'
+    return f'job_photos/{timezone.localdate():%Y/%m}/{uuid4().hex}.{suffix}'
+
+
+def discard_photo(photo):
+    """Delete a stored photo's file once the write that let go of it commits.
+
+    `on_commit`, not now: a file outliving a rolled-back write is an orphan
+    nobody notices, while deleting one early would leave a surviving row
+    pointing at nothing. Both ends of a photo's life come through here — a job
+    deleted (`_delete_photo_file`) and a photo replaced or cleared
+    (`views._apply_photo`) — because Django removes neither on its own.
+    """
+    if not photo:
+        return
+    # Read off the FieldFile now; the attribute it came from is about to change.
+    storage, name = photo.storage, photo.name
+    transaction.on_commit(lambda: storage.delete(name))
 
 
 class WorkOrder(models.Model):
@@ -29,6 +63,14 @@ class WorkOrder(models.Model):
     description = models.CharField(max_length=255, verbose_name='popis')
     # Free-form and optional, unlike `description`: a whole paragraph, not a one-liner.
     notes = models.TextField(blank=True, verbose_name='poznámky')
+    # One optional photo of the work, taken on the phone that fills the form in.
+    # A plain FileField and not an ImageField on purpose: ImageField means Pillow
+    # for one upload, and Pillow cannot identify the HEIC an iPhone shoots, so it
+    # would refuse the very photo it is there to validate. Nothing resizes or
+    # reads the file, so the form's extension check and size cap are the whole
+    # rule (see `WorkOrderForm.photo`). Never public: MEDIA_ROOT is not served,
+    # the file goes out through `protected_media`.
+    photo = models.FileField(upload_to=job_photo_path, blank=True, verbose_name='fotka')
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING, verbose_name='stav')
     reviewed_at = models.DateTimeField(null=True, blank=True, verbose_name='posouzeno')
     reviewed_by = models.ForeignKey(
@@ -172,3 +214,13 @@ class MachineRefuel(models.Model):
 
     def __str__(self):
         return f'{self.machine} - {self.litres} l (WorkOrder #{self.work_order_id})'
+
+
+# The file is not the row's to keep once the row is gone: Django deletes neither
+# on `delete()` nor on a cascade. A signal rather than a line in `job_delete`,
+# because a job also dies through the admin's „delete selected", which is a
+# queryset delete — registering this receiver is itself what keeps Django off
+# its fast-delete path, so the signal still fires for every row.
+@receiver(post_delete, sender=WorkOrder)
+def _delete_photo_file(sender, instance, **kwargs):
+    discard_photo(instance.photo)

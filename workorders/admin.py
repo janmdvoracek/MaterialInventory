@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import MachineRefuel, MachineUsage, StockMovement, WorkerHours, WorkOrder
+from .models import MachineRefuel, MachineUsage, StockMovement, WorkerHours, WorkOrder, discard_photo
 
 
 # Line items are edited only through this inline, never registered on their own.
@@ -44,6 +44,12 @@ class WorkOrderAdmin(admin.ModelAdmin):
     def save_model(self, request, obj, form, change):
         if not obj.pk and not obj.created_by_id:
             obj.created_by = request.user
+        if change and 'photo' in form.changed_data:
+            # The admin writes `photo` straight through its own widget, so
+            # `views._apply_photo` is not in play; without this, replacing or
+            # clearing a photo here would leave the old file on disk. A job
+            # deleted from the admin is covered by the post_delete receiver.
+            discard_photo(WorkOrder.objects.get(pk=obj.pk).photo)
         super().save_model(request, obj, form, change)
 
     def save_formset(self, request, form, formset, change):

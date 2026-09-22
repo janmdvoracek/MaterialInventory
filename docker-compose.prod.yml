@@ -56,6 +56,9 @@ services:
     # The real CSVs are kept out of the image; without this, seed_data finds nothing.
     volumes:
       - ./seed_data:/app/seed_data:ro
+      # MEDIA_ROOT: job photos. A volume, or every deploy would rebuild the
+      # image and take them with it. Not covered by backup_db.sh — see DEPLOYMENT.md.
+      - media_data:/app/media
     depends_on:
       db:
         condition: service_healthy
@@ -85,5 +88,6 @@ services:
 
 volumes:
   db_data:
+  media_data:
   caddy_data:
   caddy_config:

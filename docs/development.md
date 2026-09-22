@@ -71,6 +71,15 @@ asserts on both `response.context` and the resulting database rows. Follow that
 shape — a test that mocks the ORM here would assert nothing useful, since the
 behaviour under test *is* the database interaction.
 
+One class does override a setting: `JobPhotoTests` points `MEDIA_ROOT` at a
+temporary directory, because those tests are about files on disk. The override
+resets `default_storage`, so `WorkOrder.photo` follows it. Uploaded files are
+also the one place the suite has to reach past the test transaction — the file
+behind a replaced, cleared or deleted photo is removed on
+`transaction.on_commit` (see [architecture.md](architecture.md#a-photo-of-the-work)),
+which a `TestCase` never reaches, so those assertions run inside
+`self.captureOnCommitCallbacks(execute=True)`.
+
 There is no separate test settings module, so **a change to `config/settings.py`
 is a change to how the suite behaves.** The locale settings in particular are
 load-bearing (see [localization.md](localization.md)).

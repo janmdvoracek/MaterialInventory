@@ -22,3 +22,6 @@ seed_data/*.csv
 .env.production
 # Database dumps written by scripts/backup_db.sh — real company data.
 backups/
+# MEDIA_ROOT — job photos uploaded through the form. Real company data, and
+# generated, not source. In production this is a Docker volume instead.
+media/
