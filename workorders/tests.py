@@ -14,7 +14,7 @@ from accounts.models import User
 from machines.models import Machine
 from materials.models import Material
 
-from .forms import JOB_SECTIONS
+from .forms import JOB_SECTIONS, NOTES_MAX_LENGTH
 from .models import MachineUsage, StockMovement, WorkerHours, WorkOrder
 from .reports import HISTORY_PAGE_SIZE, MY_JOBS_LIMIT, _last_month
 from .views import MAX_ROWS_PER_SECTION, MIN_ROWS_PER_SECTION
@@ -46,6 +46,7 @@ class TransformCreateTests(TestCase):
         data = {
             'description': description,
             'hours': hours,
+            'notes': '',
             # Pre-filled on the real form, so every browser posts it.
             'performed_on': timezone.localdate().isoformat(),
             'consumed-TOTAL_FORMS': str(max(len(consumed_rows), 1)),
@@ -1851,12 +1852,21 @@ class EmptyLabelTests(TestCase):
         self.assertContains(response, 'Všechny stavy')
 
 
-def job_payload(consumed_rows, produced_rows, machine_rows=None, worker_rows=None, description='Test job', hours='1'):
+def job_payload(
+    consumed_rows,
+    produced_rows,
+    machine_rows=None,
+    worker_rows=None,
+    description='Test job',
+    notes='',
+    hours='1',
+):
     """POST data for the Transform form, which the edit form re-uses verbatim."""
     machine_rows = machine_rows or []
     worker_rows = worker_rows or []
     data = {
         'description': description,
+        'notes': notes,
         'hours': hours,
         # Pre-filled on the real form, so every browser posts it.
         'performed_on': timezone.localdate().isoformat(),
@@ -1905,7 +1915,7 @@ class ReviewFixtureMixin:
         self.machine_a = Machine.objects.create(name='Crusher A')
         self.machine_b = Machine.objects.create(name='Excavator B')
 
-    def submit_job(self, user, quantity=Decimal('5'), machine_rows=None, worker_rows=None, hours='1'):
+    def submit_job(self, user, quantity=Decimal('5'), machine_rows=None, worker_rows=None, hours='1', notes=''):
         """Record a job through the real form, as `user` would."""
         self.client.force_login(user)
         response = self.client.post(
@@ -1916,6 +1926,7 @@ class ReviewFixtureMixin:
                 machine_rows=machine_rows,
                 worker_rows=worker_rows,
                 hours=hours,
+                notes=notes,
             ),
         )
         self.assertRedirects(response, reverse('transform_create'))
@@ -3365,6 +3376,76 @@ class RowErrorVisibilityTests(ReviewFixtureMixin, TestCase):
         self.client.force_login(self.manager)
         response = self.client.post(reverse('job_edit', args=[job.pk]), payload)
         self.assertContains(response, 'desetinná místa')
+
+
+class DescriptionAndNotesTests(ReviewFixtureMixin, TestCase):
+    """„Popis" is required, „Poznámky" is optional and holds a paragraph.
+
+    Both render on the shared partial, so both pages get them at once; the
+    required one has to be refused with a message rather than stored blank.
+    """
+
+    def _submit(self, url=None, **overrides):
+        payload = job_payload(
+            [{'material': self.material_raw, 'quantity': Decimal('5')}],
+            [{'material': self.material_finished, 'quantity': Decimal('5')}],
+        )
+        payload.update(overrides)
+        return self.client.post(url or reverse('transform_create'), payload)
+
+    def test_a_job_without_a_description_is_refused(self):
+        self.client.force_login(self.worker)
+        response = self._submit(description='')
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(WorkOrder.objects.exists())
+        # Nothing is written, so the complaint has to be on the page.
+        self.assertContains(response, 'Toto pole je třeba vyplnit.')
+
+    def test_notes_are_optional(self):
+        work_order = self.submit_job(self.worker)
+        self.assertEqual(work_order.notes, '')
+
+    def test_notes_are_stored_and_shown_on_the_job(self):
+        note = 'Drtič se zasekl,\npokračovalo se až odpoledne.'
+        work_order = self.submit_job(self.worker, notes=note)
+        self.assertEqual(work_order.notes, note)
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('job_detail', args=[work_order.pk]))
+        self.assertContains(response, 'Poznámky')
+        self.assertContains(response, 'Drtič se zasekl')
+
+    def test_notes_longer_than_a_description_are_accepted(self):
+        # The point of the field: `description` is capped at 255, this is not.
+        note = 'x' * 1000
+        work_order = self.submit_job(self.worker, notes=note)
+        self.assertEqual(work_order.notes, note)
+
+    def test_notes_past_the_form_cap_are_refused(self):
+        self.client.force_login(self.worker)
+        response = self._submit(notes='x' * (NOTES_MAX_LENGTH + 1))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(WorkOrder.objects.exists())
+
+    def test_edit_prefills_and_rewrites_the_notes(self):
+        work_order = self.submit_job(self.worker, notes='Původní poznámka')
+        self.client.force_login(self.manager)
+        url = reverse('job_edit', args=[work_order.pk])
+        response = self.client.get(url)
+        self.assertEqual(response.context['order_form'].initial['notes'], 'Původní poznámka')
+        self.assertRedirects(
+            self._submit(url=url, notes='Opravená poznámka'), reverse('job_detail', args=[work_order.pk])
+        )
+        work_order.refresh_from_db()
+        self.assertEqual(work_order.notes, 'Opravená poznámka')
+
+    def test_both_pages_render_the_notes_box(self):
+        work_order = self.submit_job(self.worker)
+        self.client.force_login(self.manager)
+        for url in (reverse('transform_create'), reverse('job_edit', args=[work_order.pk])):
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertContains(response, 'name="notes"')
+                self.assertContains(response, '<textarea')
 
 
 class HoursWidthTests(ReviewFixtureMixin, TestCase):

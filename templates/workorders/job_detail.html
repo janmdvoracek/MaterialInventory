@@ -12,6 +12,7 @@
             <tr><th>Zaznamenáno</th><td>{{ work_order.created_at|date:"Y-m-d H:i" }}</td></tr>
             <tr><th>Zaznamenal</th><td>{{ work_order.created_by.username }}</td></tr>
             <tr><th>Popis</th><td>{{ work_order.description|default:"—" }}</td></tr>
+            <tr><th>Poznámky</th><td>{{ work_order.notes|linebreaksbr|default:"—" }}</td></tr>
             {% if work_order.reviewed_at %}
                 <tr><th>Posouzeno</th><td>{{ work_order.reviewed_at|date:"Y-m-d H:i" }}{% if work_order.reviewed_by %} ({{ work_order.reviewed_by.username }}){% endif %}</td></tr>
             {% endif %}

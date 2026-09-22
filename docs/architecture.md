@@ -145,6 +145,38 @@ does behave that way. This is no worse than having no script; the alternative,
 dropping the server-side narrowing so the script owns it, would cost the
 feature entirely to anyone whose browser never ran it.
 
+### What a job says it was
+
+Two text fields, and they are deliberately not the same shape.
+
+`WorkOrder.description` (*„Popis"*) is a **required** one-liner — a
+`CharField(max_length=255)` rendered as a single-line `<input>`. It is the
+job's label: it is the „Zakázka" column on Přehled, on Hodiny, on Stroje and on
+Materiál, and it is what the Materiál detail export carries per row, so a job
+without one reads as a blank cell in four places. Requiring it costs the person
+filling the form in one short sentence and is why those columns say something.
+
+`WorkOrder.notes` (*„Poznámky"*) is the **optional** long one — a `TextField`
+rendered as a four-row `<textarea>`, for whatever did not fit on the line:
+a breakdown, a change of plan, who to ask about it. It appears only on the job
+detail page, rendered through `linebreaksbr` so the typed line breaks survive;
+no list column, no filter and no export reads it, because it is prose and none
+of those are prose columns.
+
+The form caps it at `NOTES_MAX_LENGTH` (2000) while the column has no limit of
+its own. That is the allowed direction — a form tighter than its model needs no
+migration — and it turns an accidental paste into a field error rather than an
+unbounded row. The opposite direction is the bug the `hours` fields guard
+against; see [Resizing a section](#resizing-a-section) for `HOURS_MAX_DIGITS`.
+
+Both live on `_job_form_fields.html`, so `transform_create` and `job_edit` get
+them together, and both render their own errors — the required one especially,
+since a refused submission with no message on the page looks exactly like a
+button that did nothing.
+
+Older rows predate the requirement and may still hold an empty description;
+nothing backfills them, and the pages keep printing „—" for one.
+
 ### When a job happened
 
 `WorkOrder.performed_on` is the day the work was done; `created_at` is when
@@ -302,8 +334,8 @@ the button had not been pressed. Each row's errors go through
 `templates/workorders/_row_errors.html` (its non-field errors *and* a labelled
 line per field error, since the row's selects have no visible labels of their
 own); each section renders its `non_form_errors`; and the job form renders its
-`description`, `author` and non-field errors alongside the two that were always
-there. The row forms also bail out of their own `clean()` when `self.errors` is
+`description`, `notes`, `author` and non-field errors alongside the two that
+were always there. The row forms also bail out of their own `clean()` when `self.errors` is
 non-empty — a field that failed validation is missing from `cleaned_data`, which
 reads exactly like a half-filled row, so the "fill in both, or leave it empty"
 message would otherwise be printed *over* the real complaint and tell the reader
@@ -744,8 +776,9 @@ it names every job's author and description, not just totals.
   rate renders as a dash on the page, but a dash in a spreadsheet cell is text
   that breaks a column of numbers; blank stays out of a `SUM`. A real zero is
   passed in by the caller, matching the page's `|default:"0"`. The same applies
-  to text: a job with no description exports an empty cell rather than the
-  page's `—`, which would otherwise be a value the reader has to filter around.
+  to text: a job with no description — one recorded before „Popis" became
+  required — exports an empty cell rather than the page's `—`, which would
+  otherwise be a value the reader has to filter around.
 - **Dates go out ISO**, as `performed_on.isoformat()`, which is what the
   „Provedeno" column already renders. Template dates are written with an
   explicit format for exactly this reason (see

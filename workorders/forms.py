@@ -16,6 +16,9 @@ from .models import WorkOrder
 # typed here = 11. Wider, and an oversized value is a 500 instead of a field error.
 HOURS_MAX_DIGITS = 11
 
+# `notes` is a TextField, so this cap is the form's alone; see `WorkOrderForm.notes`.
+NOTES_MAX_LENGTH = 2000
+
 
 def _hours_field(**kwargs):
     """Hours as the job form takes them: half-hour steps, capped at the column width."""
@@ -52,10 +55,18 @@ def collaborator_queryset(user, viewer=None):
 
 class WorkOrderForm(forms.Form):
     description = forms.CharField(
-        required=False,
         max_length=255,
         label='Popis',
-        widget=forms.TextInput(attrs={'placeholder': 'Popis provedené práce (volitelné)'}),
+        widget=forms.TextInput(attrs={'placeholder': 'Popis provedené práce'}),
+    )
+    # Optional and roomy, where `description` is a required one-liner. The cap is
+    # the form's own — `WorkOrder.notes` is a TextField — so an accidental paste
+    # is a field error rather than an unbounded row.
+    notes = forms.CharField(
+        required=False,
+        max_length=NOTES_MAX_LENGTH,
+        label='Poznámky',
+        widget=forms.Textarea(attrs={'rows': 4, 'placeholder': 'Doplňující poznámky (volitelné)'}),
     )
     hours = _hours_field(label='Moje hodiny', widget=forms.NumberInput(attrs={'placeholder': 'Odpracované hodiny'}))
     # `format` is required: the cs locale would render 02.09.2026, which

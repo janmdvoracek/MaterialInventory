@@ -59,7 +59,13 @@ Formulář má čtyři části:
 **1. Popis a vaše hodiny**
 
 - **Popis** — krátce, o jakou práci šlo. Například *Drcení kameniva na frakci 8/16*.
-  Je nepovinný.
+  Toto pole je **povinné**: podle popisu se zakázka pozná ve všech přehledech
+  i ve stažených souborech, takže jedna věta stačí, ale nechat ho prázdné nejde.
+- **Poznámky** — nepovinné a delší. Sem patří všechno, co se na jeden řádek
+  popisu nevejde: co se cestou pokazilo, proč se práce protáhla, na koho se
+  doptat. Můžete psát na více řádků; zalomení zůstanou zachovaná. Poznámka se
+  ukazuje jen v **detailu zakázky** — v tabulkách ani ve stažených souborech
+  není.
 - **Moje hodiny** — kolik hodin jste na zakázce odpracovali **vy**. Toto pole je
   **povinné**.
 - Hodiny se zapisují **po půlhodinách** — `0.5`, `1`, `1.5`, `2` a tak dále.
@@ -371,7 +377,8 @@ ho poklepáním; Excel ho rozdělí do sloupců sám a čísla v něm umí seč�
 Prázdná buňka ve sloupci **Tun**, u sazby nebo v některém ze sloupců s cenou
 znamená **není známo** (na stránce je na jejím místě pomlčka) — nulu tam
 schválně nepíšeme, aby vám nepokazila součet. V detailu položek je ze stejného
-důvodu prázdný i sloupec **Zakázka** u zakázky, u které nikdo nevyplnil popis.
+důvodu prázdný i sloupec **Zakázka** u starších zakázek, u kterých nikdo
+nevyplnil popis — dnes už je popis povinný, takže nové zakázky ho mají vždy.
 
 Do souboru se dostane přesně to, co je na stránce: **jen schválené zakázky**,
 a pracovník si stáhne jenom své vlastní hodiny. Když je filtr špatně vyplněný

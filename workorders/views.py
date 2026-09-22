@@ -241,6 +241,7 @@ def transform_create(request):
                 work_order = WorkOrder.objects.create(
                     created_by=author,
                     description=order_form.cleaned_data['description'],
+                    notes=order_form.cleaned_data['notes'],
                     performed_on=order_form.cleaned_data['performed_on'],
                     status=WorkOrder.Status.APPROVED if approved else WorkOrder.Status.PENDING,
                     reviewed_at=timezone.now() if approved else None,
@@ -343,8 +344,9 @@ def job_edit(request, pk):
         if rows is not None:
             with transaction.atomic():
                 work_order.description = order_form.cleaned_data['description']
+                work_order.notes = order_form.cleaned_data['notes']
                 work_order.performed_on = order_form.cleaned_data['performed_on']
-                work_order.save(update_fields=['description', 'performed_on'])
+                work_order.save(update_fields=['description', 'notes', 'performed_on'])
                 _write_job_rows(work_order, author, order_form.cleaned_data['hours'], *rows)
             messages.success(request, 'Zpracování bylo upraveno.')
             return redirect('job_detail', pk=work_order.pk)
@@ -359,6 +361,7 @@ def _edit_initial(work_order, author, consumed, produced, usages):
     return {
         'order': {
             'description': work_order.description,
+            'notes': work_order.notes,
             'hours': _trim(own_hours.hours) if own_hours else None,
             'performed_on': work_order.performed_on,
         },

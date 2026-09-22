@@ -57,6 +57,10 @@ pressed.
 {{ order_form.description }}
 {% for error in order_form.description.errors %}<p class="messages error">{{ error }}</p>{% endfor %}
 
+<label for="{{ order_form.notes.id_for_label }}">Poznámky</label>
+{{ order_form.notes }}
+{% for error in order_form.notes.errors %}<p class="messages error">{{ error }}</p>{% endfor %}
+
 {% if order_form.author %}
     <label for="{{ order_form.author.id_for_label }}">Zapsat za</label>
     {{ order_form.author }}

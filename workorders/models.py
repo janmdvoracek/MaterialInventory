@@ -26,7 +26,9 @@ class WorkOrder(models.Model):
         blank=True,
         verbose_name='spolupracovníci',
     )
-    description = models.CharField(max_length=255, blank=True, verbose_name='popis')
+    description = models.CharField(max_length=255, verbose_name='popis')
+    # Free-form and optional, unlike `description`: a whole paragraph, not a one-liner.
+    notes = models.TextField(blank=True, verbose_name='poznámky')
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING, verbose_name='stav')
     reviewed_at = models.DateTimeField(null=True, blank=True, verbose_name='posouzeno')
     reviewed_by = models.ForeignKey(
