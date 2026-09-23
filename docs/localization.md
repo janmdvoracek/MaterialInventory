@@ -149,7 +149,7 @@ Nothing does today: the summary CSV exports format decimals and put one
 The Django admin is Czech as well, and it takes three mechanisms to get there.
 A new model or ModelAdmin needs all three, or it will show English in one spot.
 
-**1. App labels.** Each `AppConfig` carries a `verbose_name` — `Materiály`,
+**1. App labels.** Each `AppConfig` carries a `verbose_name` — `Materiály`, `Lokace`,
 `Stroje`, `Zakázky`, `Uživatelé`. Without it the admin index groups models under the
 Python package name. (Django's own `Autentizace a autorizace`
 section is gone as well — `auth.Group` is unregistered in `accounts/admin.py`,

@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('workorders', '0003_machinerefuel'),
+        ('workorders', '0004_workorder_location'),
     ]
 
     operations = [

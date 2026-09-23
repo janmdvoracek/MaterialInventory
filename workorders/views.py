@@ -66,7 +66,7 @@ def _is_fuel_only(rows):
 
 
 # Required on every job except a fuel-only one; see `WorkOrderForm`.
-WORK_FIELDS = ('description', 'hours')
+WORK_FIELDS = ('location', 'description', 'hours')
 
 
 def _require_work_fields(order_form):
@@ -241,7 +241,10 @@ def _job_forms(request, *, author, viewer, order_form_user=None, keep=None, init
       a half-filled form comes back without errors.
     - Any other POST: bound, and `submitted` is True.
     - GET: fresh forms, pre-filled from `initial` (keyed `order` and by section prefix).
+
+    `keep` is keyed by section prefix, plus `location` for the job form's own picker.
     """
+    order_kwargs = {'user': order_form_user, 'keep_location': (keep or {}).get('location', ())}
     form_kwargs = {
         section.prefix: _section_form_kwargs(section.prefix, author=author, viewer=viewer, keep=keep)
         for section in JOB_SECTIONS
@@ -249,7 +252,7 @@ def _job_forms(request, *, author, viewer, order_form_user=None, keep=None, init
     pressed = _pressed_row_button(request.POST) if request.method == 'POST' else None
     if pressed:
         pressed_prefix, delta = pressed
-        order_form = WorkOrderForm(user=order_form_user)
+        order_form = WorkOrderForm(**order_kwargs)
         # Read off the form's own fields, so „Zapsat za" is carried when present.
         order_form.initial = {name: request.POST.get(name, '') for name in order_form.fields}
         formsets = {}
@@ -264,14 +267,14 @@ def _job_forms(request, *, author, viewer, order_form_user=None, keep=None, init
         return order_form, formsets, False
     if request.method == 'POST':
         # request.FILES for „Fotka"; the rows carry no upload of their own.
-        order_form = WorkOrderForm(request.POST, request.FILES, user=order_form_user)
+        order_form = WorkOrderForm(request.POST, request.FILES, **order_kwargs)
         formsets = {
             section.prefix: job_row_formset(section, data=request.POST, form_kwargs=form_kwargs[section.prefix])
             for section in JOB_SECTIONS
         }
         return order_form, formsets, True
     initial = initial or {}
-    order_form = WorkOrderForm(initial=initial.get('order'), user=order_form_user)
+    order_form = WorkOrderForm(initial=initial.get('order'), **order_kwargs)
     formsets = {
         section.prefix: job_row_formset(
             section, rows=initial.get(section.prefix, ()), form_kwargs=form_kwargs[section.prefix]
@@ -333,6 +336,7 @@ def transform_create(request):
             with transaction.atomic():
                 work_order = WorkOrder.objects.create(
                     created_by=author,
+                    location=order_form.cleaned_data['location'],
                     description=order_form.cleaned_data['description'],
                     notes=order_form.cleaned_data['notes'],
                     # Nothing picked is None here, and the column holds a path,
@@ -396,7 +400,7 @@ def job_dashboard(request):
     """Every recorded job, newest first. Manager-only, so not scoped per worker."""
     form = JobFilterForm(request.GET or None)
     jobs = (
-        WorkOrder.objects.select_related('created_by', 'reviewed_by')
+        WorkOrder.objects.select_related('created_by', 'reviewed_by', 'location')
         .annotate(total_hours=Sum('worker_hours__hours'))
         .prefetch_related('worker_hours__user')
         .order_by('-performed_on', '-created_at')
@@ -427,7 +431,7 @@ def _job_line_items(work_order):
 
 @role_required(*REVIEWER_ROLES)
 def job_detail(request, pk):
-    work_order = get_object_or_404(WorkOrder.objects.select_related('created_by', 'reviewed_by'), pk=pk)
+    work_order = get_object_or_404(WorkOrder.objects.select_related('created_by', 'reviewed_by', 'location'), pk=pk)
     consumed, produced = _job_line_items(work_order)
     return render(
         request,
@@ -458,6 +462,7 @@ def job_edit(request, pk):
         'consumed': [movement.material_id for movement in consumed],
         'produced': [movement.material_id for movement in produced],
         'machines': [usage.machine_id for usage in usages] + [refuel.machine_id for refuel in refuels],
+        'location': [work_order.location_id] if work_order.location_id else [],
     }
     order_form, formsets, submitted = _job_forms(
         request,
@@ -477,11 +482,12 @@ def job_edit(request, pk):
         rows = _valid_job_rows(request, order_form, formsets)
         if rows is not None:
             with transaction.atomic():
+                work_order.location = order_form.cleaned_data['location']
                 work_order.description = order_form.cleaned_data['description']
                 work_order.notes = order_form.cleaned_data['notes']
                 work_order.performed_on = order_form.cleaned_data['performed_on']
                 _apply_photo(work_order, order_form.cleaned_data['photo'])
-                work_order.save(update_fields=['description', 'notes', 'performed_on', 'photo'])
+                work_order.save(update_fields=['location', 'description', 'notes', 'performed_on', 'photo'])
                 _write_job_rows(work_order, author, order_form.cleaned_data['hours'], rows)
             messages.success(request, 'Zpracování bylo upraveno.')
             return redirect('job_detail', pk=work_order.pk)
@@ -517,6 +523,7 @@ def _edit_initial(work_order, author, consumed, produced, usages, refuels):
     own_hours = work_order.worker_hours.filter(user=author).first()
     return {
         'order': {
+            'location': work_order.location_id,
             'description': work_order.description,
             'notes': work_order.notes,
             'hours': _trim(own_hours.hours) if own_hours else None,

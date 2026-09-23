@@ -33,8 +33,17 @@ class WorkerHoursInline(admin.TabularInline):
 
 @admin.register(WorkOrder)
 class WorkOrderAdmin(admin.ModelAdmin):
-    list_display = ('id', 'performed_on', 'created_at', 'created_by', 'description', 'status', 'reviewed_by')
-    list_filter = ('status',)
+    list_display = (
+        'id',
+        'performed_on',
+        'created_at',
+        'created_by',
+        'location',
+        'description',
+        'status',
+        'reviewed_by',
+    )
+    list_filter = ('status', 'location')
     date_hierarchy = 'performed_on'
     # Review fields are written by `job_approve`.
     readonly_fields = ('created_by', 'reviewed_at', 'reviewed_by')
