@@ -6,6 +6,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from accounts.models import User
+from locations.models import Location
 from machines.models import Machine
 from materials.models import Material
 
@@ -54,16 +55,26 @@ def collaborator_queryset(user, viewer=None):
 
 
 class WorkOrderForm(forms.Form):
-    """The job's own fields. „Popis" and „Moje hodiny" are required in practice.
+    """The job's own fields. „Lokace", „Popis" and „Moje hodiny" are required in practice.
 
-    Both carry `required=False` here and are re-imposed by
+    All three carry `required=False` here and are re-imposed by
     `_require_work_fields` once the rows are known, because a job that is
-    nothing but fill-ups has neither to give: there is no work to label and
-    nobody's hours to record (`hours` cannot even be answered — its minimum is
-    half an hour). The form alone cannot tell the two cases apart, so the view
-    decides; the errors still land on these fields, where the shared partial
-    already renders them.
+    nothing but fill-ups is not asked for them: there is no work to label or
+    place and nobody's hours to record (`hours` cannot even be answered — its
+    minimum is half an hour). The form alone cannot tell the two cases apart, so
+    the view decides; the errors still land on these fields, where the shared
+    partial already renders them.
     """
+
+    # Active locations only, plus whatever `keep_location` names on `job_edit`
+    # (see `_offer_recorded`). The empty option is a prompt rather than „all":
+    # the field has a visible label, and blank is not an answer on a work job.
+    location = forms.ModelChoiceField(
+        queryset=Location.objects.filter(is_active=True),
+        required=False,
+        label='Lokace',
+        empty_label='Vyberte lokaci',
+    )
 
     description = forms.CharField(
         max_length=255,
@@ -91,8 +102,9 @@ class WorkOrderForm(forms.Form):
         label='Datum provedení',
     )
 
-    def __init__(self, *args, user=None, **kwargs):
+    def __init__(self, *args, user=None, keep_location=None, **kwargs):
         super().__init__(*args, **kwargs)
+        _offer_recorded(self.fields['location'], keep_location)
         # Only managers and admins may record a job for someone else.
         if user is None or not user.is_manager_or_admin:
             return
@@ -432,9 +444,9 @@ class MaterialFilterForm(DateRangeFilterForm):
     Offers retired materials too, the only way to reach their rows.
     """
 
-    field_order = ['material', 'date_from', 'date_to']
+    field_order = ['material', 'location', 'date_from', 'date_to']
     date_lookup = 'work_order__performed_on'
-    lookups = {'material': 'material'}
+    lookups = {'material': 'material', 'location': 'work_order__location'}
 
     material = forms.ModelChoiceField(
         queryset=Material.objects.all().order_by('name'),
@@ -442,19 +454,32 @@ class MaterialFilterForm(DateRangeFilterForm):
         label='Materiál',
         empty_label='Všechny materiály',
     )
+    # Retired locations too, like `material`: the only way to reach their rows.
+    location = forms.ModelChoiceField(
+        queryset=Location.objects.all().order_by('name'),
+        required=False,
+        label='Lokace',
+        empty_label='Všechny lokace',
+    )
 
 
 class JobFilterForm(DateRangeFilterForm):
     """Filters for Přehled (manager-only)."""
 
-    field_order = ['created_by', 'status', 'date_from', 'date_to']
-    lookups = {'created_by': 'created_by', 'status': 'status'}
+    field_order = ['created_by', 'location', 'status', 'date_from', 'date_to']
+    lookups = {'created_by': 'created_by', 'location': 'location', 'status': 'status'}
 
     created_by = forms.ModelChoiceField(
         queryset=User.objects.all().order_by('username'),
         required=False,
         label='Vytvořil',
         empty_label='Všichni uživatelé',
+    )
+    location = forms.ModelChoiceField(
+        queryset=Location.objects.all().order_by('name'),
+        required=False,
+        label='Lokace',
+        empty_label='Všechny lokace',
     )
     status = forms.ChoiceField(
         choices=[('', 'Všechny stavy')] + WorkOrder.Status.choices,

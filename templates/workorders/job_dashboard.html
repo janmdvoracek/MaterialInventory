@@ -10,20 +10,21 @@
     <div class="table-scroll">
     <table>
         <thead>
-            <tr><th>Provedeno</th><th>Kdo</th><th>Popis</th><th>Hodiny</th><th>Stav</th><th></th></tr>
+            <tr><th>Provedeno</th><th>Kdo</th><th>Lokace</th><th>Popis</th><th>Hodiny</th><th>Stav</th><th></th></tr>
         </thead>
         <tbody>
         {% for order in page_obj %}
             <tr class="{% if order.status == 'PENDING' %}row-pending{% endif %}">
                 <td>{{ order.performed_on|date:"Y-m-d" }}</td>
                 <td>{{ order.created_by.username }}</td>
+                <td>{{ order.location.name|default:"—" }}</td>
                 <td>{{ order.description|default:"—" }}</td>
                 <td>{{ order.total_hours|default:"0"|floatformat:1 }} h</td>
                 <td><span class="status-badge {{ order.status|lower }}">{{ order.get_status_display }}</span></td>
                 <td><a href="{% url 'job_detail' order.pk %}">Detail</a></td>
             </tr>
         {% empty %}
-            <tr><td colspan="6">Žádná zpracování neodpovídají zadaným filtrům.</td></tr>
+            <tr><td colspan="7">Žádná zpracování neodpovídají zadaným filtrům.</td></tr>
         {% endfor %}
         </tbody>
     </table>

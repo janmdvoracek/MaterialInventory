@@ -11,6 +11,7 @@
             <tr><th>Datum provedení</th><td>{{ work_order.performed_on|date:"Y-m-d" }}</td></tr>
             <tr><th>Zaznamenáno</th><td>{{ work_order.created_at|date:"Y-m-d H:i" }}</td></tr>
             <tr><th>Zaznamenal</th><td>{{ work_order.created_by.username }}</td></tr>
+            <tr><th>Lokace</th><td>{{ work_order.location.name|default:"—" }}</td></tr>
             <tr><th>Popis</th><td>{{ work_order.description|default:"—" }}</td></tr>
             <tr><th>Poznámky</th><td>{{ work_order.notes|linebreaksbr|default:"—" }}</td></tr>
             {% if work_order.reviewed_at %}

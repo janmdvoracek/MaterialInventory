@@ -1,16 +1,18 @@
 # Architecture
 
-A modular monolith: one Django project (`config`) with four code-bearing apps
-that depend on each other in one direction only — `accounts`, `materials` and
-`machines` hold the reference data, and `workorders` owns the jobs, their
-material line items, the machine usage rows, and every page. `materials` and
-`machines` do not know about each other; the one cross-reference is
-`seed_data`, which lives in `materials` and loads all three CSVs.
+A modular monolith: one Django project (`config`) with five code-bearing apps
+that depend on each other in one direction only — `accounts`, `materials`,
+`machines` and `locations` hold the reference data, and `workorders` owns the
+jobs, their material line items, the machine usage rows, and every page.
+`materials` and `machines` do not know about each other; the one
+cross-reference is `seed_data`, which lives in `materials` and loads all three
+CSVs. `locations` has no CSV: its catalog is maintained in the admin.
 
 ```
-accounts ──┐
-materials ─┼──> workorders
-machines ──┘
+accounts ───┐
+materials ──┤
+machines ───┼──> workorders
+locations ──┘
 ```
 
 > **This app does not track stock.** Receipts, shipments, adjustments, the stock
@@ -188,6 +190,37 @@ Both fields carry `required=False` on `WorkOrderForm` and are re-imposed by
 tell a job that records work from one that records a tank of diesel. The error
 is Django's own `required` message, taken off the field, so it reads the same as
 every other required field on the page and comes from the same catalog.
+
+### Where a job happened
+
+`WorkOrder.location` (*„Lokace"*) is a foreign key to `locations.Location`, a
+catalog of name + `is_active` edited in the admin under *Lokace*. Machine
+operators work at several sites, some of which keep their material records
+separately and some of which keep none at all; the field says which one a job
+belongs to. **It is a label on the job, not a stock location** — one per job,
+not per line item, and nothing is balanced, summed or refused per location. The
+mass balance is the same everywhere.
+
+- **Required on every job that records work, exempt on a fuel-only one** — it
+  is the third entry in `WORK_FIELDS`, beside „Popis" and „Moje hodiny", and
+  carries `required=False` on the form for the same reason they do.
+- **Nullable in the model**, because jobs recorded before the column existed
+  have none and a fuel-only job need not have one. The pages print „—" for it
+  and the Materiál detail export a blank cell.
+- **Retired like a machine or a material.** `on_delete=PROTECT` blocks deleting
+  a location any job names; unticking `is_active` takes it out of the form's
+  picker. `job_edit` passes the job's own location as `keep_location`, which
+  goes through the same `_offer_recorded` as the row pickers, so a job at a
+  retired location still renders with it selected — see
+  [Editing a job that names a retired record](#editing-a-job-that-names-a-retired-record).
+- **Shown and filtered on Přehled and Materiál only** — a column and a
+  „Všechny lokace" filter on each (`JobFilterForm.location`,
+  `MaterialFilterForm.location` via `work_order__location`), a row on the job
+  detail page, and a column in the Materiál detail export. Materiál's summary
+  follows the filter because it aggregates the same filtered rows. Hodiny and
+  Stroje do not read it.
+- It is a plain `<select>`, not one of the searchable row pickers:
+  `searchable_select.js` only enhances the four sections.
 
 ### When a job happened
 
@@ -648,6 +681,7 @@ is exempt from three things that every other submission must answer:
 - **the mass balance**, because there are no consumed and produced totals to
   compare — not two totals that happen to match;
 - **„Popis"**, the job's label;
+- **„Lokace"**, where it happened (one typed in is kept);
 - **„Moje hodiny"**, which could not be answered honestly anyway: its minimum is
   half an hour, so there is no way to say "I did not work on this". No
   `WorkerHours` row is written for the author at all, which is what `own_hours`

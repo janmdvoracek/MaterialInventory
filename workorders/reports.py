@@ -205,7 +205,7 @@ def _filtered_material_movements(request):
     form = MaterialFilterForm(request.GET or None)
     movements = (
         StockMovement.objects.filter(work_order__status=WorkOrder.Status.APPROVED)
-        .select_related('material', 'work_order', 'work_order__created_by')
+        .select_related('material', 'work_order', 'work_order__created_by', 'work_order__location')
         .annotate(typed_quantity=Abs('quantity'))
         .order_by('-work_order__performed_on', '-id')
     )
@@ -388,13 +388,15 @@ def material_detail_export(request):
     _, movements = _filtered_material_movements(request)
     return _csv_response(
         'detail-polozek',
-        ['Provedeno', 'Materiál', 'Druh', 'Množství (t)', 'Zakázka', 'Kým'],
+        ['Provedeno', 'Lokace', 'Materiál', 'Druh', 'Množství (t)', 'Zakázka', 'Kým'],
         [
             [
                 # ISO, like the „Provedeno" column on the page, which writes
                 # its format explicitly rather than taking the locale's (see
                 # localization.md). Excel reads an ISO date under `cs` too.
                 movement.work_order.performed_on.isoformat(),
+                # Blank for a job with none, for the same reason as the description below.
+                movement.work_order.location.name if movement.work_order.location else '',
                 movement.material.name,
                 movement.get_movement_type_display(),
                 # Positive, like the page: the form asked for a positive

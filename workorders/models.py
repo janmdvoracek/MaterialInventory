@@ -26,6 +26,18 @@ class WorkOrder(models.Model):
         blank=True,
         verbose_name='spolupracovníci',
     )
+    # Where the work was done. Nullable for jobs recorded before the column
+    # existed and for fuel-only jobs, which are not asked for one; required on
+    # every other job by the view (see `WORK_FIELDS`). A label, not a stock
+    # location: nothing is balanced or summed per location.
+    location = models.ForeignKey(
+        'locations.Location',
+        on_delete=models.PROTECT,
+        related_name='work_orders',
+        null=True,
+        blank=True,
+        verbose_name='lokace',
+    )
     description = models.CharField(max_length=255, verbose_name='popis')
     # Free-form and optional, unlike `description`: a whole paragraph, not a one-liner.
     notes = models.TextField(blank=True, verbose_name='poznámky')

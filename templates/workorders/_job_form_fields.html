@@ -41,6 +41,9 @@ by job_rows.js through a MutationObserver rather than a call, and reads its
 choices off the rendered <select>, so the option lists still come only from
 workorders/forms.py.
 
+„Lokace" is a plain <select>, not one of the searchable row pickers: it sits
+outside the four sections, which is all searchable_select.js enhances.
+
 „Zapsat za" is guarded because it is manager-only: `job_edit` builds
 `WorkOrderForm` without a `user`, so the field is not there. The hours label
 comes from the form, because each page means something different by it.
@@ -52,6 +55,10 @@ what was typed, with no message anywhere, looking as if the button had not been
 pressed.
 {% endcomment %}
 {% for error in order_form.non_field_errors %}<p class="messages error">{{ error }}</p>{% endfor %}
+
+<label for="{{ order_form.location.id_for_label }}">Lokace</label>
+{{ order_form.location }}
+{% for error in order_form.location.errors %}<p class="messages error">{{ error }}</p>{% endfor %}
 
 <label for="{{ order_form.description.id_for_label }}">Popis</label>
 {{ order_form.description }}

@@ -6,11 +6,13 @@ from decimal import Decimal
 
 from django import forms
 from django.conf import settings
+from django.db.models import ProtectedError
 from django.test import TestCase
 from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 
 from accounts.models import User
+from locations.models import Location
 from machines.models import Machine
 from materials.models import Material
 
@@ -18,6 +20,11 @@ from .forms import JOB_SECTIONS, NOTES_MAX_LENGTH
 from .models import MachineRefuel, MachineUsage, StockMovement, WorkerHours, WorkOrder
 from .reports import FUEL_PAGE_PARAM, HISTORY_PAGE_SIZE, MY_JOBS_LIMIT, _last_month
 from .views import MAX_ROWS_PER_SECTION, MIN_ROWS_PER_SECTION
+
+
+def default_location():
+    """The location every job payload names, since a work job cannot be recorded without one."""
+    return Location.objects.get_or_create(name='Lom Sever')[0]
 
 
 class TransformCreateTests(TestCase):
@@ -48,6 +55,7 @@ class TransformCreateTests(TestCase):
             'hours': hours,
             'notes': '',
             # Pre-filled on the real form, so every browser posts it.
+            'location': default_location().pk,
             'performed_on': timezone.localdate().isoformat(),
             'consumed-TOTAL_FORMS': str(max(len(consumed_rows), 1)),
             'consumed-INITIAL_FORMS': '0',
@@ -172,6 +180,7 @@ class TransformCreateTests(TestCase):
         self.client.force_login(self.worker)
         data = {
             'description': 'Test job',
+            'location': default_location().pk,
             'performed_on': timezone.localdate().isoformat(),
             'hours': '2',
             'consumed-TOTAL_FORMS': '1',
@@ -249,6 +258,7 @@ class TransformCreateTests(TestCase):
         self.client.force_login(self.worker)
         data = {
             'description': 'Test job',
+            'location': default_location().pk,
             'performed_on': timezone.localdate().isoformat(),
             # Own hours are required, so they must be valid here or the form
             # would fail for that reason instead of the one under test.
@@ -288,6 +298,7 @@ class TransformCreateTests(TestCase):
         self.client.force_login(self.worker)
         data = {
             'description': 'Test job',
+            'location': default_location().pk,
             'performed_on': timezone.localdate().isoformat(),
             # Own hours are required, so they must be valid here or the form
             # would fail for that reason instead of the one under test.
@@ -409,6 +420,7 @@ class TransformCreateTests(TestCase):
         self.client.force_login(self.worker)
         data = {
             'description': 'Test job',
+            'location': default_location().pk,
             'performed_on': timezone.localdate().isoformat(),
             'hours': '2',
             'consumed-TOTAL_FORMS': '1',
@@ -589,6 +601,7 @@ class WorkOrderAdminTests(TestCase):
         self.client.force_login(self.admin_user)
         data = {
             'description': 'Admin-created job',
+            'location': default_location().pk,
             'performed_on': timezone.localdate().isoformat(),
             'status': WorkOrder.Status.APPROVED,
             'movements-TOTAL_FORMS': '1',
@@ -1588,9 +1601,20 @@ class TableExportTests(TestCase):
         self.raw = Material.objects.create(sku='RAW', name='Štěrk')
         self.finished = Material.objects.create(sku='FIN', name='Frakce 8/16')
 
-    def _job(self, *, performed_on=None, status=WorkOrder.Status.APPROVED, hours=None, usage=None, quantity=None):
+    def _job(
+        self,
+        *,
+        performed_on=None,
+        status=WorkOrder.Status.APPROVED,
+        hours=None,
+        usage=None,
+        quantity=None,
+        location=None,
+    ):
         """One approved job carrying whichever of the three record types a test needs."""
-        work_order = WorkOrder.objects.create(created_by=self.worker, description='job', status=status)
+        work_order = WorkOrder.objects.create(
+            created_by=self.worker, description='job', status=status, location=location
+        )
         if performed_on is not None:
             WorkOrder.objects.filter(pk=work_order.pk).update(performed_on=performed_on)
         for user, worked in hours or []:
@@ -1761,16 +1785,16 @@ class TableExportTests(TestCase):
     def test_detail_export_carries_the_line_items(self):
         # „Detail položek" one row per line item, in the page's own order and
         # with the same columns — the file is the table, not a rearrangement.
-        work_order = self._job(quantity=Decimal('12.5'))
+        work_order = self._job(quantity=Decimal('12.5'), location=default_location())
         self.client.force_login(self.manager)
         rows = self._rows(self.client.get(reverse('material_detail_export')))
-        self.assertEqual(rows[0], ['Provedeno', 'Materiál', 'Druh', 'Množství (t)', 'Zakázka', 'Kým'])
+        self.assertEqual(rows[0], ['Provedeno', 'Lokace', 'Materiál', 'Druh', 'Množství (t)', 'Zakázka', 'Kým'])
         today = date.today().isoformat()
         self.assertEqual(
             rows[1:],
             [
-                [today, 'Frakce 8/16', 'Výroba', '12,50', 'job', 'worker'],
-                [today, 'Štěrk', 'Spotřeba', '12,50', 'job', 'worker'],
+                [today, 'Lom Sever', 'Frakce 8/16', 'Výroba', '12,50', 'job', 'worker'],
+                [today, 'Lom Sever', 'Štěrk', 'Spotřeba', '12,50', 'job', 'worker'],
             ],
         )
         self.assertEqual(work_order.movements.count(), 2)
@@ -1795,7 +1819,7 @@ class TableExportTests(TestCase):
         response = self.client.get(
             reverse('material_detail_export'), {'date_from': (date.today() - timedelta(days=7)).isoformat()}
         )
-        quantities = [row[3] for row in self._rows(response)[1:]]
+        quantities = [row[4] for row in self._rows(response)[1:]]
         self.assertEqual(quantities, ['1,50', '1,50'])
 
     def test_detail_export_leaves_a_missing_description_blank(self):
@@ -1803,7 +1827,13 @@ class TableExportTests(TestCase):
         # the reader filters on, and blank is the same statement without it.
         WorkOrder.objects.filter(pk=self._job(quantity=Decimal('2')).pk).update(description='')
         self.client.force_login(self.manager)
-        self.assertEqual(self._rows(self.client.get(reverse('material_detail_export')))[1][4], '')
+        self.assertEqual(self._rows(self.client.get(reverse('material_detail_export')))[1][5], '')
+
+    def test_detail_export_leaves_a_missing_location_blank(self):
+        # Jobs recorded before the column existed, and fuel-only ones, have none.
+        self._job(quantity=Decimal('2'))
+        self.client.force_login(self.manager)
+        self.assertEqual(self._rows(self.client.get(reverse('material_detail_export')))[1][1], '')
 
     def test_detail_export_is_a_bom_csv_named_for_the_day(self):
         self.client.force_login(self.manager)
@@ -1842,6 +1872,7 @@ class EmptyLabelTests(TestCase):
         self.manager = User.objects.create_user(username='manager', password='pw', role=User.Role.MANAGER)
         Material.objects.create(sku='SKU1', name='Steel Bar')
         Machine.objects.create(name='Crusher A')
+        default_location()
 
     def test_pages_have_no_english_placeholder(self):
         self.client.force_login(self.manager)
@@ -1857,6 +1888,7 @@ class EmptyLabelTests(TestCase):
         self.assertContains(response, 'Pracovník')
         # „Zapsat za" is a manager-only field, and this test is logged in as one.
         self.assertContains(response, 'Za sebe')
+        self.assertContains(response, 'Vyberte lokaci')
 
     def test_filter_forms_offer_all_in_czech(self):
         self.client.force_login(self.manager)
@@ -1866,6 +1898,8 @@ class EmptyLabelTests(TestCase):
         response = self.client.get(reverse('job_dashboard'))
         self.assertContains(response, 'Všichni uživatelé')
         self.assertContains(response, 'Všechny stavy')
+        self.assertContains(response, 'Všechny lokace')
+        self.assertContains(self.client.get(reverse('material_dashboard')), 'Všechny lokace')
 
 
 def job_payload(
@@ -1885,6 +1919,7 @@ def job_payload(
         'notes': notes,
         'hours': hours,
         # Pre-filled on the real form, so every browser posts it.
+        'location': default_location().pk,
         'performed_on': timezone.localdate().isoformat(),
         'consumed-TOTAL_FORMS': str(max(len(consumed_rows), 1)),
         'consumed-INITIAL_FORMS': '0',
@@ -3888,3 +3923,131 @@ class MachineRefuelReportTests(TestCase):
         # Gated like the page it hangs off; hiding the nav link is not access control.
         self.client.force_login(self.worker)
         self.assertEqual(self.client.get(reverse('machine_refuel_export')).status_code, 403)
+
+
+class LocationTests(ReviewFixtureMixin, TestCase):
+    """Where a job was worked: a catalog managed in the admin, one per job.
+
+    A label, not a stock location — nothing balances per location. Required on
+    every job that records work, and exempt on a fuel-only one exactly like
+    „Popis" and „Moje hodiny". Shown and filtered on Přehled and Materiál.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.north = default_location()
+        self.south = Location.objects.create(name='Lom Jih')
+
+    def _payload(self, **overrides):
+        payload = job_payload(
+            [{'material': self.material_raw, 'quantity': Decimal('5')}],
+            [{'material': self.material_finished, 'quantity': Decimal('5')}],
+        )
+        payload.update(overrides)
+        return payload
+
+    def _job_at(self, location, quantity=Decimal('5')):
+        job = self.submit_job(self.manager, quantity=quantity)
+        WorkOrder.objects.filter(pk=job.pk).update(location=location)
+        return job
+
+    def test_job_is_recorded_with_its_location(self):
+        self.assertEqual(self.submit_job(self.worker).location, self.north)
+
+    def test_work_job_without_location_is_refused(self):
+        self.client.force_login(self.worker)
+        response = self.client.post(reverse('transform_create'), self._payload(location=''))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(WorkOrder.objects.exists())
+        self.assertEqual(response.context['order_form'].errors['location'], ['Toto pole je třeba vyplnit.'])
+        # Rendered, or the refusal would look like a button that did nothing.
+        self.assertContains(response, 'Toto pole je třeba vyplnit.')
+
+    def test_fuel_only_job_needs_no_location(self):
+        self.client.force_login(self.worker)
+        payload = job_payload(
+            [], [], machine_rows=[{'machine': self.machine_a, 'litres': Decimal('40')}], description='', hours=''
+        )
+        payload['location'] = ''
+        self.assertRedirects(self.client.post(reverse('transform_create'), payload), reverse('transform_create'))
+        self.assertIsNone(WorkOrder.objects.get().location)
+
+    def test_retired_location_is_not_offered_on_a_new_job(self):
+        self.south.is_active = False
+        self.south.save(update_fields=['is_active'])
+        self.client.force_login(self.worker)
+        field = self.client.get(reverse('transform_create')).context['order_form'].fields['location']
+        self.assertNotIn(self.south, field.queryset)
+        response = self.client.post(reverse('transform_create'), self._payload(location=self.south.pk))
+        self.assertIn('location', response.context['order_form'].errors)
+        self.assertFalse(WorkOrder.objects.exists())
+
+    def test_row_button_keeps_the_chosen_location(self):
+        self.client.force_login(self.worker)
+        response = self.client.post(reverse('transform_create'), self._payload(location=self.south.pk, add_consumed=''))
+        self.assertEqual(response.context['order_form']['location'].value(), str(self.south.pk))
+        self.assertFalse(WorkOrder.objects.exists())
+
+    def test_edit_prefills_and_changes_the_location(self):
+        job = self.submit_job(self.worker)
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('job_edit', args=[job.pk]))
+        self.assertEqual(response.context['order_form']['location'].value(), self.north.pk)
+        response = self.client.post(reverse('job_edit', args=[job.pk]), self._payload(location=self.south.pk))
+        self.assertRedirects(response, reverse('job_detail', args=[job.pk]))
+        job.refresh_from_db()
+        self.assertEqual(job.location, self.south)
+        # Editing does not approve, location or not.
+        self.assertEqual(job.status, WorkOrder.Status.PENDING)
+
+    def test_edit_keeps_a_retired_location_the_job_names(self):
+        job = self.submit_job(self.worker)
+        self.north.is_active = False
+        self.north.save(update_fields=['is_active'])
+        other_retired = Location.objects.create(name='Stará', is_active=False)
+        self.client.force_login(self.manager)
+        field = self.client.get(reverse('job_edit', args=[job.pk])).context['order_form'].fields['location']
+        self.assertIn(self.north, field.queryset)
+        # Only the job's own: the rest of the retired catalog stays hidden.
+        self.assertNotIn(other_retired, field.queryset)
+        response = self.client.post(reverse('job_edit', args=[job.pk]), self._payload(location=self.north.pk))
+        self.assertRedirects(response, reverse('job_detail', args=[job.pk]))
+        job.refresh_from_db()
+        self.assertEqual(job.location, self.north)
+
+    def test_job_detail_shows_the_location(self):
+        job = self.submit_job(self.worker)
+        self.client.force_login(self.manager)
+        self.assertContains(self.client.get(reverse('job_detail', args=[job.pk])), 'Lom Sever')
+
+    def test_job_dashboard_filters_and_shows_the_location(self):
+        self._job_at(self.north)
+        south_job = self._job_at(self.south)
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('job_dashboard'), {'location': self.south.pk})
+        self.assertEqual([job.pk for job in response.context['page_obj']], [south_job.pk])
+        self.assertContains(response, '<td>Lom Jih</td>', html=True)
+
+    def test_material_dashboard_filters_summary_and_rows_by_location(self):
+        self._job_at(self.north, quantity=Decimal('3'))
+        self._job_at(self.south, quantity=Decimal('7'))
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('material_dashboard'), {'location': self.south.pk})
+        raw = next(material for material in response.context['materials'] if material == self.material_raw)
+        self.assertEqual(raw.filtered_consumed, Decimal('7'))
+        self.assertEqual({movement.work_order.location for movement in response.context['page_obj']}, {self.south})
+        self.assertContains(response, '<td>Lom Jih</td>', html=True)
+
+    def test_a_used_location_cannot_be_deleted(self):
+        # Retired through `is_active` instead, like a machine or a material.
+        self.submit_job(self.worker)
+        with self.assertRaises(ProtectedError):
+            self.north.delete()
+
+    def test_admin_manages_the_location_catalog(self):
+        admin = User.objects.create_superuser(username='root', password='pw', role=User.Role.ADMIN)
+        self.client.force_login(admin)
+        self.assertContains(self.client.get(reverse('admin:index')), 'Lokace')
+        response = self.client.post(reverse('admin:locations_location_add'), {'name': 'Pískovna', 'is_active': 'on'})
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(Location.objects.filter(name='Pískovna', is_active=True).exists())

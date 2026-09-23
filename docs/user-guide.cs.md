@@ -56,8 +56,11 @@ Použijte, když se **z jednoho materiálu stane jiný** — drcení, tříděn�
 
 Formulář má čtyři části:
 
-**1. Popis a vaše hodiny**
+**1. Lokace, popis a vaše hodiny**
 
+- **Lokace** — kde se práce dělala. Vyberte ze seznamu; toto pole je
+  **povinné** (kromě zakázky, která je jen tankování). Seznam lokací spravuje
+  správce v **Administraci**; když v něm vaše místo chybí, řekněte vedoucímu.
 - **Popis** — krátce, o jakou práci šlo. Například *Drcení kameniva na frakci 8/16*.
   Toto pole je **povinné**: podle popisu se zakázka pozná ve všech přehledech
   i ve stažených souborech, takže jedna věta stačí, ale nechat ho prázdné nejde.
@@ -182,8 +185,8 @@ stroje, a stroj, u kterého není vyplněné vůbec nic.
 
 **Když jste jen tankovali, stačí zapsat stroje a litry — a nic jiného.** Takový
 zápis je platná zakázka: nemusíte vyplňovat spotřebu ani výrobu (kontrola součtů
-se na něj nevztahuje, protože není co srovnávat), nemusíte vyplnit **Popis** ani
-**Moje hodiny**. Stačí **Datum provedení**, které je předvyplněné na dnešek, a
+se na něj nevztahuje, protože není co srovnávat), nemusíte vyplnit **Lokaci**,
+**Popis** ani **Moje hodiny**. Stačí **Datum provedení**, které je předvyplněné na dnešek, a
 libovolný počet řádků *Stroj + Natankováno (l)*.
 
 - Žádné odpracované hodiny se u takové zakázky nezapíšou.
@@ -191,8 +194,8 @@ libovolný počet řádků *Stroj + Natankováno (l)*.
   místo pomlčky, takže se lépe hledá.
 - Schvaluje se úplně stejně jako každá jiná zakázka a objeví se i v **Přehledu**.
 - Jakmile na takový zápis přidáte motohodiny nebo položku materiálu, přestává
-  to být „jen tankování" — **Popis**, **Moje hodiny** i kontrola součtů se
-  vrátí.
+  to být „jen tankování" — **Lokace**, **Popis**, **Moje hodiny** i kontrola
+  součtů se vrátí.
 
 > Celá zakázka se ukládá najednou — položky, hodiny lidí, hodiny strojů i
 > tankování. Po uložení se formulář vyprázdní a můžete zapsat další zakázku.
@@ -217,9 +220,9 @@ poslední zápisy* — viz [Hodiny](#hodiny).
 ## Přehled zpracování (pro vedoucí)
 
 Tuto sekci mají v menu pouze vedoucí a správci. Je v ní **seznam všech
-zapsaných zpracování** — datum, kdo je zapsal, popis, hodiny celkem a stav.
-Zakázky, které čekají na schválení, jsou **žlutě** zvýrazněné; nahoře je počet
-čekajících. Filtrovat lze podle stavu, pracovníka a data.
+zapsaných zpracování** — datum, kdo je zapsal, lokace, popis, hodiny celkem
+a stav. Zakázky, které čekají na schválení, jsou **žlutě** zvýrazněné; nahoře
+je počet čekajících. Filtrovat lze podle stavu, pracovníka, lokace a data.
 
 Klepnutím na **Detail** otevřete celou zakázku se vším, co bylo ve formuláři
 vyplněno — hodiny všech lidí, spotřeba, výroba, stroje s motohodinami a tunami
@@ -322,7 +325,7 @@ nic navíc zapisovat nemusíte.
 
 Stránka má stejnou stavbu jako **Stroje**: nahoře **filtr**, pod ním tabulka
 **Souhrn materiálů** a dole **Detail položek** — jednotlivé řádky (datum,
-materiál, druh, množství, zakázka a kdo ji zapsal), ze kterých se čísla nahoře
+lokace, materiál, druh, množství, zakázka a kdo ji zapsal), ze kterých se čísla nahoře
 skládají. Filtr platí pro obě tabulky najednou.
 
 V souhrnu jsou u každého materiálu tři čísla:
@@ -337,7 +340,9 @@ V souhrnu jsou u každého materiálu tři čísla:
 výstupem: může vyjít i záporný, a to znamená, že se ho víc zpracovalo, než
 vyrobilo.
 
-Filtrovat lze podle materiálu a data. **Bez filtru vidíte všechny materiály.**
+Filtrovat lze podle materiálu, lokace a data. **Bez filtru vidíte všechny
+materiály.** Filtr **Lokace** oddělí čísla jednoho místa od ostatních — souhrn
+i detail se pak počítají jen ze zakázek zapsaných na tuto lokaci.
 Když vyberete konkrétní materiál, zůstane v tabulce jen on; když omezíte datum,
 materiály zůstanou všechny a čísla se přepočítají za dané období — materiál
 s **0,00 t** tedy znamená, že se v tom období nezpracovával. Nabídka filtru
@@ -402,7 +407,7 @@ pak klepněte na tlačítko.
 | **Hodiny** | Tabulka **Souhrn** — pracovník, hodiny, počet zakázek |
 | **Stroje** | Tabulka **Stav strojů** — stroj, hodiny, tuny, obě sazby a tři sloupce s cenou |
 | **Materiál** | Tabulka **Souhrn materiálů** — spotřebováno, vyrobeno, rozdíl |
-| **Materiál** | Tabulka **Detail položek** — datum, materiál, druh, množství, zakázka, kdo ji zapsal |
+| **Materiál** | Tabulka **Detail položek** — datum, lokace, materiál, druh, množství, zakázka, kdo ji zapsal |
 
 Na **Materiálu** jsou tedy tlačítka dvě, každé pod svou tabulkou. To druhé,
 pod **Detailem položek**, stáhne jednotlivé řádky — co která zakázka
