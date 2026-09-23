@@ -5,8 +5,9 @@ that depend on each other in one direction only — `accounts`, `materials`,
 `machines` and `locations` hold the reference data, and `workorders` owns the
 jobs, their material line items, the machine usage rows, and every page.
 `materials` and `machines` do not know about each other; the one
-cross-reference is `seed_data`, which lives in `materials` and loads all three
-CSVs. `locations` has no CSV: its catalog is maintained in the admin.
+cross-reference is `seed_data`, which lives in `materials` and loads all four
+CSVs. The `locations` catalog is maintained in the admin and can be seeded from
+`locations.csv`, which only ever creates missing names.
 
 ```
 accounts ───┐
@@ -194,7 +195,8 @@ every other required field on the page and comes from the same catalog.
 ### Where a job happened
 
 `WorkOrder.location` (*„Lokace"*) is a foreign key to `locations.Location`, a
-catalog of name + `is_active` edited in the admin under *Lokace*. Machine
+catalog of name + `is_active` edited in the admin under *Lokace* and seedable
+from `seed_data/locations.csv`. Machine
 operators work at several sites, some of which keep their material records
 separately and some of which keep none at all; the field says which one a job
 belongs to. **It is a label on the job, not a stock location** — one per job,

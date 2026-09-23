@@ -104,8 +104,9 @@ The catalog, machines, and staff accounts are seeded from CSV:
 ```bash
 cp seed_data/materials.example.csv seed_data/materials.csv
 cp seed_data/machines.example.csv seed_data/machines.csv
+cp seed_data/locations.example.csv seed_data/locations.csv
 cp seed_data/users.example.csv seed_data/users.csv
-# edit those three with real data, then:
+# edit those four with real data, then:
 python manage.py seed_data
 ```
 
@@ -117,7 +118,7 @@ Full column reference: [docs/development.md](docs/development.md#seeding-data).
 ## Common commands
 
 ```bash
-python manage.py test                  # full suite (404 tests, needs Postgres)
+python manage.py test                  # full suite (408 tests, needs Postgres)
 python manage.py test workorders       # one app
 ruff check . && ruff format .          # lint and format
 docker compose up --build              # full stack

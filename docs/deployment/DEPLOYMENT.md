@@ -246,12 +246,16 @@ The example files are committed and are **not equivalent**:
   rates.
 - `seed_data/users.example.csv` is placeholder rows (`worker.one`,
   `manager.one`, `admin.one`). Rewrite it with actual staff before using it.
+- `seed_data/locations.example.csv` is placeholder rows too (`Lokace 1`,
+  `Lokace 2`). Replace them with the real sites. **Load at least one location**
+  — here or in the admin — before anyone records a job: the Zpracování form
+  requires one on every job that is not purely refuelling.
 
 ```bash
-cp seed_data/materials.example.csv seed_data/materials.csv && cp seed_data/machines.example.csv seed_data/machines.csv && cp seed_data/users.example.csv seed_data/users.csv
+cp seed_data/materials.example.csv seed_data/materials.csv && cp seed_data/machines.example.csv seed_data/machines.csv && cp seed_data/locations.example.csv seed_data/locations.csv && cp seed_data/users.example.csv seed_data/users.csv
 ```
 
-Edit all three, then:
+Edit all four, then:
 
 ```bash
 dcp exec web python manage.py seed_data

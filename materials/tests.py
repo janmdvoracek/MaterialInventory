@@ -8,6 +8,7 @@ from django.db import IntegrityError, transaction
 from django.test import TestCase
 
 from accounts.models import User
+from locations.models import Location
 from machines.models import Machine
 
 from .models import Material
@@ -35,13 +36,40 @@ class SeedDataCommandTests(TestCase):
         path.write_text(text)
         return str(path)
 
-    def _run(self, materials='', machines='', users=''):
+    def _run(self, materials='', machines='', users='', locations=''):
         call_command(
             'seed_data',
             materials_file=self._write_csv('materials.csv', materials),
             machines_file=self._write_csv('machines.csv', machines),
+            locations_file=self._write_csv('locations.csv', locations),
             users_file=self._write_csv('users.csv', users),
         )
+
+    def test_seed_locations_creates_and_dedupes_on_rerun(self):
+        self._run(locations='name\nLom Sever\nLom Jih\n\n')
+        self._run(locations='name\nLom Sever\n')
+        self.assertEqual(sorted(Location.objects.values_list('name', flat=True)), ['Lom Jih', 'Lom Sever'])
+
+    def test_seed_locations_leaves_a_retired_location_retired(self):
+        Location.objects.create(name='Lom Sever', is_active=False)
+        self._run(locations='name\nLom Sever\n')
+        self.assertFalse(Location.objects.get(name='Lom Sever').is_active)
+
+    def test_seed_locations_requires_a_name_column(self):
+        with self.assertRaises(CommandError):
+            self._run(locations='location\nLom Sever\n')
+
+    def test_seed_locations_example_file_loads(self):
+        # The committed template is what `cp` hands the deployer; it has to parse.
+        path = Path(__file__).resolve().parent.parent / 'seed_data' / 'locations.example.csv'
+        call_command(
+            'seed_data',
+            materials_file=str(self.tmp_path / 'none.csv'),
+            machines_file=str(self.tmp_path / 'none.csv'),
+            locations_file=str(path),
+            users_file=str(self.tmp_path / 'none.csv'),
+        )
+        self.assertTrue(Location.objects.exists())
 
     def test_seed_materials_creates_and_updates(self):
         self._run(materials='sku,name\nSKU1,Steel Bar\n')
@@ -176,8 +204,10 @@ class SeedDataCommandTests(TestCase):
             'seed_data',
             materials_file=str(self.tmp_path / 'does-not-exist-materials.csv'),
             machines_file=str(self.tmp_path / 'does-not-exist-machines.csv'),
+            locations_file=str(self.tmp_path / 'does-not-exist-locations.csv'),
             users_file=str(self.tmp_path / 'does-not-exist-users.csv'),
         )
         self.assertEqual(Material.objects.count(), 0)
         self.assertEqual(Machine.objects.count(), 0)
+        self.assertEqual(Location.objects.count(), 0)
         self.assertEqual(User.objects.count(), 0)

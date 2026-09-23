@@ -60,7 +60,7 @@ python manage.py test materials.tests.MaterialModelTests           # one class
 python manage.py test materials.tests.MaterialModelTests.test_material_str
 ```
 
-404 tests. Postgres must be reachable; expect a few minutes, and rather longer
+408 tests. Postgres must be reachable; expect a few minutes, and rather longer
 on a Windows checkout.
 
 ### How the tests are written
@@ -154,6 +154,7 @@ fixing it. Run `ruff format .` before pushing.
 ```bash
 cp seed_data/materials.example.csv seed_data/materials.csv
 cp seed_data/machines.example.csv seed_data/machines.csv
+cp seed_data/locations.example.csv seed_data/locations.csv
 cp seed_data/users.example.csv seed_data/users.csv
 # edit, then:
 python manage.py seed_data
@@ -169,6 +170,7 @@ are committed. Each file path can be overridden, e.g.
 |---|---|
 | `materials.csv` | `sku`, `name` |
 | `machines.csv` | `name`, `hourly_rate` *(optional)*, `rate_per_ton` *(optional)* |
+| `locations.csv` | `name` |
 | `users.csv` | `username`, `first_name`, `last_name`, `email`, `role` |
 
 `sku` and `name` are the match keys, so re-running updates in place rather than
@@ -194,6 +196,12 @@ the database — re-seeding never clobbers a rate or flag someone set by hand in
 the admin. New records fall back to the model default (`hourly_rate=NULL`,
 `rate_per_ton=NULL`).
 Clearing a value back to empty is an admin action, not a CSV one.
+
+**Locations are create-only.** A name already in the database is left exactly
+as it is — there is nothing else to update, and in particular `is_active` is not
+touched, so a location retired in the admin is not revived by a re-seed. The
+committed `locations.example.csv` is placeholders; replace them with the real
+sites.
 
 A machine has no stored hours to seed. Its motohodiny and tonnage on Stroje are
 summed from the approved usage rows every time the page is rendered.
