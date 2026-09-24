@@ -5,6 +5,7 @@ from typing import NamedTuple
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Sum
 from django.shortcuts import get_object_or_404, redirect, render
@@ -73,7 +74,29 @@ def _require_work_fields(order_form):
     """
     for name in WORK_FIELDS:
         if order_form.cleaned_data.get(name) in (None, ''):
-            order_form.add_error(name, order_form.fields[name].error_messages['required'])
+            # code='required' so `_form_error_summary` counts it with the rest.
+            order_form.add_error(
+                name, ValidationError(order_form.fields[name].error_messages['required'], code='required')
+            )
+
+
+# The field errors render beside their fields, well down a long form on a phone,
+# where they are easy to miss; without a banner at the top, a page that came back
+# without the green success message still reads as "probably sent".
+REQUIRED_FIELDS_MESSAGE = 'Vyplňte prosím všechna povinná pole.'
+FORM_ERRORS_MESSAGE = 'Formulář obsahuje chyby, opravte prosím vyznačená pole.'
+
+
+def _form_error_summary(order_form, formsets):
+    """The banner for a job page that failed validation.
+
+    A missing required field gets its own wording, since it is the common case;
+    any other field, row or section error gets the general one.
+    """
+    forms = [order_form, *(form for formset in formsets.values() for form in formset.forms)]
+    if any(error.code == 'required' for form in forms for errors in form.errors.as_data().values() for error in errors):
+        return REQUIRED_FIELDS_MESSAGE
+    return FORM_ERRORS_MESSAGE
 
 
 def _balance_error(consumed_rows, produced_rows):
@@ -260,14 +283,17 @@ def _valid_job_rows(request, order_form, formsets):
 
     A fuel-only job skips both the mass balance and `WORK_FIELDS`; anything that
     records work is held to both. The balance error has no field, so it goes on
-    `messages`.
+    `messages`, and so does a banner for any field error (`_form_error_summary`).
     """
     if not (order_form.is_valid() and all(formset.is_valid() for formset in formsets.values())):
+        messages.error(request, _form_error_summary(order_form, formsets))
         return None
     rows = _collect_rows(formsets)
     if _is_fuel_only(rows):
         return rows
     _require_work_fields(order_form)
+    if order_form.errors:
+        messages.error(request, _form_error_summary(order_form, formsets))
     balance_error = _balance_error(rows.consumed, rows.produced)
     if balance_error:
         messages.error(request, balance_error)
