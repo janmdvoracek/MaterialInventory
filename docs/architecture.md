@@ -655,6 +655,14 @@ rule, and overrides `check_row` instead of it:
 | machine alone | refused — it says nothing |
 | litres with no machine | refused |
 
+**A typed `0` in the litres box is the blank box.** `clean_litres` folds it into
+`None` before `check_row` runs, so every row in the table reads the same with a
+zero as with nothing: „stroj + hodiny + tuny + 0" is a usage row and no fill-up,
+and „stroj + 0" is a machine alone and refused. Refusing the zero outright used
+to send a worker who meant „didn't refuel" off to type at least 0,01; storing it
+would write a fill-up of nothing, and on its own would make a fuel-only job that
+recorded nothing. Negative litres are still refused.
+
 `RowForm.clean()` keeps the early return on `self.errors` that stops the row's
 own complaint printing over a field error; only the rule itself moved into an
 overridable hook.

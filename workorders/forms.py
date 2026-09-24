@@ -284,14 +284,28 @@ class MachineUsageForm(RowForm):
     # Litres, and no unit field to read — like every quantity in the app, the
     # unit is hardcoded in the prompt. Far narrower than the decimal(12, 2)
     # column, so it needs no width cap of its own (see `HOURS_MAX_DIGITS`).
+    # Zero is accepted and means „netankovalo se", exactly like leaving the box
+    # blank — see `clean_litres`.
     litres = forms.DecimalField(
-        min_value=Decimal('0.01'),
+        min_value=Decimal('0'),
         max_digits=7,
         decimal_places=2,
         required=False,
         label='Natankováno (l)',
         widget=forms.NumberInput(attrs={'placeholder': 'Natankováno (l)'}),
     )
+
+    def clean_litres(self):
+        """A typed 0 is the blank box, not a fill-up of nothing.
+
+        Refusing it sent a worker who wrote „0" for „didn't refuel" off to type
+        at least 0,01 — the opposite of what they meant. Stored, it would be a
+        `MachineRefuel` of zero litres, and on a row with no motohodiny it would
+        turn „stroj + 0" into a fuel-only job that recorded nothing. Folding it
+        into `None` means every rule below sees exactly what an empty box gives.
+        """
+        litres = self.cleaned_data.get('litres')
+        return None if litres == 0 else litres
 
     def check_row(self, cleaned_data):
         machine = cleaned_data.get('machine')

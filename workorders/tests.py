@@ -3603,6 +3603,36 @@ class MachineRefuelTests(ReviewFixtureMixin, TestCase):
         # A machine that was only refuelled did not run: no hours to invent.
         self.assertFalse(MachineUsage.objects.exists())
 
+    def test_zero_litres_beside_a_usage_is_the_blank_box(self):
+        # A worker who types 0 for „didn't refuel" means what an empty box means,
+        # and must not be told to type at least 0,01 instead.
+        self.client.force_login(self.worker)
+        response = self._submit(
+            [{'machine': self.machine_a, 'hours': Decimal('2'), 'tons': Decimal('5'), 'litres': '0'}]
+        )
+        self.assertRedirects(response, reverse('transform_create'))
+        self.assertEqual(MachineUsage.objects.count(), 1)
+        # No fill-up of nothing: the row is a usage row and only that.
+        self.assertFalse(MachineRefuel.objects.exists())
+
+    def test_zero_litres_alone_says_nothing(self):
+        # Treated as blank all the way through, „stroj + 0" is a machine with
+        # nothing beside it — not a fuel-only job that recorded nothing.
+        self.client.force_login(self.worker)
+        response = self._fuel_only([{'machine': self.machine_a, 'litres': '0'}])
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(WorkOrder.objects.exists())
+        self.assertContains(response, 'natankované litry')
+
+    def test_the_litres_box_allows_zero_but_not_less(self):
+        self.client.force_login(self.worker)
+        self.assertContains(self.client.get(reverse('transform_create')), 'min="0"')
+        response = self._submit(
+            [{'machine': self.machine_a, 'hours': Decimal('2'), 'tons': Decimal('5'), 'litres': '-1'}]
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(WorkOrder.objects.exists())
+
     def test_hours_without_tons_is_still_refused(self):
         # The usage half keeps its own all-or-nothing rule; litres relaxing the
         # row must not relax that too.
