@@ -168,8 +168,8 @@ nepoužil, nechte řádky prázdné.
 **Motohodiny a tuny patří k sobě, litry stojí samostatně.** Řádek tedy můžete
 vyplnit třemi způsoby:
 
-- **Stroj + hodiny + tuny** — stroj běžel; litry nechte prázdné, pokud se
-  netankovalo.
+- **Stroj + hodiny + tuny** — stroj běžel; litry nechte prázdné (nebo napište
+  0), pokud se netankovalo.
 - **Stroj + litry** — jen se tankovalo. Hodiny ani tuny vyplňovat nemusíte.
 - **Stroj + hodiny + tuny + litry** — běžel i se tankoval, oboje na jednom řádku.
 
