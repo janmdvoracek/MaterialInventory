@@ -438,6 +438,12 @@ stejně jako je tabulka na stránce prázdná.
 
 ## Časté potíže
 
+**Nahoře svítí červeně „Vyplňte prosím všechna povinná pole."**
+Zakázka se **neuložila**. Sjeďte níž — u prázdného povinného pole je napsáno,
+že je potřeba ho vyplnit. Když je nahoře místo toho *„Formulář obsahuje chyby,
+opravte prosím vyznačená pole."*, je některá hodnota vyplněná špatně; co přesně,
+je opět napsáno přímo u ní. Uloženou zakázku poznáte podle zelené zprávy.
+
 **„Zadejte číslo."**
 Použili jste čárku. Desetinná místa pište s tečkou — `12.5`.
 

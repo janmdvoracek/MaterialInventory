@@ -6,6 +6,7 @@ from decimal import Decimal
 
 from django import forms
 from django.conf import settings
+from django.contrib.messages import get_messages
 from django.db.models import ProtectedError
 from django.test import TestCase
 from django.urls import NoReverseMatch, reverse
@@ -19,7 +20,7 @@ from materials.models import Material
 from .forms import JOB_SECTIONS, NOTES_MAX_LENGTH
 from .models import MachineRefuel, MachineUsage, StockMovement, WorkerHours, WorkOrder
 from .reports import FUEL_PAGE_PARAM, HISTORY_PAGE_SIZE, MY_JOBS_LIMIT, _last_month
-from .views import MAX_ROWS_PER_SECTION, MIN_ROWS_PER_SECTION
+from .views import FORM_ERRORS_MESSAGE, MAX_ROWS_PER_SECTION, MIN_ROWS_PER_SECTION, REQUIRED_FIELDS_MESSAGE
 
 
 def default_location():
@@ -3431,6 +3432,86 @@ class RowErrorVisibilityTests(ReviewFixtureMixin, TestCase):
         self.client.force_login(self.manager)
         response = self.client.post(reverse('job_edit', args=[job.pk]), payload)
         self.assertContains(response, 'desetinná místa')
+
+
+class ErrorBannerTests(ReviewFixtureMixin, TestCase):
+    """A refused job also says so at the top, in the red `messages` banner.
+
+    The field errors sit beside their fields, often a long scroll down a phone,
+    and a page that simply comes back without the green message was easy to read
+    as „it probably went through".
+    """
+
+    def _payload(self, **overrides):
+        payload = job_payload(
+            [{'material': self.material_raw, 'quantity': Decimal('5')}],
+            [{'material': self.material_finished, 'quantity': Decimal('5')}],
+        )
+        payload.update(overrides)
+        return payload
+
+    def _submit(self, url=None, **overrides):
+        self.client.force_login(self.worker)
+        return self.client.post(url or reverse('transform_create'), self._payload(**overrides))
+
+    def _banners(self, response):
+        return [str(message) for message in response.context['messages']]
+
+    def test_a_missing_work_field_raises_the_required_banner(self):
+        # „Popis" is required by the view, not the form field (see WORK_FIELDS).
+        response = self._submit(description='')
+        self.assertFalse(WorkOrder.objects.exists())
+        self.assertEqual(self._banners(response), [REQUIRED_FIELDS_MESSAGE])
+        self.assertContains(response, f'<li class="error">{REQUIRED_FIELDS_MESSAGE}</li>', html=True)
+
+    def test_a_missing_form_level_required_field_raises_it_too(self):
+        # The date is required by the form itself, so this fails before the rows are read.
+        response = self._submit(performed_on='')
+        self.assertFalse(WorkOrder.objects.exists())
+        self.assertEqual(self._banners(response), [REQUIRED_FIELDS_MESSAGE])
+
+    def test_several_missing_fields_raise_one_banner(self):
+        response = self._submit(description='', hours='', location='')
+        self.assertEqual(self._banners(response), [REQUIRED_FIELDS_MESSAGE])
+
+    def test_a_field_that_is_filled_in_wrongly_gets_the_general_banner(self):
+        response = self._submit(**{'consumed-0-quantity': '5.123'})
+        self.assertFalse(WorkOrder.objects.exists())
+        self.assertEqual(self._banners(response), [FORM_ERRORS_MESSAGE])
+
+    def test_a_half_filled_row_gets_the_general_banner(self):
+        response = self._submit(**{'consumed-0-quantity': ''})
+        self.assertEqual(self._banners(response), [FORM_ERRORS_MESSAGE])
+
+    def test_a_balance_error_alone_raises_no_second_banner(self):
+        # Its own message is already the banner; nothing is wrong with a field.
+        response = self._submit(**{'produced-0-quantity': '4'})
+        self.assertFalse(WorkOrder.objects.exists())
+        self.assertEqual(len(self._banners(response)), 1)
+        self.assertNotIn(REQUIRED_FIELDS_MESSAGE, self._banners(response))
+        self.assertNotIn(FORM_ERRORS_MESSAGE, self._banners(response))
+
+    def test_a_missing_field_and_a_balance_error_both_show(self):
+        banners = self._banners(self._submit(description='', **{'produced-0-quantity': '4'}))
+        self.assertEqual(banners[0], REQUIRED_FIELDS_MESSAGE)
+        self.assertEqual(len(banners), 2)
+
+    def test_the_edit_page_raises_it_too(self):
+        job = self.submit_job(self.worker)
+        self.client.force_login(self.manager)
+        response = self.client.post(reverse('job_edit', args=[job.pk]), self._payload(description=''))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self._banners(response), [REQUIRED_FIELDS_MESSAGE])
+
+    def test_a_row_button_is_not_a_submission_and_raises_nothing(self):
+        # Asking for a row on a half-filled form must not scold anyone.
+        response = self._submit(description='', add_workers='')
+        self.assertEqual(self._banners(response), [])
+
+    def test_a_valid_job_raises_no_error_banner(self):
+        response = self._submit()
+        self.assertRedirects(response, reverse('transform_create'))
+        self.assertEqual([m.level_tag for m in get_messages(response.wsgi_request)], ['success'])
 
 
 class DescriptionAndNotesTests(ReviewFixtureMixin, TestCase):
