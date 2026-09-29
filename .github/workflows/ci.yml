@@ -80,7 +80,8 @@ jobs:
           python-version: "3.14"
           cache: "pip"
 
-      - run: pip install -r requirements.txt
+      # requirements-dev.txt for coverage, pinned there.
+      - run: pip install -r requirements.txt -r requirements-dev.txt
 
       - name: Django system checks
         run: python manage.py check
@@ -88,5 +89,22 @@ jobs:
       - name: Check for missing migrations
         run: python manage.py makemigrations --check --dry-run
 
+      # Measured per pyproject.toml's [tool.coverage] sections.
       - name: Run tests
-        run: python manage.py test
+        run: coverage run manage.py test
+
+      # The table lands on the run's summary page, no log-digging needed.
+      - name: Coverage summary
+        run: |
+          {
+            echo '## Test coverage'
+            coverage report --format=markdown
+          } >> "$GITHUB_STEP_SUMMARY"
+          coverage html
+
+      - name: Upload HTML coverage report
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-html
+          path: htmlcov/
+          retention-days: 14

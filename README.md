@@ -120,6 +120,7 @@ Full column reference: [docs/development.md](docs/development.md#seeding-data).
 ```bash
 python manage.py test                  # full suite (421 tests, needs Postgres)
 python manage.py test workorders       # one app
+coverage run manage.py test && coverage html   # coverage report in htmlcov/
 ruff check . && ruff format .          # lint and format
 docker compose up --build              # full stack
 ```

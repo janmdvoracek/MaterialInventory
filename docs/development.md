@@ -13,7 +13,8 @@
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-pip install -r requirements-dev.txt   # Ruff, pinned to the CI version
+pip install -r requirements-dev.txt   # Ruff (pinned to the CI version), pre-commit, coverage
+pre-commit install                    # optional; see Linting
 cp .env.example .env
 ```
 
@@ -62,6 +63,49 @@ python manage.py test materials.tests.MaterialModelTests.test_material_str
 
 421 tests. Postgres must be reachable; expect a few minutes, and rather longer
 on a Windows checkout.
+
+### Coverage
+
+[coverage.py](https://coverage.readthedocs.io/) wraps the same test command. It
+is in `requirements-dev.txt`, and its settings are the `[tool.coverage]` sections
+of `pyproject.toml`:
+
+```bash
+coverage run manage.py test      # takes any of the test labels above
+coverage report -m               # table in the terminal, with the missed lines
+coverage html                    # browsable report: open htmlcov/index.html
+```
+
+The HTML report is the one to read. It has a page per file with every line
+that did not run, and every branch that went only one way, highlighted.
+`coverage report --skip-covered` narrows the table to the files that still have
+gaps.
+
+What it measures:
+
+- **Branch coverage is on.** An `if` whose `else` never ran counts as partial,
+  even when every line of the `if` ran. That matters here because most of the
+  app's rules are conditionals (fuel-only jobs, unset rates, worker vs. manager).
+- **Excluded: migrations, `tests.py`, `manage.py`, `config/asgi.py`,
+  `config/wsgi.py` and `scripts/`.** The tests would count themselves as
+  covered, the migrations are generated, and the rest never run under the test
+  runner.
+- **Python only.** `job_rows.js` and `searchable_select.js` are untested by
+  construction (the suite runs no browser), and they do not show up as gaps.
+  The same goes for templates, which do render but are not measured.
+
+Two things to watch:
+
+- **Don't add `--parallel` without changing the config.** It runs the tests in
+  worker processes that coverage does not follow. That needs
+  `concurrency = ["multiprocessing"]` and `parallel = true` under
+  `[tool.coverage.run]`, plus a `coverage combine` before reporting.
+- **A single-app run reports every file.** `coverage run manage.py test
+  materials` still lists `workorders/views.py`, measured by what the `materials`
+  tests happened to reach. Only a full run gives numbers worth quoting.
+
+`.coverage` (the raw data) and `htmlcov/` are gitignored and kept out of the
+image. CI publishes the same report on every passing run; see [CI](#ci).
 
 ### How the tests are written
 
@@ -149,6 +193,34 @@ naive-datetime rule that only fires in test helpers.
 **CI runs `ruff format --check`**, which fails on unformatted code rather than
 fixing it. Run `ruff format .` before pushing.
 
+### Pre-commit hooks
+
+`.pre-commit-config.yaml` runs the same checks on every commit, so a failure
+shows up before the push instead of in CI. It is **opt-in per clone** —
+`pre-commit install` once after setup — which is why CI stays the enforcement.
+`pre-commit run --all-files` runs every hook over the whole repo.
+
+| Hook | Catches |
+|---|---|
+| `ruff-check`, `ruff-format` | The first two steps of the `lint` job |
+| `shellcheck` | The third; the Python package bundles the binary, so it works on Windows |
+| `missing-migrations` | A `models.py` change without its migration — the `test` job's middle step. Runs only when a `models.py` is staged and needs no running Postgres |
+| `no-secrets-or-real-seed-data` | `.env`, `.env.production` or a real `seed_data/*.csv` being committed. All are gitignored, so it only fires on `git add -f` or a broken ignore rule — neither of which CI would notice |
+| `check-merge-conflict`, `check-added-large-files`, `check-yaml`, `check-toml`, `detect-private-key` | What the names say. They also run on Markdown-only commits, which CI skips |
+
+Two things to keep in mind:
+
+- **The ruff `rev` is pinned by hand to match `requirements-dev.txt`.**
+  Dependabot bumps the requirements file only, and `pre-commit autoupdate` moves
+  the hook past CI's version — set it back after running it.
+- **`missing-migrations` goes through `scripts/check_migrations.py`**, not
+  `python manage.py`, because git hands a hook whatever `python` is first on
+  PATH — from an IDE or an unactivated shell that is a Python with no Django.
+  The wrapper uses `.venv`, then an active virtualenv, and says so if there is
+  neither.
+
+The test suite is deliberately not a hook: it needs Postgres and takes minutes.
+
 ## Seeding data
 
 ```bash
@@ -225,11 +297,21 @@ and every pull request:
 |---|---|
 | `lint` | `ruff check .`, then `ruff format --check .`, then `shellcheck scripts/*.sh` |
 | `docker-build` | `scripts/smoke_prod_stack.sh` — builds the image and runs the whole production stack (see below) |
-| `test` | `manage.py check` → `manage.py makemigrations --check --dry-run` → `manage.py test` against a Postgres 16 service, on Python 3.14 like the image |
+| `test` | `manage.py check` → `manage.py makemigrations --check --dry-run` → `coverage run manage.py test` against a Postgres 16 service, on Python 3.14 like the image → coverage summary and HTML report (see below) |
 
 The middle step of the test job is the one that surprises people: **a model
 change without its migration file fails CI even when every test passes.** Run
 `makemigrations` and commit the result alongside any `models.py` edit.
+
+**Coverage is reported, not enforced.** After the tests pass, the `test` job
+writes the coverage table to the run's summary page (*Actions* → the run →
+*Summary*, under the job list). It also uploads the HTML report as an artifact
+named `coverage-html`, kept for 14 days: download it from the same page, unzip
+it, and open `index.html`. There is no `--fail-under` threshold, so a drop in
+coverage never fails CI on its own. If the tests fail, neither step runs, so a
+failed run has no coverage table. `coverage` comes from `requirements-dev.txt`,
+which the `test` job installs alongside `requirements.txt`, so Dependabot's
+bump to that pin applies to CI too.
 
 **Documentation-only changes skip CI entirely.** Both triggers carry a
 `paths-ignore` list, and since `30c6477` it holds a single pattern: `'**.md'`.
