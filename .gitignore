@@ -14,6 +14,9 @@ staticfiles/
 static/xlsx/
 .env
 *.egg-info/
+# coverage.py output; see docs/development.md.
+.coverage
+htmlcov/
 .DS_Store
 seed_data/*.csv
 !seed_data/*.example.csv
