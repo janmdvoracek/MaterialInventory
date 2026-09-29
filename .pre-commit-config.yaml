@@ -1,0 +1,45 @@
+# Local mirror of CI's `lint` job, plus the migration check from `test` and a
+# few guards CI cannot give. Opt-in per clone (`pre-commit install`), so CI
+# stays the enforcement; see docs/development.md.
+repos:
+  # Keep `rev` in step with the ruff pin in requirements-dev.txt by hand.
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.8
+    hooks:
+      - id: ruff-check
+      - id: ruff-format
+
+  # Bundles the binary, so it runs on Windows without installing shellcheck.
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.11.0.1-1
+    hooks:
+      - id: shellcheck
+        files: ^scripts/.*\.sh$
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-merge-conflict
+      - id: check-added-large-files
+      - id: check-yaml
+      - id: check-toml
+      - id: detect-private-key
+
+  - repo: local
+    hooks:
+      # CI fails a model change without its migration even when every test
+      # passes. Needs no running Postgres. The wrapper finds the project's
+      # virtualenv, since the `python` a hook sees has no Django.
+      - id: missing-migrations
+        name: makemigrations --check
+        entry: python scripts/check_migrations.py
+        language: python
+        pass_filenames: false
+        files: (^|/)models\.py$
+      # All gitignored, so this only fires on `git add -f` or a broken ignore
+      # rule — neither of which CI would notice.
+      - id: no-secrets-or-real-seed-data
+        name: refuse .env files and real seed CSVs
+        entry: .env files and real seed_data CSVs must never be committed
+        language: fail
+        files: (^|/)\.env(\.production)?$|^seed_data/(?!.*\.example\.csv$).*\.csv$

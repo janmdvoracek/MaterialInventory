@@ -13,7 +13,8 @@
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-pip install -r requirements-dev.txt   # Ruff, pinned to the CI version
+pip install -r requirements-dev.txt   # Ruff (pinned to the CI version) and pre-commit
+pre-commit install                    # optional; see Linting
 cp .env.example .env
 ```
 
@@ -148,6 +149,34 @@ naive-datetime rule that only fires in test helpers.
 
 **CI runs `ruff format --check`**, which fails on unformatted code rather than
 fixing it. Run `ruff format .` before pushing.
+
+### Pre-commit hooks
+
+`.pre-commit-config.yaml` runs the same checks on every commit, so a failure
+shows up before the push instead of in CI. It is **opt-in per clone** —
+`pre-commit install` once after setup — which is why CI stays the enforcement.
+`pre-commit run --all-files` runs every hook over the whole repo.
+
+| Hook | Catches |
+|---|---|
+| `ruff-check`, `ruff-format` | The first two steps of the `lint` job |
+| `shellcheck` | The third; the Python package bundles the binary, so it works on Windows |
+| `missing-migrations` | A `models.py` change without its migration — the `test` job's middle step. Runs only when a `models.py` is staged and needs no running Postgres |
+| `no-secrets-or-real-seed-data` | `.env`, `.env.production` or a real `seed_data/*.csv` being committed. All are gitignored, so it only fires on `git add -f` or a broken ignore rule — neither of which CI would notice |
+| `check-merge-conflict`, `check-added-large-files`, `check-yaml`, `check-toml`, `detect-private-key` | What the names say. They also run on Markdown-only commits, which CI skips |
+
+Two things to keep in mind:
+
+- **The ruff `rev` is pinned by hand to match `requirements-dev.txt`.**
+  Dependabot bumps the requirements file only, and `pre-commit autoupdate` moves
+  the hook past CI's version — set it back after running it.
+- **`missing-migrations` goes through `scripts/check_migrations.py`**, not
+  `python manage.py`, because git hands a hook whatever `python` is first on
+  PATH — from an IDE or an unactivated shell that is a Python with no Django.
+  The wrapper uses `.venv`, then an active virtualenv, and says so if there is
+  neither.
+
+The test suite is deliberately not a hook: it needs Postgres and takes minutes.
 
 ## Seeding data
 

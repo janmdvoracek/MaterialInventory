@@ -3,6 +3,7 @@
 .git
 .github
 .gitignore
+.pre-commit-config.yaml
 
 .venv
 venv
