@@ -1,5 +1,7 @@
+from django import forms
 from django.contrib import admin
 
+from .forms import clean_photo_upload
 from .models import MachineRefuel, MachineUsage, StockMovement, WorkerHours, WorkOrder, discard_photo
 
 
@@ -31,8 +33,20 @@ class WorkerHoursInline(admin.TabularInline):
     fields = ('user', 'hours')
 
 
+class WorkOrderAdminForm(forms.ModelForm):
+    class Meta:
+        model = WorkOrder
+        fields = '__all__'
+
+    def clean_photo(self):
+        # Shrunk like one sent through the job form, or an upload here would
+        # be the one full-size photo on a disk sized for small ones.
+        return clean_photo_upload(self.cleaned_data.get('photo'))
+
+
 @admin.register(WorkOrder)
 class WorkOrderAdmin(admin.ModelAdmin):
+    form = WorkOrderAdminForm
     list_display = (
         'id',
         'performed_on',

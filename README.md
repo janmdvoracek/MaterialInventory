@@ -32,8 +32,9 @@ filter the page is showing; Machines has two, one per summary card. Materials ha
 a further download under its line items, the one row-level export: every row the
 filter allows, not the page on screen.
 
-Any photo attached to a job is shown on its Review page and nowhere else. It is
-stored outside the public asset tree and served by Django behind the same gate
+Any photo attached to a job is linked from its Review page and nowhere else. It
+is shrunk on upload to a JPEG of at most 1600 px (a few hundred KB, HEIC from an
+iPhone included), stored outside the public asset tree and served by Django behind the same gate
 as that page — no uploaded file is reachable without logging in.
 
 A job is written as a single transaction: its material line items, every
@@ -122,7 +123,7 @@ Full column reference: [docs/development.md](docs/development.md#seeding-data).
 ## Common commands
 
 ```bash
-python manage.py test                  # full suite (439 tests, needs Postgres)
+python manage.py test                  # full suite (444 tests, needs Postgres)
 python manage.py test workorders       # one app
 coverage run manage.py test && coverage html   # coverage report in htmlcov/
 ruff check . && ruff format .          # lint and format

@@ -419,8 +419,9 @@ logged-in worker with 403. A 200 there is the symptom of the directory having
 been published.
 
 The form's own limits — `PHOTO_EXTENSIONS` and `PHOTO_MAX_BYTES` (10 MB) in
-`workorders/forms.py` — are the app's whole rule, since nothing decodes the
-file. The `Caddyfile` sets `request_body max_size 12MB` above them as a
+`workorders/forms.py` — bound the *upload*; what is stored is shrunk to a JPEG
+of a few hundred KB (`workorders/photos.py`), so the volume grows far slower
+than the cap suggests. The `Caddyfile` sets `request_body max_size 12MB` above them as a
 backstop, so an oversized photo comes back as the app's Czech field error while
 a hostile upload never reaches the disk.
 

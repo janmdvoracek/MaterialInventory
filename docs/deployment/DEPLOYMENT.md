@@ -444,7 +444,10 @@ a specific commit of `main` instead. In order, it:
 4. builds the `web` image, which is where `collectstatic` runs — it does not run
    at boot;
 5. runs `migrate` from a one-off container of the **new** image;
-6. `up -d`, swapping the new container in.
+6. `up -d`, swapping the new container in;
+7. `docker image prune -f`, removing the image the previous build left
+   dangling — the disk is small, and a failure here only logs a warning, since
+   the new version is already serving.
 
 Migrating before the swap means a broken build or a failed migration leaves the
 old container serving; Postgres rolls a failed migration back. `migrate` runs
@@ -575,7 +578,8 @@ in prose, so changing `AXES_COOLOFF_TIME` means changing the template too.
 |---|---|---|
 | Weekly | `sudo apt update && sudo apt upgrade` | The host is on the internet now. Security updates are not optional. |
 | Monthly | `dcp exec web python manage.py clearsessions` | Django's DB session table is never pruned automatically. |
-| Monthly | `docker image prune -f` | Every `up --build` leaves a dangling image. |
+| Monthly | `docker image prune -f` | Every `up --build` leaves a dangling image. `deploy.sh` prunes after each deploy, so this only matters after a build by hand. |
+| Monthly | `df -h /` | The disk is 20 GB. Job photos are shrunk to a few hundred KB each, but they, the backups and Docker's build cache all grow. |
 | Monthly | `ls -lh backups/ && tail backups/backup.log` | Confirms the cron backup is still running. |
 | Monthly | `curl -sI https://<domain>/login/` | Confirms the certificate renewed. Caddy does it at 60 days unattended; this is how you find out it stopped. |
 | As they arrive | Dependabot PRs | Security updates for Django, the base images and the actions. See the Postgres caveat below. |
@@ -610,7 +614,7 @@ cluster re-reads `POSTGRES_INITDB_ARGS`, so step 8's check applies again.
 | `db` exits with "set DB_NAME in .env.production" | The `--env-file` flag was left off. |
 | `port is already allocated` on 80 or 443 | Something else on the VPS is already serving. Nothing else should be. |
 | `500` on every page, `Missing staticfiles manifest entry` | The image was built without the `collectstatic` step. Rebuild with `dcp up -d --build`. |
-| A job's photo is a broken image, or `404` where it used to show | The `media_data:/app/media` mount is missing from the `web` service, so the file was written into a container that has since been replaced. The rows survive; the files do not. |
+| „Zobrazit fotku" on a job answers `404` where it used to open the photo | The `media_data:/app/media` mount is missing from the `web` service, so the file was written into a container that has since been replaced. The rows survive; the files do not. |
 | `413` when submitting a job with a photo | The photo is over the `request_body max_size` in the `Caddyfile`. Anything under it that is still too large comes back as the app's own Czech field error instead. |
 | `seed_data` reports "not found, skipping." | The `./seed_data:/app/seed_data:ro` mount is missing, or the real `.csv` files were never created on the server. |
 | Czech names sort after Z | The cluster was initialised without the ICU locale. See step 8. |

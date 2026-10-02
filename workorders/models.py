@@ -13,7 +13,7 @@ def job_photo_path(instance, filename):
     The name is a fresh uuid rather than the phone's: `IMG_0001.jpg` collides
     on every second upload, and the original carries nothing worth keeping.
     The extension stays, because it is what the browser is told the file is
-    when it is handed back. Foldered by upload month so one directory does not
+    when it is handed back — `.jpg` for every upload since they are shrunk. Foldered by upload month so one directory does not
     grow without bound — by today's date, not `performed_on`, which an edit can
     move while the stored file cannot.
     """
@@ -76,12 +76,11 @@ class WorkOrder(models.Model):
     # Free-form and optional, unlike `description`: a whole paragraph, not a one-liner.
     notes = models.TextField(blank=True, verbose_name='poznámky')
     # One optional photo of the work, taken on the phone that fills the form in.
-    # A plain FileField and not an ImageField on purpose: ImageField means Pillow
-    # for one upload, and Pillow cannot identify the HEIC an iPhone shoots, so it
-    # would refuse the very photo it is there to validate. Nothing resizes or
-    # reads the file, so the form's extension check and size cap are the whole
-    # rule (see `WorkOrderForm.photo`). Never public: MEDIA_ROOT is not served,
-    # the file goes out through `protected_media`.
+    # A plain FileField and not an ImageField: the forms decode, shrink and
+    # re-encode every upload to a small JPEG themselves (`clean_photo_upload`,
+    # through pillow-heif so an iPhone's HEIC opens), and ImageField's own check
+    # would only decode it a second time. Never public: MEDIA_ROOT is not
+    # served, the file goes out through `protected_media`.
     photo = models.FileField(upload_to=job_photo_path, blank=True, verbose_name='fotka')
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING, verbose_name='stav')
     reviewed_at = models.DateTimeField(null=True, blank=True, verbose_name='posouzeno')

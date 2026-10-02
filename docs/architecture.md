@@ -200,19 +200,36 @@ asked of no submission, a fuel-only one included, and nothing reads it back: no
 report, no filter, no export. It is evidence hung on a job, not a record the app
 computes with.
 
-It is a plain **`FileField`, not an `ImageField`**, and that is deliberate.
-`ImageField` means Pillow in `requirements.txt` for the sake of one upload, and
-Pillow cannot identify the HEIC an iPhone shoots — so the validation would
-refuse the very photo it is there to check. Nothing in the app decodes, resizes
-or re-encodes the file, so the whole rule is the form's: an extension in
-`PHOTO_EXTENSIONS` (jpg/jpeg/png/webp/heic/heif) and at most `PHOTO_MAX_BYTES`
-(10 MB), both in `workorders/forms.py`. The size cap is a `clean_photo` of its
-own, because a `FileField` column holds a path and refuses nothing by itself —
-the same direction as `NOTES_MAX_LENGTH`, and the same reason.
+**Every upload is shrunk before it is stored**, because the production disk is
+20 GB and a phone photo is 2–6 MB — at a few dozen jobs a day, the originals
+would fill it within months. `clean_photo_upload` in `workorders/forms.py` takes
+an upload that passed the extension check (`PHOTO_EXTENSIONS`:
+jpg/jpeg/png/webp/heic/heif), refuses it past `PHOTO_MAX_BYTES` (10 MB, measured
+before anything is decoded), and hands it to `shrink_photo` in
+`workorders/photos.py`. That decodes it with Pillow — with `pillow-heif`
+registered, so the HEIC an iPhone shoots by default opens too — turns it upright
+by its EXIF orientation, fits it inside `PHOTO_MAX_SIDE` (1600 px, enough to
+read a photographed delivery note), flattens any transparency onto white and
+re-encodes it as a JPEG at quality 80. What lands on disk is a few hundred KB,
+and the original is not kept. Re-encoding drops the EXIF block too, GPS position
+included. A file that carries a photo's extension but does not decode — or is
+past Pillow's decompression-bomb limit — is a field error, never a 500.
+
+Both forms that can set the column go through it: `WorkOrderForm.clean_photo`
+and `WorkOrderAdminForm.clean_photo`, so the admin is not a way round it.
+`shrink_photo` returns a `SimpleUploadedFile` rather than a `ContentFile`
+because `_apply_photo` tells a new photo from the stored `FieldFile` by
+`isinstance(photo, UploadedFile)`.
+
+The column stays a plain **`FileField`, not an `ImageField`**: the form already
+decodes the file, and `ImageField`'s own check would only decode it a second
+time. The size cap is the form's for the same reason `NOTES_MAX_LENGTH` is —
+a `FileField` column holds a path and refuses nothing by itself.
 
 The stored name is a fresh uuid under `job_photos/<year>/<month>/`
 (`models.job_photo_path`), keeping only the extension: two phones both offer
-`IMG_0001.jpg`, and the original name carries nothing worth keeping. The folder
+`IMG_0001.jpg`, and the original name carries nothing worth keeping. Since every
+photo is re-encoded, the extension is always `.jpg`. The folder
 is the *upload* month rather than `performed_on`, which an edit can move while
 the file cannot.
 
@@ -223,8 +240,7 @@ job photo is company data. `MEDIA_URL` points at
 the photo is reachable by exactly the people who may open the job it belongs to
 and `photo.url` resolves the same on the job page and in the admin. The job page
 **links** the photo („Zobrazit fotku") rather than rendering it in an `<img>`:
-a full-size phone photo is several MB on every visit to the detail page, and a
-HEIC renders as a broken image in most browsers but opens fine on its own. That gate is
+the detail page is for the job's figures, and the photo is one tap away. That gate is
 the whole of `MEDIA_ROOT`, so parking anything with a different audience there
 means revisiting it.
 

@@ -13,6 +13,7 @@ from machines.models import Machine
 from materials.models import Material
 
 from .models import WorkOrder
+from .photos import UnreadablePhoto, shrink_photo
 
 # The hours columns are decimal(12, 2), so 10 integer digits. DecimalValidator
 # allows max_digits - decimal_places integer digits: 10 + the 1 decimal place
@@ -22,16 +23,37 @@ HOURS_MAX_DIGITS = 11
 # `notes` is a TextField, so this cap is the form's alone; see `WorkOrderForm.notes`.
 NOTES_MAX_LENGTH = 2000
 
-# The photo's whole rule, since nothing decodes the file (see `WorkOrder.photo`).
-# HEIC and HEIF are here because that is what an iPhone shoots by default; the
-# app only stores and hands the file back, so a format an old browser cannot
-# display is still worth keeping.
+# What „Fotka" accepts; `clean_photo_upload` then decodes and shrinks it. HEIC
+# and HEIF are here because that is what an iPhone shoots by default — they are
+# stored as JPEG like everything else (see `photos.shrink_photo`).
 PHOTO_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif']
 
-# A phone photo is 2-6 MB; 10 leaves room for a long-exposure one without
-# letting an accidental video through. Above Django's FILE_UPLOAD_MAX_MEMORY_SIZE,
-# so a photo this size is spooled to a temp file rather than held in memory.
+# The size of the *upload*, not of what is stored, which is shrunk to a few
+# hundred KB. A phone photo is 2-6 MB; 10 leaves room for a long-exposure one
+# without letting an accidental video through, or making the server decode one.
+# Above Django's FILE_UPLOAD_MAX_MEMORY_SIZE, so a photo this size is spooled to
+# a temp file rather than held in memory.
 PHOTO_MAX_BYTES = 10 * 1024 * 1024
+
+
+def clean_photo_upload(photo):
+    """Refuse an oversized or undecodable upload, and shrink the rest.
+
+    Shared by `WorkOrderForm` and the admin's form, so a photo is stored small
+    whichever way it came in. Only an upload is touched: False is „Zrušit"
+    ticked, and a FieldFile is the stored photo coming back unchanged — asking
+    that one for its size would stat the file on every save, and raise if it
+    went missing. The size is checked ahead of decoding so that an oversized
+    file is never decoded at all.
+    """
+    if not isinstance(photo, UploadedFile):
+        return photo
+    if photo.size > PHOTO_MAX_BYTES:
+        raise forms.ValidationError(f'Fotka je příliš velká (maximálně {PHOTO_MAX_BYTES // (1024 * 1024)} MB).')
+    try:
+        return shrink_photo(photo)
+    except UnreadablePhoto:
+        raise forms.ValidationError('Soubor se nepodařilo otevřít jako fotku.') from None
 
 
 def _hours_field(**kwargs):
@@ -142,19 +164,8 @@ class WorkOrderForm(forms.Form):
         self.fields['hours'].label = 'Odpracované hodiny'
 
     def clean_photo(self):
-        """Refuse an oversized upload as a field error rather than storing it.
-
-        The extension is the validator's business; the size is checked here
-        because a cap on a `FileField` is a form's alone — the column holds a
-        path, not the file, so nothing below this refuses anything.
-        """
-        photo = self.cleaned_data.get('photo')
-        # Only an upload is measured. False is „Zrušit" ticked, and a FieldFile
-        # is the stored photo coming back unchanged — asking that one for its
-        # size would stat the file on every save, and raise if it went missing.
-        if isinstance(photo, UploadedFile) and photo.size > PHOTO_MAX_BYTES:
-            raise forms.ValidationError(f'Fotka je příliš velká (maximálně {PHOTO_MAX_BYTES // (1024 * 1024)} MB).')
-        return photo
+        # The extension is the validator's business; the rest is shared with the admin.
+        return clean_photo_upload(self.cleaned_data.get('photo'))
 
     def author_or(self, submitter):
         """Whose job this is: the person picked in „Zapsat za", else the submitter."""
