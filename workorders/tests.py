@@ -15,6 +15,7 @@ from django.db.models import ProtectedError
 from django.test import TestCase, override_settings
 from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
+from PIL import Image
 
 from accounts.models import User
 from locations.models import Location
@@ -23,6 +24,7 @@ from materials.models import Material
 
 from .forms import JOB_SECTIONS, NOTES_MAX_LENGTH, PHOTO_MAX_BYTES
 from .models import MachineRefuel, MachineUsage, StockMovement, WorkerHours, WorkOrder
+from .photos import PHOTO_MAX_SIDE
 from .reports import FUEL_PAGE_PARAM, HISTORY_PAGE_SIZE, MY_JOBS_LIMIT, _last_month
 from .views import FORM_ERRORS_MESSAGE, MAX_ROWS_PER_SECTION, MIN_ROWS_PER_SECTION, REQUIRED_FIELDS_MESSAGE
 
@@ -4051,6 +4053,10 @@ class JobPhotoTests(ReviewFixtureMixin, TestCase):
     belongs to, which Django does not do on its own — through `_apply_photo` on
     the form, the post_delete receiver on a deleted job, and `save_model` in the
     admin, which writes the column through a widget of its own.
+
+    And what is stored is never the upload itself: every photo, from either
+    form, is decoded and re-encoded as a JPEG of at most `PHOTO_MAX_SIDE`, so
+    the fixture has to be a real picture rather than a few bytes named `.jpg`.
     """
 
     @classmethod
@@ -4068,8 +4074,17 @@ class JobPhotoTests(ReviewFixtureMixin, TestCase):
         shutil.rmtree(cls.media_root, ignore_errors=True)
         super().tearDownClass()
 
-    def _photo(self, name='foto.jpg', size=64):
-        return SimpleUploadedFile(name, b'x' * size, content_type='image/jpeg')
+    def _photo(self, name='foto.jpg', size=(40, 30), image_format='JPEG', mode='RGB', color='red', **save_kwargs):
+        buffer = io.BytesIO()
+        Image.new(mode, size, color).save(buffer, image_format, **save_kwargs)
+        return SimpleUploadedFile(name, buffer.getvalue())
+
+    def _stored_image(self, work_order):
+        """The stored photo, decoded — the bytes are the app's, not the upload's."""
+        with work_order.photo.open('rb') as stored:
+            image = Image.open(stored)
+            image.load()
+        return image
 
     def _submit(self, url=None, **overrides):
         """A balanced job, with whatever „Fotka" the test passes."""
@@ -4095,7 +4110,46 @@ class JobPhotoTests(ReviewFixtureMixin, TestCase):
         work_order = self._job_with_photo()
         self.assertTrue(work_order.photo)
         self.assertTrue(default_storage.exists(work_order.photo.name))
-        self.assertEqual(work_order.photo.read(), b'x' * 64)
+        image = self._stored_image(work_order)
+        self.assertEqual(image.format, 'JPEG')
+        self.assertEqual(image.size, (40, 30))
+
+    def test_a_large_photo_is_shrunk_to_the_long_side_cap(self):
+        # The point of the whole thing: a phone photo is thousands of pixels
+        # wide, and the disk is sized for a few hundred KB per job.
+        work_order = self._job_with_photo(size=(PHOTO_MAX_SIDE * 2, PHOTO_MAX_SIDE))
+        self.assertEqual(self._stored_image(work_order).size, (PHOTO_MAX_SIDE, PHOTO_MAX_SIDE // 2))
+
+    def test_a_portrait_shot_is_turned_upright_and_its_exif_dropped(self):
+        # A phone stores portrait pixels sideways plus an EXIF flag; the flag
+        # goes with the EXIF block (GPS position included), so the pixels turn.
+        exif = Image.Exif()
+        exif[0x0112] = 6  # Orientation: rotate 90° clockwise to display.
+        work_order = self._job_with_photo(size=(40, 30), exif=exif.tobytes())
+        image = self._stored_image(work_order)
+        self.assertEqual(image.size, (30, 40))
+        self.assertFalse(image.getexif())
+
+    def test_a_heic_photo_is_stored_as_jpeg(self):
+        # What an iPhone shoots by default, and what pillow-heif is here for.
+        work_order = self._job_with_photo(name='IMG_0001.HEIC', image_format='HEIF')
+        self.assertTrue(work_order.photo.name.endswith('.jpg'))
+        self.assertEqual(self._stored_image(work_order).format, 'JPEG')
+
+    def test_a_transparent_png_lands_on_white(self):
+        # JPEG has no alpha; a bare convert('RGB') would turn a screenshot's
+        # transparent margin black.
+        work_order = self._job_with_photo(name='snimek.png', image_format='PNG', mode='RGBA', color=(0, 0, 0, 0))
+        self.assertEqual(self._stored_image(work_order).getpixel((0, 0)), (255, 255, 255))
+
+    def test_a_file_named_like_a_photo_but_not_one_is_refused(self):
+        # The extension passes; decoding is what catches it, and it is a field
+        # error rather than the 500 an unhandled Pillow error would be.
+        self.client.force_login(self.worker)
+        response = self._submit(photo=SimpleUploadedFile('foto.jpg', b'%PDF-1.4'))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(WorkOrder.objects.exists())
+        self.assertContains(response, 'Soubor se nepodařilo otevřít jako fotku.')
 
     def test_the_stored_name_is_the_app_s_and_not_the_phone_s(self):
         # `IMG_0001.jpg` off two phones would otherwise collide every day.
@@ -4129,14 +4183,13 @@ class JobPhotoTests(ReviewFixtureMixin, TestCase):
 
     def test_a_photo_past_the_size_cap_is_refused(self):
         self.client.force_login(self.worker)
-        response = self._submit(photo=self._photo(size=PHOTO_MAX_BYTES + 1))
+        response = self._submit(photo=SimpleUploadedFile('foto.jpg', b'x' * (PHOTO_MAX_BYTES + 1)))
         self.assertEqual(response.status_code, 200)
         self.assertFalse(WorkOrder.objects.exists())
         self.assertContains(response, 'Fotka je příliš velká')
 
     def test_the_job_page_links_the_photo_without_rendering_it(self):
-        # A link, not an <img>: a full-size phone photo is several MB on every
-        # visit to the detail page, and a HEIC renders broken in most browsers.
+        # A link, not an <img>: the photo is one tap away, not part of the page.
         work_order = self._job_with_photo()
         self.client.force_login(self.manager)
         response = self.client.get(reverse('job_detail', args=[work_order.pk]))
@@ -4148,7 +4201,8 @@ class JobPhotoTests(ReviewFixtureMixin, TestCase):
         self.client.force_login(self.manager)
         response = self.client.get(work_order.photo.url)
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(b''.join(response.streaming_content), b'x' * 64)
+        with work_order.photo.open('rb') as stored:
+            self.assertEqual(b''.join(response.streaming_content), stored.read())
 
     def test_the_photo_is_not_public(self):
         # MEDIA_ROOT is not served by the proxy or by whitenoise, so this URL is
@@ -4196,10 +4250,10 @@ class JobPhotoTests(ReviewFixtureMixin, TestCase):
         url = reverse('job_edit', args=[work_order.pk])
         # The replaced file is deleted on commit, which a TestCase never reaches.
         with self.captureOnCommitCallbacks(execute=True):
-            self._submit(url=url, photo=self._photo(name='nova.jpg', size=10))
+            self._submit(url=url, photo=self._photo(name='nova.jpg', size=(20, 10)))
         work_order.refresh_from_db()
         self.assertNotEqual(work_order.photo.name, old)
-        self.assertEqual(work_order.photo.read(), b'x' * 10)
+        self.assertEqual(self._stored_image(work_order).size, (20, 10))
         self.assertFalse(default_storage.exists(old))
 
     def test_an_edit_can_clear_the_photo(self):
@@ -4247,7 +4301,7 @@ class JobPhotoTests(ReviewFixtureMixin, TestCase):
                     'notes': '',
                     'performed_on': work_order.performed_on.isoformat(),
                     'status': work_order.status,
-                    'photo': self._photo(name='jina.jpg', size=8),
+                    'photo': self._photo(name='jina.png', size=(PHOTO_MAX_SIDE * 2, 10), image_format='PNG'),
                     **{
                         f'{prefix}-{key}': value
                         for prefix in ('movements', 'machine_usages', 'machine_refuels', 'worker_hours')
@@ -4264,6 +4318,9 @@ class JobPhotoTests(ReviewFixtureMixin, TestCase):
         work_order.refresh_from_db()
         self.assertNotEqual(work_order.photo.name, old)
         self.assertFalse(default_storage.exists(old))
+        # And shrunk like one sent through the job form.
+        image = self._stored_image(work_order)
+        self.assertEqual((image.format, image.width), ('JPEG', PHOTO_MAX_SIDE))
 
     def test_a_fuel_only_job_can_carry_a_photo(self):
         # „Fotka" is asked of no job at all, so the one submission that answers

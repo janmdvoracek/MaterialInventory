@@ -26,9 +26,8 @@
     <h2>Fotka</h2>
     {# The only place an uploaded photo is reachable. Its URL is MEDIA_URL,     #}
     {# served by `protected_media` behind this page's own gate — never by the   #}
-    {# proxy. A link and deliberately not an <img>: the page stays light on a   #}
-    {# phone (a full-size photo is several MB) and a HEIC opens in whatever can #}
-    {# show it rather than as a broken image.                                   #}
+    {# proxy. A link and deliberately not an <img>: the detail page is for the  #}
+    {# job's figures, and the photo is one tap away when it is wanted.          #}
     <p><a href="{{ work_order.photo.url }}">Zobrazit fotku</a></p>
 </div>
 {% endif %}

@@ -207,6 +207,9 @@ rovnou vyfotit, nebo vybrat fotku, kterou už máte.
 - Přijímají se běžné formáty z telefonu — `jpg`, `png`, `webp`, `heic`.
   Dokument (třeba `pdf`) aplikace odmítne a napíše to pod polem.
 - Fotka může mít nejvýš **10 MB**. Větší aplikace odmítne, opět s hláškou u pole.
+- Aplikace fotku po odeslání **zmenší** (na 1600 bodů po delší straně) a uloží
+  jako `jpg`. Na displeji telefonu ani na počítači to nepoznáte a dodací list
+  na ní zůstane čitelný; originál v plném rozlišení se ale neukládá.
 - **Pole si fotku nepamatuje.** Pokud formulář po odeslání něco vytkne — nesedí
   součty, chybí popis — nebo přidáte řádek, je potřeba fotku vybrat **znovu**.
   Prohlížeče to jinak neumí a je to jediné pole formuláře, které se takto chová;
@@ -521,6 +524,11 @@ Vybraný soubor není fotka. Přijímají se `jpg`, `png`, `webp` a `heic`.
 **„Fotka je příliš velká (maximálně 10 MB)."**
 Fotka je nad povolenou velikostí. Vyfoťte ji znovu v nižším rozlišení, nebo
 použijte jinou.
+
+**„Soubor se nepodařilo otevřít jako fotku."**
+Soubor má sice příponu fotky, ale aplikace ho nedokáže přečíst — bývá poškozený,
+nebo je to jiný soubor jen přejmenovaný. Vyfoťte práci znovu, nebo vyberte jinou
+fotku.
 
 **Zapomenuté heslo.**
 Aplikace neumí obnovu hesla přes e-mail. Požádejte správce o nastavení nového.

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Deploy a commit of main: backup, fast-forward, build, migrate, restart.
+# Deploy a commit of main: backup, fast-forward, build, migrate, restart, prune.
 #
 #   ./scripts/deploy.sh            # origin/main
 #   ./scripts/deploy.sh <sha>      # a specific commit of main
@@ -73,5 +73,11 @@ $COMPOSE run --rm web python manage.py migrate --noinput
 log "restarting"
 # shellcheck disable=SC2086
 $COMPOSE up -d
+
+# Each build leaves the previous image dangling, and the disk is small. After
+# `up -d`, so the old container no longer holds it; never fatal, since the new
+# version is already serving and a failure here is nothing to roll back over.
+log "pruning dangling images"
+docker image prune -f > /dev/null || log "WARNING: docker image prune failed — run it by hand"
 
 log "deployed $(git rev-parse --short HEAD)"
