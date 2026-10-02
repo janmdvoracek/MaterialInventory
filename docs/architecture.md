@@ -456,6 +456,22 @@ reads exactly like a half-filled row, so the "fill in both, or leave it empty"
 message would otherwise be printed *over* the real complaint and tell the reader
 to do something they had already done.
 
+**A refused submission also says so at the top of the page.** Rendering each
+error beside its field is necessary but not enough: on a phone the field can be
+a long scroll below the fold, and a page that comes back without the green
+success message and without anything red in view still reads as „it probably
+went through". So `_valid_job_rows` adds one red `messages.error` banner whenever
+any form fails, chosen by `_form_error_summary`: *„Vyplňte prosím všechna
+povinná pole."* when any field error carries `code='required'` — Django's own
+required check, and `_require_work_fields`, which raises its errors with that
+code for exactly this reason — and *„Formulář obsahuje chyby, opravte prosím
+vyznačená pole."* for anything else (a bad number, a half-filled row, a
+duplicate). The wording is deliberately static; the specifics stay beside the
+fields. It is one banner however many fields failed, it sits above the
+mass-balance message when both apply, a balance error on its own gets no second
+banner, and a row button — not a submission — raises none. `ErrorBannerTests`
+covers it.
+
 ### Editing a job that names a retired record
 
 A catalog entry retired after a job was recorded is still on that job. The row
@@ -722,6 +738,14 @@ rule, and overrides `check_row` instead of it:
 | machine + one of hours/tons | refused — the usage half is still all-or-nothing |
 | machine alone | refused — it says nothing |
 | litres with no machine | refused |
+
+**A typed `0` in the litres box is the blank box.** `clean_litres` folds it into
+`None` before `check_row` runs, so every row in the table reads the same with a
+zero as with nothing: „stroj + hodiny + tuny + 0" is a usage row and no fill-up,
+and „stroj + 0" is a machine alone and refused. Refusing the zero outright used
+to send a worker who meant „didn't refuel" off to type at least 0,01; storing it
+would write a fill-up of nothing, and on its own would make a fuel-only job that
+recorded nothing. Negative litres are still refused.
 
 `RowForm.clean()` keeps the early return on `self.errors` that stops the row's
 own complaint printing over a field error; only the rule itself moved into an

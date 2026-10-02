@@ -168,8 +168,8 @@ nepoužil, nechte řádky prázdné.
 **Motohodiny a tuny patří k sobě, litry stojí samostatně.** Řádek tedy můžete
 vyplnit třemi způsoby:
 
-- **Stroj + hodiny + tuny** — stroj běžel; litry nechte prázdné, pokud se
-  netankovalo.
+- **Stroj + hodiny + tuny** — stroj běžel; litry nechte prázdné (nebo napište
+  0), pokud se netankovalo.
 - **Stroj + litry** — jen se tankovalo. Hodiny ani tuny vyplňovat nemusíte.
 - **Stroj + hodiny + tuny + litry** — běžel i se tankoval, oboje na jednom řádku.
 
@@ -464,6 +464,12 @@ a pracovník si stáhne jenom své vlastní hodiny. Když je filtr špatně vypl
 stejně jako je tabulka na stránce prázdná.
 
 ## Časté potíže
+
+**Nahoře svítí červeně „Vyplňte prosím všechna povinná pole."**
+Zakázka se **neuložila**. Sjeďte níž — u prázdného povinného pole je napsáno,
+že je potřeba ho vyplnit. Když je nahoře místo toho *„Formulář obsahuje chyby,
+opravte prosím vyznačená pole."*, je některá hodnota vyplněná špatně; co přesně,
+je opět napsáno přímo u ní. Uloženou zakázku poznáte podle zelené zprávy.
 
 **„Zadejte číslo."**
 Použili jste čárku. Desetinná místa pište s tečkou — `12.5`.

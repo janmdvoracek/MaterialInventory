@@ -16,3 +16,20 @@ ignore = [
     "FURB157", # This codebase deliberately quotes all Decimal() literals for consistency, e.g. `Decimal('0')`.
     "DTZ011", # Only used in tests to build relative-date query params, never to persist or compare timezone-aware data.
 ]
+
+# `coverage run manage.py test`, then `coverage report` or `coverage html`.
+# See "Coverage" in docs/development.md.
+[tool.coverage.run]
+branch = true
+source = ["."]
+omit = [
+    "*/migrations/*",
+    "*/tests.py",
+    "manage.py",
+    "config/asgi.py",
+    "config/wsgi.py",
+    "scripts/*",
+]
+
+[tool.coverage.report]
+skip_empty = true

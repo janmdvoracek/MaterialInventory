@@ -163,6 +163,7 @@ button, .btn {
     display: inline-block;
     width: 100%;
     padding: 0.9rem;
+    font-family: inherit;
     font-size: 1.05rem;
     font-weight: 700;
     border: none;
@@ -233,7 +234,11 @@ tr.row-pending > td { background: var(--row-pending-bg); }
 }
 .status-badge.pending { background: var(--pending-bg); color: var(--pending-text); }
 .status-badge.approved { background: var(--success-bg); color: var(--success-text); }
-.job-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+/* A grid of equal columns, not flex: `flex: 1` shares out space after padding,
+   so the padded links came out wider than the unpadded <form> around
+   „Schválit". `minmax(0, …)` stops the longest label widening its own column
+   on a phone, and the slimmer side padding keeps that label inside it. */
+.job-actions { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 0.5rem; }
 .quick-filters { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 .quick-filters .btn {
     flex: 1 1 auto;
@@ -242,7 +247,11 @@ tr.row-pending > td { background: var(--row-pending-bg); }
     padding: 0.6rem 0.75rem;
     font-size: 0.95rem;
 }
-.job-actions form, .job-actions .btn { flex: 1; margin: 0; }
+/* The form around „Schválit" is the grid item, so it is made a grid too: its
+   button then stretches to the row height like the two bare links. */
+.job-actions form { display: grid; grid-template-columns: minmax(0, 1fr); }
+.job-actions form, .job-actions button, .job-actions .btn { margin: 0; }
+.job-actions button, .job-actions .btn { padding-left: 0.5rem; padding-right: 0.5rem; }
 .btn.secondary { background: var(--btn-secondary-bg); color: var(--btn-secondary-text); }
 .btn.secondary:hover { background: var(--btn-secondary-hover); }
 .btn.danger { background: var(--btn-danger-bg); color: var(--btn-danger-text); }
