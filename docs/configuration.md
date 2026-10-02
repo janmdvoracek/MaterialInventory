@@ -376,13 +376,61 @@ the manifest is being read at runtime, not merely written at build time.
 docker rm -f mi-verify
 ```
 
+## Uploaded files (`MEDIA_ROOT`)
+
+The job form takes one optional photo per job (`WorkOrder.photo`), and uploaded
+files are the mirror image of static ones: same kind of directory, opposite
+rules.
+
+| | `STATIC_ROOT` | `MEDIA_ROOT` |
+|---|---|---|
+| Contents | assets the repo ships | photos workers upload |
+| Written by | `collectstatic`, at build time | the app, at runtime |
+| Served by | WhiteNoise, unauthenticated | `workorders.views.protected_media`, behind the job pages' gate |
+| In production | baked into the image | a Docker volume (`media_data:/app/media`) |
+| Backed up by | nothing — rebuilt | nothing yet — see below |
+
+Neither setting is environment-driven: `MEDIA_ROOT` is always `BASE_DIR/media`
+and `MEDIA_URL` is always `media/`. The two things that make that safe are that
+**nothing serves the directory but Django**, and that the URL routes to a view
+carrying `role_required(MANAGER, ADMIN)` — the same audience as the job page the
+photo appears on. Pointing Caddy at the directory, or adding it to
+`STATICFILES_DIRS`, publishes every photo to the internet the way `/static/` is
+published; that is the one change to avoid here.
+
+`MEDIA_URL` exists (rather than being left empty) because `FieldFile.url` raises
+without it, and the admin's file widget calls it whenever a job has a photo.
+
+Three practical consequences:
+
+- **In production the directory must be a volume.** Every deploy rebuilds the
+  image; photos written into the container's filesystem would go with it.
+  `docker-compose.prod.yml` mounts `media_data:/app/media`, and `down -v` now
+  destroys photos as well as the database and the certificate.
+- **`scripts/backup_db.sh` does not cover them.** It is `pg_dump`; the photos
+  sit in a volume beside it. A job whose photo is gone still renders — the
+  template guards on `work_order.photo` — but the file is not coming back.
+- **`media/` is gitignored and in `.dockerignore`**, for the same reason
+  `backups/` is: real company data, and generated rather than source.
+
+`scripts/smoke_prod_stack.sh` checks the gate through the built image and Caddy:
+a `media/` URL must send an anonymous request to the login page and answer a
+logged-in worker with 403. A 200 there is the symptom of the directory having
+been published.
+
+The form's own limits — `PHOTO_EXTENSIONS` and `PHOTO_MAX_BYTES` (10 MB) in
+`workorders/forms.py` — are the app's whole rule, since nothing decodes the
+file. The `Caddyfile` sets `request_body max_size 12MB` above them as a
+backstop, so an oversized photo comes back as the app's Czech field error while
+a hostile upload never reaches the disk.
+
 ## `.dockerignore`
 
 `COPY . .` runs before `collectstatic`, so anything the build context leaves
 under `static/` gets published. `.dockerignore` keeps out `.env` (real secrets),
-`.venv/`, `.git/`, the real `seed_data/*.csv`, and `static/xlsx/`, while
-deliberately re-including `seed_data/*.example.csv` — the deployment runbook
-copies those on the server.
+`.venv/`, `.git/`, the real `seed_data/*.csv`, `static/xlsx/` and `media/` (see
+above), while deliberately re-including `seed_data/*.example.csv` — the
+deployment runbook copies those on the server.
 
 ## Database collation
 

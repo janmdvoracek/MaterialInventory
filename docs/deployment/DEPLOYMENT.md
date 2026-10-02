@@ -228,7 +228,8 @@ dcp down && docker volume rm materialinventory-prod_db_data && dcp up -d
 
 Naming the volume rather than reaching for `down -v` is deliberate: `down -v`
 would take `caddy_data` with it, discarding the certificate you just obtained
-and spending another of the five weekly issues. Re-run the check afterwards.
+and spending another of the five weekly issues — and `media_data`, which holds
+every photo ever uploaded to a job. Re-run the check afterwards.
 Once real data exists, this whole procedure becomes dump → recreate → restore.
 
 ## 9. Create the schema
@@ -355,6 +356,17 @@ crontab -e
 Use the crontab of a user that can talk to Docker — the one you have been
 running `dcp` as. If `docker ps` needs `sudo` for that user, the cron job will
 fail every night with a permission error in the log.
+
+**The dump does not include the job photos.** `backup_db.sh` is `pg_dump`;
+uploads live in the `materialinventory-prod_media_data` volume beside it, and
+nothing copies them anywhere. A job whose file is gone still renders — the page
+only shows a photo when there is one — but the photo itself is not recoverable.
+If the photos matter, add the volume to whatever pulls `backups/` off the
+server:
+
+```bash
+docker run --rm -v materialinventory-prod_media_data:/media -v "$PWD/backups:/out" alpine tar czf /out/media-$(date +%F).tar.gz -C /media .
+```
 
 **The backups are on the same disk as the database, and that disk is now
 somebody else's.** A VPS can be lost whole: a billing lapse, a provider
@@ -579,7 +591,8 @@ down with a `db` container in a restart loop.
 The upgrade is: back up → `dcp down` → `docker volume rm
 materialinventory-prod_db_data` → bump the image → `dcp up -d` → `migrate` →
 restore the dump. Remove the *named* volume rather than using `down -v`, which
-would also destroy `caddy_data` and force a fresh certificate issue. A fresh
+would also destroy `caddy_data` (forcing a fresh certificate issue) and
+`media_data` (every uploaded job photo). A fresh
 cluster re-reads `POSTGRES_INITDB_ARGS`, so step 8's check applies again.
 
 ## Troubleshooting
@@ -597,6 +610,8 @@ cluster re-reads `POSTGRES_INITDB_ARGS`, so step 8's check applies again.
 | `db` exits with "set DB_NAME in .env.production" | The `--env-file` flag was left off. |
 | `port is already allocated` on 80 or 443 | Something else on the VPS is already serving. Nothing else should be. |
 | `500` on every page, `Missing staticfiles manifest entry` | The image was built without the `collectstatic` step. Rebuild with `dcp up -d --build`. |
+| A job's photo is a broken image, or `404` where it used to show | The `media_data:/app/media` mount is missing from the `web` service, so the file was written into a container that has since been replaced. The rows survive; the files do not. |
+| `413` when submitting a job with a photo | The photo is over the `request_body max_size` in the `Caddyfile`. Anything under it that is still too large comes back as the app's own Czech field error instead. |
 | `seed_data` reports "not found, skipping." | The `./seed_data:/app/seed_data:ro` mount is missing, or the real `.csv` files were never created on the server. |
 | Czech names sort after Z | The cluster was initialised without the ICU locale. See step 8. |
 | `db` in a restart loop after an image update | Postgres major version change. See [Upgrading Postgres](#upgrading-postgres). |

@@ -3,8 +3,8 @@
 # Smoke test of docker-compose.prod.yml (db, web, Caddy), run by CI's
 # `docker-build` job. Checks: both configs validate, hashed static files are
 # served, `check --deploy` reports only W021, HTTP redirects to HTTPS, HTTPS
-# answers 200 with HSTS, a login POST works through the proxy, and /admin/ is
-# a 404 to anyone who is not logged in as an admin.
+# answers 200 with HSTS, a login POST works through the proxy, /admin/ is
+# a 404 to anyone who is not logged in as an admin, and MEDIA_URL is not public.
 #
 # Does NOT catch a removed FORWARDED_ALLOW_IPS or empty CSRF_TRUSTED_ORIGINS
 # (both tested; both still pass).
@@ -134,5 +134,16 @@ done
 [ "$(http_status -b "$jar" "$BASE/admin/")" = 404 ] \
     || fail "/admin/ answered a logged-in non-admin — the gate must read has_admin_access, not is_authenticated"
 ok "/admin/ is 404 for anonymous and non-admin requests"
+
+# Uploaded job photos go out through Django behind the job pages' own gate. A
+# 200 here would mean MEDIA_ROOT was published the way /static/ is — by a proxy
+# route, or by landing in STATICFILES_DIRS. The path need not exist: the gate
+# runs before anything is looked for on disk.
+media_url="$BASE/media/job_photos/smoke.jpg"
+[ "$(http_status "$media_url")" = 302 ] \
+    || fail "$media_url did not send an anonymous request to the login page — uploaded photos must never be public"
+[ "$(http_status -b "$jar" "$media_url")" = 403 ] \
+    || fail "$media_url answered a logged-in worker — photos carry the job pages' role gate, not just login"
+ok "uploaded photos are served behind the job pages' gate"
 
 echo "production stack smoke test passed"

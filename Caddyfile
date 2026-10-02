@@ -18,6 +18,14 @@
 
 	encode zstd gzip
 
+	# The job form takes a photo, so a request body is no longer a few hundred
+	# bytes. Comfortably above the form's own 10 MB cap, so an oversized photo
+	# comes back as the app's Czech field error rather than as Caddy's 413;
+	# this is only the backstop that keeps a hostile upload off the disk.
+	request_body {
+		max_size 12MB
+	}
+
 	# OPTIONAL, and a second layer rather than the only one: the app already
 	# 404s /admin/ for anyone not logged in as an admin
 	# (accounts/middleware.py::AdminSessionRequiredMiddleware). This restricts

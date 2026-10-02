@@ -20,6 +20,11 @@ urlpatterns = [
     # The one row-level download: Materiál's line items, the whole filtered set
     # rather than the page on screen.
     path('materials/detail/export/', reports.material_detail_export, name='material_detail_export'),
+    # MEDIA_URL. Uploaded job photos are served by Django behind the same gate
+    # as the jobs themselves — never by the proxy, which would put them on the
+    # internet the way /static/ is. `path` converter, so the stored
+    # job_photos/<year>/<month>/<name> reaches the view in one piece.
+    path('media/<path:path>', views.protected_media, name='protected_media'),
     # Manager review of recorded jobs. Every view behind these is gated by
     # role_required, not just hidden from the nav.
     path('jobs/', views.job_dashboard, name='job_dashboard'),

@@ -24,6 +24,10 @@ seed_data/*.csv
 
 staticfiles/
 
+# MEDIA_ROOT. Uploaded photos live in a volume; baking a developer's into the
+# image would ship company data and be overwritten by the mount anyway.
+media/
+
 backups/
 
 # Not served assets.

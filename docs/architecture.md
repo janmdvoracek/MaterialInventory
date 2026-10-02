@@ -192,6 +192,77 @@ tell a job that records work from one that records a tank of diesel. The error
 is Django's own `required` message, taken off the field, so it reads the same as
 every other required field on the page and comes from the same catalog.
 
+### A photo of the work
+
+`WorkOrder.photo` (*„Fotka"*) is **one optional upload per job** — a phone photo
+of what was processed, the state a machine was left in, a delivery note. It is
+asked of no submission, a fuel-only one included, and nothing reads it back: no
+report, no filter, no export. It is evidence hung on a job, not a record the app
+computes with.
+
+It is a plain **`FileField`, not an `ImageField`**, and that is deliberate.
+`ImageField` means Pillow in `requirements.txt` for the sake of one upload, and
+Pillow cannot identify the HEIC an iPhone shoots — so the validation would
+refuse the very photo it is there to check. Nothing in the app decodes, resizes
+or re-encodes the file, so the whole rule is the form's: an extension in
+`PHOTO_EXTENSIONS` (jpg/jpeg/png/webp/heic/heif) and at most `PHOTO_MAX_BYTES`
+(10 MB), both in `workorders/forms.py`. The size cap is a `clean_photo` of its
+own, because a `FileField` column holds a path and refuses nothing by itself —
+the same direction as `NOTES_MAX_LENGTH`, and the same reason.
+
+The stored name is a fresh uuid under `job_photos/<year>/<month>/`
+(`models.job_photo_path`), keeping only the extension: two phones both offer
+`IMG_0001.jpg`, and the original name carries nothing worth keeping. The folder
+is the *upload* month rather than `performed_on`, which an edit can move while
+the file cannot.
+
+**The file is never public.** `MEDIA_ROOT` is not served by whitenoise and not
+by Caddy — everything under `/static/` is unauthenticated to the internet, and a
+job photo is company data. `MEDIA_URL` points at
+`workorders.views.protected_media`, which carries `job_detail`'s own gate, so
+the photo is reachable by exactly the people who may open the job it belongs to
+and `photo.url` resolves the same on the job page and in the admin. The job page
+**links** the photo („Zobrazit fotku") rather than rendering it in an `<img>`:
+a full-size phone photo is several MB on every visit to the detail page, and a
+HEIC renders as a broken image in most browsers but opens fine on its own. That gate is
+the whole of `MEDIA_ROOT`, so parking anything with a different audience there
+means revisiting it.
+
+**Two things about the form that are easy to get wrong.** The field renders last
+in `_job_form_fields.html`, but the `enctype="multipart/form-data"` belongs to
+each caller's own `<form>` tag — the one part of the job form the shared partial
+cannot supply, and without it the browser posts the file's *name* and the upload
+silently never arrives. And a file input is the one control a page cannot be
+re-rendered carrying: whenever the form comes back — a row button on a browser
+running no JavaScript, any validation error — the pick is gone and has to be
+made again. Last is where that costs least, and the hint under the field says so
+rather than letting a worker believe a photo went up with the job.
+
+On `job_edit` the same fact is what `FileField.clean`'s `initial` is for: the
+view puts the stored photo on `order_form.initial` on **every** path, bound POST
+included, so an edit that touches nothing else keeps the photo instead of
+clearing it. A new upload replaces, `ClearableFileInput`'s „Zrušit" box clears,
+and anything else leaves it alone — the three cases `views._apply_photo` acts
+on.
+
+**The file is deleted when the job lets go of it**, which Django does not do on
+its own: replaced and cleared photos through `_apply_photo`, and a deleted job
+through a `post_delete` receiver on `WorkOrder` (registering it is itself what
+keeps Django off the fast-delete path, so the admin's „delete selected" fires it
+too). Both go through `models.discard_photo`, which defers the delete to
+`transaction.on_commit` — a file outliving a rolled-back write is an orphan
+nobody notices, while deleting one early would leave a surviving row pointing at
+nothing. Tests asserting a file is gone therefore need
+`captureOnCommitCallbacks`.
+
+The admin is the one place that writes the column without going through
+`_apply_photo` — it edits the field through its own widget — so
+`WorkOrderAdmin.save_model` repeats the cleanup when a photo is replaced or
+cleared there. A job deleted from the admin needs nothing extra; that is the
+receiver's job either way.
+
+`JobPhotoTests` in `workorders/tests.py` covers all of it.
+
 ### Where a job happened
 
 `WorkOrder.location` (*„Lokace"*) is a foreign key to `locations.Location`, a

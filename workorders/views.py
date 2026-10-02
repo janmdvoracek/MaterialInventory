@@ -1,4 +1,5 @@
-"""Recording a job (Zpracování) and reviewing it (Přehled and the job pages)."""
+"""Recording a job (Zpracování), reviewing it (Přehled and the job pages), and
+serving the photo attached to one."""
 
 from decimal import Decimal
 from typing import NamedTuple
@@ -6,8 +7,11 @@ from typing import NamedTuple
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
+from django.core.files.storage import default_storage
+from django.core.files.uploadedfile import UploadedFile
 from django.db import transaction
 from django.db.models import Sum
+from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.formats import localize
@@ -16,7 +20,7 @@ from django.views.decorators.http import require_POST
 from accounts.decorators import REVIEWER_ROLES, role_required
 
 from .forms import JOB_SECTIONS, JobFilterForm, WorkOrderForm, job_row_formset
-from .models import MachineRefuel, MachineUsage, StockMovement, WorkerHours, WorkOrder
+from .models import MachineRefuel, MachineUsage, StockMovement, WorkerHours, WorkOrder, discard_photo
 from .reports import _list_page_context
 
 
@@ -112,6 +116,30 @@ def _balance_error(consumed_rows, produced_rows):
             f'(spotřeba {localize(consumed_total)}, výroba {localize(produced_total)}).'
         )
     return None
+
+
+def _apply_photo(work_order, photo):
+    """Put „Fotka" on the job: a new upload replaces, „Zrušit" clears, else nothing.
+
+    Three values reach here, because that is what `forms.FileField.clean`
+    returns: an uploaded file, `False` for the „Zrušit" box, or the stored
+    `FieldFile` (on `job_edit`, where the form carries it as `initial`) / None
+    (on a fresh submission) when the browser sent no file — a file input cannot
+    be re-filled, so „nothing was picked" has to mean „keep what is there".
+
+    The file the job lets go of is deleted explicitly in both cases that orphan
+    it (see `discard_photo`); Django drops the row's reference and leaves the
+    bytes on disk otherwise. Cleared is `''` and not None, which the column —
+    `blank=True`, not `null=True` — would refuse.
+    """
+    if photo is False:
+        replacement = ''
+    elif isinstance(photo, UploadedFile):
+        replacement = photo
+    else:
+        return
+    discard_photo(work_order.photo)
+    work_order.photo = replacement
 
 
 def _write_job_rows(work_order, author, own_hours, rows):
@@ -261,7 +289,8 @@ def _job_forms(request, *, author, viewer, order_form_user=None, keep=None, init
             )
         return order_form, formsets, False
     if request.method == 'POST':
-        order_form = WorkOrderForm(request.POST, **order_kwargs)
+        # request.FILES for „Fotka"; the rows carry no upload of their own.
+        order_form = WorkOrderForm(request.POST, request.FILES, **order_kwargs)
         formsets = {
             section.prefix: job_row_formset(section, data=request.POST, form_kwargs=form_kwargs[section.prefix])
             for section in JOB_SECTIONS
@@ -336,6 +365,10 @@ def transform_create(request):
                     location=order_form.cleaned_data['location'],
                     description=order_form.cleaned_data['description'],
                     notes=order_form.cleaned_data['notes'],
+                    # Nothing picked is None here, and the column holds a path,
+                    # not NULL. A fresh job has nothing to replace or clear, so
+                    # `_apply_photo`'s other two cases cannot arise.
+                    photo=order_form.cleaned_data['photo'] or '',
                     performed_on=order_form.cleaned_data['performed_on'],
                     status=WorkOrder.Status.APPROVED if approved else WorkOrder.Status.PENDING,
                     reviewed_at=timezone.now() if approved else None,
@@ -359,6 +392,33 @@ def _trim(value):
     """
     normalized = value.normalize()
     return normalized.quantize(Decimal(1)) if normalized.as_tuple().exponent > 0 else normalized
+
+
+@role_required(*REVIEWER_ROLES)
+def protected_media(request, path):
+    """Hand back an uploaded file, to the people who may see the job it belongs to.
+
+    MEDIA_ROOT is deliberately not served by the proxy or by whitenoise: a job
+    photo is company data, where everything under /static/ is unauthenticated to
+    the internet. Gunicorn serving the bytes costs a worker for the length of
+    one photo, which at depot volume is nothing next to publishing them.
+
+    The gate is `job_detail`'s, because job photos are the only thing under
+    MEDIA_ROOT — park anything with a different audience there and this needs
+    revisiting. It is also what MEDIA_URL points at, so `photo.url` resolves the
+    same on the job page and in the admin.
+
+    Traversal is the storage's business: `FileSystemStorage` joins through
+    `safe_join` and raises `SuspiciousFileOperation` on a path that climbs out.
+    """
+    try:
+        stored = default_storage.open(path)
+    except OSError:
+        # Missing, or a directory — a 404 either way, and one syscall rather
+        # than an exists() the file could be deleted out from under.
+        raise Http404 from None
+    # Inline, and typed off the name: the job page shows it in an <img>.
+    return FileResponse(stored, filename=path.rsplit('/', 1)[-1])
 
 
 @role_required(*REVIEWER_ROLES)
@@ -439,6 +499,11 @@ def job_edit(request, pk):
         if request.method == 'GET'
         else None,
     )
+    # On every path, including a bound POST: a browser cannot re-send a file, so
+    # the stored one has to be the form's `initial` or an edit that touches
+    # nothing else would drop the photo. It is also what „Aktuálně / Zrušit"
+    # renders from.
+    order_form.initial['photo'] = work_order.photo
     if submitted:
         rows = _valid_job_rows(request, order_form, formsets)
         if rows is not None:
@@ -447,7 +512,8 @@ def job_edit(request, pk):
                 work_order.description = order_form.cleaned_data['description']
                 work_order.notes = order_form.cleaned_data['notes']
                 work_order.performed_on = order_form.cleaned_data['performed_on']
-                work_order.save(update_fields=['location', 'description', 'notes', 'performed_on'])
+                _apply_photo(work_order, order_form.cleaned_data['photo'])
+                work_order.save(update_fields=['location', 'description', 'notes', 'performed_on', 'photo'])
                 _write_job_rows(work_order, author, order_form.cleaned_data['hours'], rows)
             messages.success(request, 'Zpracování bylo upraveno.')
             return redirect('job_detail', pk=work_order.pk)
@@ -488,6 +554,7 @@ def _edit_initial(work_order, author, consumed, produced, usages, refuels):
             'notes': work_order.notes,
             'hours': _trim(own_hours.hours) if own_hours else None,
             'performed_on': work_order.performed_on,
+            'photo': work_order.photo,
         },
         'consumed': [{'material': m.material_id, 'quantity': _trim(m.typed_quantity)} for m in consumed],
         'produced': [{'material': m.material_id, 'quantity': _trim(m.typed_quantity)} for m in produced],

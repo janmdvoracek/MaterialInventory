@@ -3,7 +3,7 @@
 {% block content %}
 <div class="card">
     <h1>Zaznamenat zpracování</h1>
-    <form method="post">
+    <form method="post" enctype="multipart/form-data">
         {% csrf_token %}
         {% comment %}
         Pressing Enter in a text field submits the form through its first submit

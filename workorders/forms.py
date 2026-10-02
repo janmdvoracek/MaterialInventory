@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from django import forms
+from django.core.files.uploadedfile import UploadedFile
+from django.core.validators import FileExtensionValidator
 from django.db.models import Q
 from django.utils import timezone
 
@@ -19,6 +21,17 @@ HOURS_MAX_DIGITS = 11
 
 # `notes` is a TextField, so this cap is the form's alone; see `WorkOrderForm.notes`.
 NOTES_MAX_LENGTH = 2000
+
+# The photo's whole rule, since nothing decodes the file (see `WorkOrder.photo`).
+# HEIC and HEIF are here because that is what an iPhone shoots by default; the
+# app only stores and hands the file back, so a format an old browser cannot
+# display is still worth keeping.
+PHOTO_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif']
+
+# A phone photo is 2-6 MB; 10 leaves room for a long-exposure one without
+# letting an accidental video through. Above Django's FILE_UPLOAD_MAX_MEMORY_SIZE,
+# so a photo this size is spooled to a temp file rather than held in memory.
+PHOTO_MAX_BYTES = 10 * 1024 * 1024
 
 
 def _hours_field(**kwargs):
@@ -94,6 +107,18 @@ class WorkOrderForm(forms.Form):
     hours = _hours_field(
         required=False, label='Moje hodiny', widget=forms.NumberInput(attrs={'placeholder': 'Odpracované hodiny'})
     )
+    # Optional on every job, including a fuel-only one: a photo is evidence, not
+    # a record, and nothing reads it back. `accept` is what makes a phone offer
+    # the camera alongside the gallery; no `capture`, which on some browsers
+    # takes the gallery away. ClearableFileInput is what lets `job_edit` drop a
+    # photo again — its „Zrušit" box posts False, which `FileField.clean` passes
+    # straight through (`_apply_photo` acts on it).
+    photo = forms.FileField(
+        required=False,
+        label='Fotka',
+        widget=forms.ClearableFileInput(attrs={'accept': 'image/*'}),
+        validators=[FileExtensionValidator(PHOTO_EXTENSIONS)],
+    )
     # `format` is required: the cs locale would render 02.09.2026, which
     # <input type="date"> shows as blank.
     performed_on = forms.DateField(
@@ -115,6 +140,21 @@ class WorkOrderForm(forms.Form):
             empty_label='Za sebe',
         )
         self.fields['hours'].label = 'Odpracované hodiny'
+
+    def clean_photo(self):
+        """Refuse an oversized upload as a field error rather than storing it.
+
+        The extension is the validator's business; the size is checked here
+        because a cap on a `FileField` is a form's alone — the column holds a
+        path, not the file, so nothing below this refuses anything.
+        """
+        photo = self.cleaned_data.get('photo')
+        # Only an upload is measured. False is „Zrušit" ticked, and a FieldFile
+        # is the stored photo coming back unchanged — asking that one for its
+        # size would stat the file on every save, and raise if it went missing.
+        if isinstance(photo, UploadedFile) and photo.size > PHOTO_MAX_BYTES:
+            raise forms.ValidationError(f'Fotka je příliš velká (maximálně {PHOTO_MAX_BYTES // (1024 * 1024)} MB).')
+        return photo
 
     def author_or(self, submitter):
         """Whose job this is: the person picked in „Zapsat za", else the submitter."""

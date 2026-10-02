@@ -189,6 +189,15 @@ STATIC_URL = 'static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
+# Uploaded job photos, and nothing else. Unlike STATIC_ROOT this is *not* served
+# by whitenoise and must not be: a job photo is company data, and everything
+# under /static/ is unauthenticated to the internet. It goes out through
+# `workorders.views.protected_media`, which is what MEDIA_URL routes to, so
+# `photo.url` resolves in the admin and on the job page alike. In production the
+# directory is a Docker volume, or every deploy would take the photos with it.
+MEDIA_URL = 'media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+
 # Plain storage by default: manifest storage raises without `collectstatic`, and
 # tests run with DEBUG=False. The Dockerfile sets STATICFILES_BACKEND for production.
 STORAGES = {
