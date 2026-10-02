@@ -221,7 +221,10 @@ by Caddy — everything under `/static/` is unauthenticated to the internet, and
 job photo is company data. `MEDIA_URL` points at
 `workorders.views.protected_media`, which carries `job_detail`'s own gate, so
 the photo is reachable by exactly the people who may open the job it belongs to
-and `photo.url` resolves the same on the job page and in the admin. That gate is
+and `photo.url` resolves the same on the job page and in the admin. The job page
+**links** the photo („Zobrazit fotku") rather than rendering it in an `<img>`:
+a full-size phone photo is several MB on every visit to the detail page, and a
+HEIC renders as a broken image in most browsers but opens fine on its own. That gate is
 the whole of `MEDIA_ROOT`, so parking anything with a different audience there
 means revisiting it.
 

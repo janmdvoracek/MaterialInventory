@@ -4134,11 +4134,14 @@ class JobPhotoTests(ReviewFixtureMixin, TestCase):
         self.assertFalse(WorkOrder.objects.exists())
         self.assertContains(response, 'Fotka je příliš velká')
 
-    def test_the_photo_is_shown_on_the_job_page(self):
+    def test_the_job_page_links_the_photo_without_rendering_it(self):
+        # A link, not an <img>: a full-size phone photo is several MB on every
+        # visit to the detail page, and a HEIC renders broken in most browsers.
         work_order = self._job_with_photo()
         self.client.force_login(self.manager)
         response = self.client.get(reverse('job_detail', args=[work_order.pk]))
-        self.assertContains(response, work_order.photo.url)
+        self.assertContains(response, f'<a href="{work_order.photo.url}">Zobrazit fotku</a>', html=True)
+        self.assertNotContains(response, f'src="{work_order.photo.url}"')
 
     def test_the_photo_is_served_to_a_reviewer(self):
         work_order = self._job_with_photo()

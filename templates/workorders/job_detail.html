@@ -24,14 +24,12 @@
 {% if work_order.photo %}
 <div class="card">
     <h2>Fotka</h2>
-    {# The only place an uploaded photo is shown. Its URL is MEDIA_URL, served  #}
-    {# by `protected_media` behind this page's own gate — never by the proxy.   #}
-    {# The link opens the full-size file for a format the <img> cannot render   #}
-    {# (an iPhone HEIC on a desktop browser), which is why the alt text is not  #}
-    {# decorative.                                                              #}
-    <a href="{{ work_order.photo.url }}">
-        <img class="job-photo" src="{{ work_order.photo.url }}" alt="Fotka zpracování #{{ work_order.pk }}">
-    </a>
+    {# The only place an uploaded photo is reachable. Its URL is MEDIA_URL,     #}
+    {# served by `protected_media` behind this page's own gate — never by the   #}
+    {# proxy. A link and deliberately not an <img>: the page stays light on a   #}
+    {# phone (a full-size photo is several MB) and a HEIC opens in whatever can #}
+    {# show it rather than as a broken image.                                   #}
+    <p><a href="{{ work_order.photo.url }}">Zobrazit fotku</a></p>
 </div>
 {% endif %}
 

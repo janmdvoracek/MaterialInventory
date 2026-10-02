@@ -248,8 +248,9 @@ je počet čekajících. Filtrovat lze podle stavu, pracovníka, lokace a data.
 
 Klepnutím na **Detail** otevřete celou zakázku se vším, co bylo ve formuláři
 vyplněno — hodiny všech lidí, spotřeba, výroba, stroje s motohodinami a tunami,
-**tankování** a **fotku**, pokud ji pracovník přiložil. Fotka se ukazuje jen
-tady; klepnutím na ni se otevře v plné velikosti. Dole jsou akce:
+**tankování** a **fotku**, pokud ji pracovník přiložil. Fotka je dostupná jen
+tady, a to jako odkaz **Zobrazit fotku** — klepnutím se otevře v plné
+velikosti. Dole jsou akce:
 
 | Akce | Co udělá |
 |---|---|

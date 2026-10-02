@@ -310,8 +310,3 @@ tr.row-pending > td { background: var(--row-pending-bg); }
 .combo-option { cursor: pointer; }
 .combo-option.active { background: var(--btn-secondary-bg); }
 .combo-empty { color: var(--text-muted); }
-
-/* The job photo on the detail page. `max-width: 100%` is the load-bearing half:
-   a phone photo is a few thousand pixels wide and would otherwise stretch the
-   card past the viewport and give the whole page a horizontal scrollbar. */
-.job-photo { max-width: 100%; height: auto; display: block; border-radius: 6px; }
