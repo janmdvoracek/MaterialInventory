@@ -61,7 +61,7 @@ Formulář má pět částí:
 - **Lokace** — kde se práce dělala. Vyberte ze seznamu; toto pole je
   **povinné** (kromě zakázky, která je jen tankování). Seznam lokací spravuje
   správce v **Administraci**; když v něm vaše místo chybí, řekněte vedoucímu.
-- **Popis** — krátce, o jakou práci šlo. Například *Drcení kameniva na frakci 8/16*.
+- **Popis** — krátce, o jakou práci šlo, nejvýš 40 znaků. Například *Drcení kameniva na frakci 8/16*.
   Toto pole je **povinné**: podle popisu se zakázka pozná ve všech přehledech
   i ve stažených souborech, takže jedna věta stačí, ale nechat ho prázdné nejde.
 - **Poznámky** — nepovinné a delší. Sem patří všechno, co se na jeden řádek

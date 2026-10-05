@@ -30,6 +30,12 @@
     // pracovník. The rest of a row is number inputs.
     var ROW_SELECT = '.item-row select';
 
+    // What the search box takes. It posts nothing, so no server rule backs
+    // this; it only stops a stray paste turning into a search nobody can read.
+    // A chosen label longer than this is still shown whole — `maxLength` limits
+    // typing, not a value set from script.
+    var SEARCH_MAX_LENGTH = 40;
+
     /* Case- and diacritic-insensitive, because „ster" has to find „Štěrk" on a
      * keyboard whose owner is in a hurry and „SKODA" has to find „Škoda". */
     function fold(text) {
@@ -77,6 +83,7 @@
         input.value = labelOf(select);
         input.placeholder = placeholder;
         input.autocomplete = 'off';
+        input.maxLength = SEARCH_MAX_LENGTH;
         input.setAttribute('role', 'combobox');
         input.setAttribute('aria-autocomplete', 'list');
         input.setAttribute('aria-expanded', 'false');

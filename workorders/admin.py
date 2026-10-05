@@ -1,7 +1,8 @@
 from django import forms
 from django.contrib import admin
+from django.core.validators import MaxLengthValidator
 
-from .forms import clean_photo_upload
+from .forms import DESCRIPTION_MAX_LENGTH, clean_photo_upload
 from .models import MachineRefuel, MachineUsage, StockMovement, WorkerHours, WorkOrder, discard_photo
 
 
@@ -37,6 +38,15 @@ class WorkOrderAdminForm(forms.ModelForm):
     class Meta:
         model = WorkOrder
         fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # The job form's cap, not the column's 255: a longer description saved
+        # here would be refused the next time the job is opened on `job_edit`.
+        description = self.fields['description']
+        description.max_length = DESCRIPTION_MAX_LENGTH
+        description.validators.append(MaxLengthValidator(DESCRIPTION_MAX_LENGTH))
+        description.widget.attrs['maxlength'] = str(DESCRIPTION_MAX_LENGTH)
 
     def clean_photo(self):
         # Shrunk like one sent through the job form, or an upload here would

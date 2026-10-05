@@ -22,7 +22,8 @@ from locations.models import Location
 from machines.models import Machine
 from materials.models import Material
 
-from .forms import JOB_SECTIONS, NOTES_MAX_LENGTH, PHOTO_MAX_BYTES
+from .admin import WorkOrderAdminForm
+from .forms import DESCRIPTION_MAX_LENGTH, JOB_SECTIONS, NOTES_MAX_LENGTH, PHOTO_MAX_BYTES
 from .models import MachineRefuel, MachineUsage, StockMovement, WorkerHours, WorkOrder
 from .photos import PHOTO_MAX_SIDE
 from .reports import FUEL_PAGE_PARAM, HISTORY_PAGE_SIZE, MY_JOBS_LIMIT, _last_month
@@ -3545,6 +3546,32 @@ class DescriptionAndNotesTests(ReviewFixtureMixin, TestCase):
         # Nothing is written, so the complaint has to be on the page.
         self.assertContains(response, 'Toto pole je třeba vyplnit.')
 
+    def test_a_description_at_the_cap_is_stored(self):
+        description = 'x' * DESCRIPTION_MAX_LENGTH
+        self.client.force_login(self.worker)
+        self.assertEqual(self._submit(description=description).status_code, 302)
+        self.assertEqual(WorkOrder.objects.get().description, description)
+
+    def test_a_description_past_the_cap_is_refused(self):
+        self.client.force_login(self.worker)
+        response = self._submit(description='x' * (DESCRIPTION_MAX_LENGTH + 1))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(WorkOrder.objects.exists())
+        self.assertTrue(response.context['order_form'].has_error('description', code='max_length'))
+
+    def test_the_description_input_carries_the_cap(self):
+        # So the browser stops typing at the cap rather than refusing it on submit.
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('transform_create'))
+        self.assertContains(response, f'maxlength="{DESCRIPTION_MAX_LENGTH}"')
+
+    def test_the_admin_form_repeats_the_cap(self):
+        # A longer description written there would be refused on `job_edit`.
+        form = WorkOrderAdminForm()
+        self.assertEqual(form.fields['description'].widget.attrs['maxlength'], str(DESCRIPTION_MAX_LENGTH))
+        form = WorkOrderAdminForm(data={'description': 'x' * (DESCRIPTION_MAX_LENGTH + 1)})
+        self.assertTrue(form.has_error('description', code='max_length'))
+
     def test_notes_are_optional(self):
         work_order = self.submit_job(self.worker)
         self.assertEqual(work_order.notes, '')
@@ -3559,7 +3586,7 @@ class DescriptionAndNotesTests(ReviewFixtureMixin, TestCase):
         self.assertContains(response, 'Drtič se zasekl')
 
     def test_notes_longer_than_a_description_are_accepted(self):
-        # The point of the field: `description` is capped at 255, this is not.
+        # The point of the field: `description` is capped at DESCRIPTION_MAX_LENGTH, this is not.
         note = 'x' * 1000
         work_order = self.submit_job(self.worker, notes=note)
         self.assertEqual(work_order.notes, note)
