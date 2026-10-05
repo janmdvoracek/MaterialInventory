@@ -163,6 +163,14 @@ Materiál, and it is what the Materiál detail export carries per row, so a job
 without one reads as a blank cell in four places. Requiring it costs the person
 filling the form in one short sentence and is why those columns say something.
 
+The form caps it at `DESCRIPTION_MAX_LENGTH` (40), well inside the column's
+255 — a label, not a paragraph, and short enough to sit in a table column on a
+phone. The input carries `maxlength`, so the browser stops typing at the cap,
+and the server refuses anything past it. `WorkOrderAdminForm` repeats the cap,
+because a longer description saved in the admin would be refused the next time
+the job is opened on `job_edit`. A row stored before the cap may hold a longer
+one; it still renders, but correcting that job means shortening it first.
+
 `WorkOrder.notes` (*„Poznámky"*) is the **optional** long one — a `TextField`
 rendered as a four-row `<textarea>`, for whatever did not fit on the line:
 a breakdown, a change of plan, who to ask about it. It appears only on the job
@@ -657,6 +665,9 @@ of it; no other dropdown in the app is enhanced, because no other one is long.
 **The `<select>` is still what the form posts.** It keeps its `name`, its
 `value` and its place in the page; `hidden` is not `disabled`, so it is
 submitted exactly as before, and the text box has no `name` and posts nothing.
+The box takes at most 40 characters (`SEARCH_MAX_LENGTH`); with nothing on the
+server behind it, that limit only stops a stray paste becoming an unreadable
+search, and a chosen label longer than that is still shown whole.
 Nothing in `workorders/views.py` or `workorders/forms.py` knows this file
 exists. With it missing, blocked or broken every row is the plain dropdown it
 always was — the same arrangement job_rows.js is held to, and for the same

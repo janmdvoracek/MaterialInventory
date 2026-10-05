@@ -20,6 +20,12 @@ from .photos import UnreadablePhoto, shrink_photo
 # typed here = 11. Wider, and an oversized value is a 500 instead of a field error.
 HOURS_MAX_DIGITS = 11
 
+# „Popis" is the job's label and the „Zakázka" column on four reports, so a
+# one-liner. The column is varchar(255); this cap is the form's alone (tighter
+# than the model, no migration), and `WorkOrderAdminForm` repeats it so a job
+# written in the admin stays saveable on `job_edit`.
+DESCRIPTION_MAX_LENGTH = 40
+
 # `notes` is a TextField, so this cap is the form's alone; see `WorkOrderForm.notes`.
 NOTES_MAX_LENGTH = 2000
 
@@ -112,7 +118,7 @@ class WorkOrderForm(forms.Form):
     )
 
     description = forms.CharField(
-        max_length=255,
+        max_length=DESCRIPTION_MAX_LENGTH,
         required=False,
         label='Popis',
         widget=forms.TextInput(attrs={'placeholder': 'Popis provedené práce'}),
