@@ -56,7 +56,10 @@ input is the one control a page cannot be re-rendered carrying: whenever this
 form comes back — a row button on a browser running no JavaScript, or any
 validation error — the pick is gone and has to be made again. Last is where
 that costs the least, and the hint under it says so rather than letting a
-worker believe a photo went up with the job.
+worker believe a photo went up with the job. It is two inputs for one photo:
+„Vyfoťte" carries `capture` and opens the camera, „Vyberte" does not and opens
+the gallery — Chrome on Android offers no camera from the second at all.
+`WorkOrderForm.clean()` folds the first into the second.
 
 **Every error this page can produce is rendered, and that is a rule rather than
 a nicety.** Nothing is written unless all five forms validate, so an error with
@@ -131,6 +134,10 @@ pressed.
 {% endfor %}
 
 <h2>Fotka</h2>
+<label for="{{ order_form.camera_photo.id_for_label }}">Vyfoťte fotku (volitelné)</label>
+{{ order_form.camera_photo }}
+{% for error in order_form.camera_photo.errors %}<p class="messages error">{{ error }}</p>{% endfor %}
+
 <label for="{{ order_form.photo.id_for_label }}">Vyberte fotku (volitelné)</label>
 {{ order_form.photo }}
 {% for error in order_form.photo.errors %}<p class="messages error">{{ error }}</p>{% endfor %}

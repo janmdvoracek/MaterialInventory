@@ -4338,6 +4338,73 @@ class JobPhotoTests(ReviewFixtureMixin, TestCase):
                 self.assertContains(response, 'enctype="multipart/form-data"')
                 self.assertContains(response, 'name="photo"')
 
+    def test_both_job_pages_offer_the_camera_and_the_gallery_separately(self):
+        # Chrome on Android opens a bare `accept="image/*"` input straight into
+        # the file picker, so the camera needs an input of its own — and only
+        # that one may carry `capture`, which takes the gallery away.
+        work_order = self.submit_job(self.worker)
+        self.client.force_login(self.manager)
+        for url in (reverse('transform_create'), reverse('job_edit', args=[work_order.pk])):
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertContains(
+                    response,
+                    '<input type="file" name="camera_photo" accept="image/*" capture="environment" '
+                    'id="id_camera_photo">',
+                    html=True,
+                )
+                gallery = response.context['order_form']['photo'].as_widget()
+                self.assertIn('accept="image/*"', gallery)
+                self.assertNotIn('capture', gallery)
+
+    def test_a_camera_shot_is_stored_as_the_job_s_photo(self):
+        self.client.force_login(self.worker)
+        response = self._submit(camera_photo=self._photo(size=(PHOTO_MAX_SIDE * 2, 10)))
+        self.assertRedirects(response, reverse('transform_create'))
+        work_order = WorkOrder.objects.get()
+        image = self._stored_image(work_order)
+        # Through the same shrinking as a picked file.
+        self.assertEqual((image.format, image.width), ('JPEG', PHOTO_MAX_SIDE))
+
+    def test_a_camera_shot_replaces_the_photo_on_edit(self):
+        work_order = self._job_with_photo()
+        old = work_order.photo.name
+        self.client.force_login(self.manager)
+        url = reverse('job_edit', args=[work_order.pk])
+        with self.captureOnCommitCallbacks(execute=True):
+            self._submit(url=url, camera_photo=self._photo(size=(20, 10)))
+        work_order.refresh_from_db()
+        self.assertEqual(self._stored_image(work_order).size, (20, 10))
+        self.assertFalse(default_storage.exists(old))
+
+    def test_a_camera_shot_and_a_picked_file_together_are_refused(self):
+        # One photo per job; keeping either would silently drop the other.
+        self.client.force_login(self.worker)
+        response = self._submit(photo=self._photo(), camera_photo=self._photo(name='kamera.jpg'))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(WorkOrder.objects.exists())
+        self.assertContains(response, 'Fotka může být jen jedna')
+
+    def test_a_camera_shot_and_zrusit_together_are_refused(self):
+        work_order = self._job_with_photo()
+        stored = work_order.photo.name
+        self.client.force_login(self.manager)
+        url = reverse('job_edit', args=[work_order.pk])
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self._submit(url=url, camera_photo=self._photo(), **{'photo-clear': 'on'})
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context['order_form'].errors['camera_photo'])
+        work_order.refresh_from_db()
+        self.assertEqual(work_order.photo.name, stored)
+        self.assertTrue(default_storage.exists(stored))
+
+    def test_a_camera_file_that_is_not_a_photo_is_refused(self):
+        self.client.force_login(self.worker)
+        response = self._submit(camera_photo=SimpleUploadedFile('foto.jpg', b'%PDF-1.4'))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(WorkOrder.objects.exists())
+        self.assertContains(response, 'Soubor se nepodařilo otevřít jako fotku.')
+
     def test_a_file_that_is_not_a_photo_is_refused(self):
         self.client.force_login(self.worker)
         response = self._submit(photo=SimpleUploadedFile('poznamky.pdf', b'%PDF-1.4'))

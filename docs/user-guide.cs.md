@@ -204,11 +204,19 @@ libovolný počet řádků *Stroj + Natankováno (l)*.
 
 **5. Fotka**
 
-Úplně dole ve formuláři je pole **Fotka**. Je **nepovinné** a u žádné zakázky se
-nevyžaduje. Klepnutím na něj telefon nabídne fotoaparát i galerii — můžete práci
-rovnou vyfotit, nebo vybrat fotku, kterou už máte.
+Úplně dole ve formuláři je sekce **Fotka**. Je **nepovinná** a u žádné zakázky
+se nevyžaduje. Má dvě tlačítka:
 
-- Jedna fotka na zakázku. Vyberete-li druhou, nahradí tu první.
+- **Vyfoťte fotku** — otevře rovnou fotoaparát a práci vyfotíte na místě.
+- **Vyberte fotku** — otevře galerii nebo soubory, když už fotku máte.
+  (Některé telefony tu nabídnou i fotoaparát, jiné ne — proto je fotoaparát
+  i zvlášť.)
+
+Použijte jen jedno z nich:
+
+- Jedna fotka na zakázku. Vyberete-li v jednom tlačítku druhou, nahradí tu
+  první. Vyplníte-li obě tlačítka, aplikace zakázku neuloží a požádá vás, abyste
+  fotku buď vyfotili, nebo vybrali.
 - Přijímají se běžné formáty z telefonu — `jpg`, `png`, `webp`, `heic`.
   Dokument (třeba `pdf`) aplikace odmítne a napíše to pod polem.
 - Fotka může mít nejvýš **10 MB**. Větší aplikace odmítne, opět s hláškou u pole.
@@ -216,7 +224,8 @@ rovnou vyfotit, nebo vybrat fotku, kterou už máte.
   jako `jpg`. Na displeji telefonu ani na počítači to nepoznáte a dodací list
   na ní zůstane čitelný; originál v plném rozlišení se ale neukládá.
 - **Pole si fotku nepamatuje.** Pokud formulář po odeslání něco vytkne — nesedí
-  součty, chybí popis — nebo přidáte řádek, je potřeba fotku vybrat **znovu**.
+  součty, chybí popis — nebo přidáte řádek, je potřeba fotku vyfotit nebo
+  vybrat **znovu**.
   Prohlížeče to jinak neumí a je to jediné pole formuláře, které se takto chová;
   proto je až úplně dole.
 - Fotka se ukazuje v **detailu zakázky**, tedy v Přehledu, kam vidí jen vedoucí
@@ -271,8 +280,8 @@ spotřeby a výroby musí rovnat**; u zakázky, která je jen tankování, se
 nekontrolují, stejně jako při zápisu. Pole *hodiny* patří tomu, kdo zakázku
 zapsal, ne vám.
 
-Fotku v úpravě buď nechte být — beze změny zůstane ta stávající —, nebo vyberte
-novou, která ji nahradí, nebo zaškrtněte **Zrušit** a uložte, čímž se fotka
+Fotku v úpravě buď nechte být — beze změny zůstane ta stávající —, nebo vyfoťte
+či vyberte novou, která ji nahradí, nebo zaškrtněte **Zrušit** a uložte, čímž se fotka
 odstraní. Odstraněnou ani přepsanou fotku už nelze vrátit.
 
 ## Stroje
@@ -532,6 +541,14 @@ Vybraný soubor není fotka. Přijímají se `jpg`, `png`, `webp` a `heic`.
 **„Fotka je příliš velká (maximálně 10 MB)."**
 Fotka je nad povolenou velikostí. Vyfoťte ji znovu v nižším rozlišení, nebo
 použijte jinou.
+
+**„Fotka může být jen jedna — buď ji vyfoťte, nebo vyberte, ne obojí."**
+Vyplnili jste obě tlačítka, **Vyfoťte fotku** i **Vyberte fotku**. Zakázka
+nese jen jednu fotku, takže použijte jen jedno z nich a odešlete znovu.
+
+**Klepnu na „Vyberte fotku" a fotoaparát se nenabídne.**
+Některé prohlížeče (Chrome, Opera) tam ukážou jen soubory. Použijte tlačítko
+**Vyfoťte fotku**, které otevře fotoaparát přímo.
 
 **„Soubor se nepodařilo otevřít jako fotku."**
 Soubor má sice příponu fotky, ale aplikace ho nedokáže přečíst — bývá poškozený,

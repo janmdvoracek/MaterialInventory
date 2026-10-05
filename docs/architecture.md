@@ -262,6 +262,21 @@ running no JavaScript, any validation error — the pick is gone and has to be
 made again. Last is where that costs least, and the hint under the field says so
 rather than letting a worker believe a photo went up with the job.
 
+**The one photo arrives through two inputs.** „Vyberte fotku" is `photo`,
+`accept="image/*"` and nothing else — which Firefox on Android answers with a
+menu offering the camera and the gallery, but Chrome and Opera answer by opening
+the file picker with no camera at all. `capture="environment"` is the only way
+to ask those for the camera, and it takes the gallery away, so it cannot go on
+`photo`: it sits on a second field, `camera_photo` („Vyfoťte fotku", a plain
+`FileInput`), rendered above it. `camera_photo` passes through the same
+extension check and `clean_photo_upload`, and `WorkOrderForm.clean()` then moves
+it onto `photo` — so the views, `_apply_photo` and `job_edit`'s `initial` only
+ever see the one field, and nothing stores `camera_photo` under its own name.
+Both filled in at once is refused on `camera_photo` rather than one being
+dropped silently, and so is a shot alongside „Zrušit" (with `FileField`'s own
+`contradiction` message, the one Django gives for an upload plus „Zrušit"). The
+admin keeps its single widget; it is not used from a phone.
+
 On `job_edit` the same fact is what `FileField.clean`'s `initial` is for: the
 view puts the stored photo on `order_form.initial` on **every** path, bound POST
 included, so an edit that touches nothing else keeps the photo instead of
