@@ -136,15 +136,27 @@ class WorkOrderForm(forms.Form):
         required=False, label='Moje hodiny', widget=forms.NumberInput(attrs={'placeholder': 'Odpracované hodiny'})
     )
     # Optional on every job, including a fuel-only one: a photo is evidence, not
-    # a record, and nothing reads it back. `accept` is what makes a phone offer
-    # the camera alongside the gallery; no `capture`, which on some browsers
-    # takes the gallery away. ClearableFileInput is what lets `job_edit` drop a
-    # photo again — its „Zrušit" box posts False, which `FileField.clean` passes
+    # a record, and nothing reads it back. `accept` is what makes Firefox on a
+    # phone offer the camera alongside the gallery; no `capture`, which takes the
+    # gallery away. ClearableFileInput is what lets `job_edit` drop a photo
+    # again — its „Zrušit" box posts False, which `FileField.clean` passes
     # straight through (`_apply_photo` acts on it).
     photo = forms.FileField(
         required=False,
         label='Fotka',
         widget=forms.ClearableFileInput(attrs={'accept': 'image/*'}),
+        validators=[FileExtensionValidator(PHOTO_EXTENSIONS)],
+    )
+    # The same photo, from the camera. Chrome and Opera on Android open `photo`
+    # straight into the file picker with no camera on offer, and `capture` is
+    # the only way to ask for one — at the price of the gallery, hence a second
+    # input rather than an attribute on the first. Never stored under its own
+    # name: `clean()` moves it onto `photo`, so the views and `_apply_photo`
+    # see one field. A plain FileInput, since there is nothing here to clear.
+    camera_photo = forms.FileField(
+        required=False,
+        label='Vyfotit',
+        widget=forms.FileInput(attrs={'accept': 'image/*', 'capture': 'environment'}),
         validators=[FileExtensionValidator(PHOTO_EXTENSIONS)],
     )
     # `format` is required: the cs locale would render 02.09.2026, which
@@ -173,6 +185,26 @@ class WorkOrderForm(forms.Form):
         # The extension is the validator's business; the rest is shared with the admin.
         return clean_photo_upload(self.cleaned_data.get('photo'))
 
+    def clean_camera_photo(self):
+        return clean_photo_upload(self.cleaned_data.get('camera_photo'))
+
+    def _merge_camera_photo(self, cleaned_data):
+        """Put a camera shot on `photo`, the one field the views read.
+
+        A job holds one photo, so a shot plus a picked file, or a shot plus
+        „Zrušit", is refused rather than one of them silently dropped.
+        """
+        camera_photo = cleaned_data.get('camera_photo')
+        if not camera_photo:
+            return
+        photo = cleaned_data.get('photo')
+        if photo is False:
+            self.add_error('camera_photo', self.fields['photo'].error_messages['contradiction'])
+        elif isinstance(photo, UploadedFile):
+            self.add_error('camera_photo', 'Fotka může být jen jedna — buď ji vyfoťte, nebo vyberte, ne obojí.')
+        else:
+            cleaned_data['photo'] = camera_photo
+
     def author_or(self, submitter):
         """Whose job this is: the person picked in „Zapsat za", else the submitter."""
         return self.cleaned_data.get('author') or submitter
@@ -182,6 +214,7 @@ class WorkOrderForm(forms.Form):
         performed_on = cleaned_data.get('performed_on')
         if performed_on and performed_on > timezone.localdate():
             self.add_error('performed_on', 'Datum provedení nemůže být v budoucnosti.')
+        self._merge_camera_photo(cleaned_data)
         return cleaned_data
 
 

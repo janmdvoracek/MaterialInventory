@@ -3145,13 +3145,13 @@ class RowTemplateTests(ReviewFixtureMixin, TestCase):
         self.client.force_login(self.manager)
         for url in (reverse('transform_create'), reverse('job_edit', args=[work_order.pk])):
             response = self.client.get(url)
-            for script in ('js/job_rows.js', 'js/searchable_select.js'):
+            for script in ('js/job_rows.js', 'js/searchable_select.js', 'js/photo_picker.js'):
                 self.assertContains(response, script)
 
     def test_no_script_reaches_for_anything_off_the_server(self):
         """The htmx <script> this app used to carry pointed at unpkg.com, which
         the depot could not necessarily reach. Committed files, no CDN."""
-        for name in ('job_rows.js', 'searchable_select.js'):
+        for name in ('job_rows.js', 'searchable_select.js', 'photo_picker.js'):
             source = (settings.BASE_DIR / 'static' / 'js' / name).read_text(encoding='utf-8')
             self.assertNotIn('http://', source, name)
             self.assertNotIn('https://', source, name)
@@ -3221,6 +3221,72 @@ class SearchablePickerTests(ReviewFixtureMixin, TestCase):
         self.assertRegex(css, r'\.combo\s*\{[^}]*position:\s*relative')
         self.assertRegex(css, r'\.combo-list\s*\{[^}]*position:\s*absolute')
         self.assertRegex(css, r'\.combo select\[hidden\][^{]*\{[^}]*display:\s*none')
+
+
+class PhotoPickerTests(ReviewFixtureMixin, TestCase):
+    """The contract `static/js/photo_picker.js` reads off the „Fotka" block.
+
+    The script hides the camera and gallery inputs behind one button cloned
+    from a <template>, and like the other two it is untested in itself. What
+    it finds on the page is testable, and a mismatch fails silently — the
+    script returns early and the two inputs stay — or worse, as a menu button
+    that submits the job.
+    """
+
+    def _pages(self):
+        work_order = self.submit_job(self.worker)
+        self.client.force_login(self.manager)
+        for url in (reverse('transform_create'), reverse('job_edit', args=[work_order.pk])):
+            yield url, self.client.get(url).content.decode()
+
+    def _template(self, page):
+        match = re.search(r'<template data-photo-picker>(.*?)</template>', page, re.DOTALL)
+        self.assertIsNotNone(match)
+        return match.group(1)
+
+    def test_each_input_sits_in_its_source_wrapper(self):
+        """The script finds the inputs as `[data-photo-source] input[type=file]`."""
+        for url, page in self._pages():
+            with self.subTest(url=url):
+                self.assertIn('data-photo-field', page)
+                self.assertRegex(
+                    page,
+                    r'data-photo-source="camera">\s*<label[^>]*>[^<]*</label>\s*<input type="file" name="camera_photo"',
+                )
+                self.assertRegex(page, r'data-photo-source="gallery">\s*<label for="id_photo"')
+
+    def test_the_template_carries_the_menu_and_both_choices(self):
+        for url, page in self._pages():
+            with self.subTest(url=url):
+                template = self._template(page)
+                for hook in (
+                    'data-photo-toggle',
+                    'data-photo-menu',
+                    'data-photo-chosen',
+                    'data-photo-name',
+                    'data-photo-reset',
+                ):
+                    self.assertIn(hook, template)
+                self.assertIn('data-photo-pick="camera"', template)
+                self.assertIn('data-photo-pick="gallery"', template)
+
+    def test_no_button_in_the_template_submits(self):
+        """A <button> in a form is a submit unless told otherwise, and the
+        picker is cloned inside the job form: „Vyfotit" posting the job half
+        filled in would be the worst way for this to break."""
+        for url, page in self._pages():
+            with self.subTest(url=url):
+                buttons = re.findall(r'<button[^>]*>', self._template(page))
+                self.assertEqual(len(buttons), 4)
+                for button in buttons:
+                    self.assertIn('type="button"', button)
+
+    def test_the_stylesheet_hides_what_the_script_hides(self):
+        """`label`, `input` and `.photo-menu` all set a `display`, which beats
+        the UA stylesheet's `[hidden]`; without this rule the hidden inputs and
+        the closed menu render. The browser is the only place that shows."""
+        css = (settings.BASE_DIR / 'static' / 'css' / 'app.css').read_text(encoding='utf-8')
+        self.assertRegex(css, r'\.photo-field \[hidden\], \.photo-field input\[hidden\]\s*\{[^}]*display:\s*none')
 
 
 class TonsBoxWidthTests(TestCase):
@@ -4337,6 +4403,73 @@ class JobPhotoTests(ReviewFixtureMixin, TestCase):
                 response = self.client.get(url)
                 self.assertContains(response, 'enctype="multipart/form-data"')
                 self.assertContains(response, 'name="photo"')
+
+    def test_both_job_pages_offer_the_camera_and_the_gallery_separately(self):
+        # Chrome on Android opens a bare `accept="image/*"` input straight into
+        # the file picker, so the camera needs an input of its own — and only
+        # that one may carry `capture`, which takes the gallery away.
+        work_order = self.submit_job(self.worker)
+        self.client.force_login(self.manager)
+        for url in (reverse('transform_create'), reverse('job_edit', args=[work_order.pk])):
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertContains(
+                    response,
+                    '<input type="file" name="camera_photo" accept="image/*" capture="environment" '
+                    'id="id_camera_photo">',
+                    html=True,
+                )
+                gallery = response.context['order_form']['photo'].as_widget()
+                self.assertIn('accept="image/*"', gallery)
+                self.assertNotIn('capture', gallery)
+
+    def test_a_camera_shot_is_stored_as_the_job_s_photo(self):
+        self.client.force_login(self.worker)
+        response = self._submit(camera_photo=self._photo(size=(PHOTO_MAX_SIDE * 2, 10)))
+        self.assertRedirects(response, reverse('transform_create'))
+        work_order = WorkOrder.objects.get()
+        image = self._stored_image(work_order)
+        # Through the same shrinking as a picked file.
+        self.assertEqual((image.format, image.width), ('JPEG', PHOTO_MAX_SIDE))
+
+    def test_a_camera_shot_replaces_the_photo_on_edit(self):
+        work_order = self._job_with_photo()
+        old = work_order.photo.name
+        self.client.force_login(self.manager)
+        url = reverse('job_edit', args=[work_order.pk])
+        with self.captureOnCommitCallbacks(execute=True):
+            self._submit(url=url, camera_photo=self._photo(size=(20, 10)))
+        work_order.refresh_from_db()
+        self.assertEqual(self._stored_image(work_order).size, (20, 10))
+        self.assertFalse(default_storage.exists(old))
+
+    def test_a_camera_shot_and_a_picked_file_together_are_refused(self):
+        # One photo per job; keeping either would silently drop the other.
+        self.client.force_login(self.worker)
+        response = self._submit(photo=self._photo(), camera_photo=self._photo(name='kamera.jpg'))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(WorkOrder.objects.exists())
+        self.assertContains(response, 'Fotka může být jen jedna')
+
+    def test_a_camera_shot_and_zrusit_together_are_refused(self):
+        work_order = self._job_with_photo()
+        stored = work_order.photo.name
+        self.client.force_login(self.manager)
+        url = reverse('job_edit', args=[work_order.pk])
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self._submit(url=url, camera_photo=self._photo(), **{'photo-clear': 'on'})
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context['order_form'].errors['camera_photo'])
+        work_order.refresh_from_db()
+        self.assertEqual(work_order.photo.name, stored)
+        self.assertTrue(default_storage.exists(stored))
+
+    def test_a_camera_file_that_is_not_a_photo_is_refused(self):
+        self.client.force_login(self.worker)
+        response = self._submit(camera_photo=SimpleUploadedFile('foto.jpg', b'%PDF-1.4'))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(WorkOrder.objects.exists())
+        self.assertContains(response, 'Soubor se nepodařilo otevřít jako fotku.')
 
     def test_a_file_that_is_not_a_photo_is_refused(self):
         self.client.force_login(self.worker)

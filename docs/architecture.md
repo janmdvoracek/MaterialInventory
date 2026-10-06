@@ -262,6 +262,26 @@ running no JavaScript, any validation error — the pick is gone and has to be
 made again. Last is where that costs least, and the hint under the field says so
 rather than letting a worker believe a photo went up with the job.
 
+**The one photo arrives through two inputs.** „Vyberte fotku" is `photo`,
+`accept="image/*"` and nothing else — which Firefox on Android answers with a
+menu offering the camera and the gallery, but Chrome and Opera answer by opening
+the file picker with no camera at all. `capture="environment"` is the only way
+to ask those for the camera, and it takes the gallery away, so it cannot go on
+`photo`: it sits on a second field, `camera_photo` („Vyfoťte fotku", a plain
+`FileInput`), rendered above it. `camera_photo` passes through the same
+extension check and `clean_photo_upload`, and `WorkOrderForm.clean()` then moves
+it onto `photo` — so the views, `_apply_photo` and `job_edit`'s `initial` only
+ever see the one field, and nothing stores `camera_photo` under its own name.
+Both filled in at once is refused on `camera_photo` rather than one being
+dropped silently, and so is a shot alongside „Zrušit" (with `FileField`'s own
+`contradiction` message, the one Django gives for an upload plus „Zrušit"). The
+admin keeps its single widget; it is not used from a phone.
+
+**With JavaScript running, the two inputs are one button.**
+`static/js/photo_picker.js` hides both behind „Vyfotit nebo vybrat fotku",
+whose menu opens one input or the other — see "One photo button" below. Nothing
+above changes: both inputs are still in the form and still what it posts.
+
 On `job_edit` the same fact is what `FileField.clean`'s `initial` is for: the
 view puts the stored photo on `order_form.initial` on **every** path, bound POST
 included, so an edit that touches nothing else keeps the photo instead of
@@ -707,6 +727,43 @@ one `<select>` for it to find, that the first option is the valueless
 `empty_label` it lifts out as the placeholder, that each select carries the id
 the listbox is keyed off, and that `app.css` carries the three rules without
 which the list renders as a bullet list shoving the rows below it down.
+
+### One photo button
+
+`static/js/photo_picker.js` is the third script, on the same terms as the other
+two. The form takes its one photo through two inputs (see "Fotka" above) — on
+Chrome and Opera for Android, `capture` is the only way to the camera and it
+takes the gallery away — and two labelled inputs read as two photos. The script
+hides both behind one „Vyfotit nebo vybrat fotku" button whose menu offers
+„Vyfotit" and „Vybrat z galerie", each opening the matching input, and shows
+„Vybráno: <file name>" with an „Odebrat" button once something is picked.
+
+**Both inputs are still what the form posts.** A `hidden` file input still
+submits its file, and `click()` on one still opens the picker, so neither keeps
+a name or a value apart from the page; no view or form knows the file exists.
+With it missing, blocked or broken the page is the two labelled inputs.
+
+Three decisions worth knowing:
+
+- **It builds no markup.** The button, the menu and the „Vybráno" line are a
+  `<template data-photo-picker>` in `_job_form_fields.html`, so the Czech copy
+  sits in the template like all the rest. Every button in it is
+  `type="button"`: it is cloned inside the job form, where a bare `<button>` is
+  a submit.
+- **One pick empties the other input, and „Zrušit".** A job holds one photo and
+  `WorkOrderForm.clean()` refuses a shot plus a picked file, or either plus
+  „Zrušit"; with the script running that refusal can only be reached on
+  purpose. Ticking „Zrušit" likewise drops a pick.
+- **On `job_edit` only the gallery input and its label are hidden**, not their
+  wrapper: `ClearableFileInput` renders the stored photo's link and „Zrušit"
+  around the input, and those stay. The button goes where the input was, after
+  the widget's „Změnit:".
+
+`app.css` hides `[hidden]` explicitly inside `.photo-field`, because `label`,
+`input` and `.photo-menu` all set a `display` that would otherwise beat the UA
+stylesheet. `PhotoPickerTests` covers the contract: each input sits in its
+`data-photo-source` wrapper, the template carries the hooks the script reads,
+none of its buttons submits, and that CSS rule exists.
 
 ### `WorkerHours` vs `MachineUsage`
 
@@ -1372,11 +1429,12 @@ multiplies the `Sum` by the number of matched collaborators.
 - **No REST API.** `rest_framework` was installed and configured for session
   auth, but there were never any serializers, viewsets or routes. It and the
   `REST_FRAMEWORK` settings block are gone.
-- **No JavaScript framework, and two scripts of the app's own — both on the
+- **No JavaScript framework, and three scripts of the app's own — all on the
   same page.** `static/js/job_rows.js` resizes a section of the job form in the
-  DOM and `static/js/searchable_select.js` makes its four dropdowns
-  type-to-narrow; every other page is a plain form POST with no script at all.
-  Both are **progressive enhancement and nothing more** — the searchable
+  DOM, `static/js/searchable_select.js` makes its four dropdowns
+  type-to-narrow and `static/js/photo_picker.js` puts its two photo inputs
+  behind one button; every other page is a plain form POST with no script at
+  all. All three are **progressive enhancement and nothing more** — the searchable
   pickers hide a `<select>` that is still what the form posts, and the
   „+ další řádek" / „− odebrat řádek"
   buttons remain ordinary submits that the server still answers by re-rendering

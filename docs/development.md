@@ -61,7 +61,7 @@ python manage.py test materials.tests.MaterialModelTests           # one class
 python manage.py test materials.tests.MaterialModelTests.test_material_str
 ```
 
-461 tests. Postgres must be reachable; expect a few minutes, and rather longer
+471 tests. Postgres must be reachable; expect a few minutes, and rather longer
 on a Windows checkout.
 
 ### Coverage
@@ -90,9 +90,10 @@ What it measures:
   `config/wsgi.py` and `scripts/`.** The tests would count themselves as
   covered, the migrations are generated, and the rest never run under the test
   runner.
-- **Python only.** `job_rows.js` and `searchable_select.js` are untested by
-  construction (the suite runs no browser), and they do not show up as gaps.
-  The same goes for templates, which do render but are not measured.
+- **Python only.** `job_rows.js`, `searchable_select.js` and `photo_picker.js`
+  are untested by construction (the suite runs no browser), and they do not
+  show up as gaps. The same goes for templates, which do render but are not
+  measured.
 
 Two things to watch:
 
