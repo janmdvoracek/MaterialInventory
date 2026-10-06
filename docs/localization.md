@@ -125,8 +125,11 @@ The wording depends on what a blank choice *means*:
 
 The transform rows use the bare noun rather than a `Vyberte ...` prompt because
 each row renders its selects side by side with no room for a visible label, so
-the empty option is doing the labelling. The `hours` input on those rows carries
-a placeholder for the same reason.
+the empty option is doing the labelling. Each number input on those rows carries
+a placeholder for the same reason — a bare unit (`t`, `mth`, `l`, `h`), because
+`app.css` sizes those boxes to three characters and gives the rest of the row to
+the picker, whose names are long. The full name goes in `title`, which is both
+the desktop tooltip and, with no `<label>` on the row, the accessible name.
 
 `EmptyLabelTests` in `workorders/tests.py` fails if a new field forgets. `ModelMultipleChoiceField` — `collaborators`, for
 example — has no blank option and needs nothing.

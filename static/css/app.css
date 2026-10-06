@@ -212,13 +212,27 @@ nav.bottom a {
     overflow-wrap: break-word;
 }
 nav.bottom a:hover, nav.bottom a:active { color: var(--brand-green); }
-/* A row wraps rather than crushing its boxes: the machines section is four
-   fields wide (stroj, motohodiny, tuny, litry) and four of them side by side on
-   a phone leaves nothing legible. The basis is what decides how many fit, so the
-   two-field material rows still sit on one line. */
+/* A row wraps rather than crushing its boxes. The picker's names are long and
+   the numbers beside it are two or three digits, so a row's number boxes are
+   sized to three characters and the picker takes the rest: even the four-field
+   machines row (stroj, motohodiny, tuny, litry) fits a phone on one line, and
+   wraps only when the picker would fall below its 7rem basis. Placeholders are
+   bare units (t, mth, l, h) to fit — see the row forms in workorders/forms.py.
+   The spin buttons go too, because a desktop browser draws them inside the box,
+   where they would eat two of the three characters. */
 .item-row { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: flex-end; margin-bottom: 0.5rem; }
 .date-override { margin-top: 1rem; }
 .item-row > div { flex: 1 1 7rem; }
+.item-row > div:has(> input[type="number"]) { flex: 0 0 auto; }
+.item-row input[type="number"] {
+    width: calc(3ch + 1rem + 2px);
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+    appearance: textfield;
+    -moz-appearance: textfield;
+}
+.item-row input[type="number"]::-webkit-inner-spin-button,
+.item-row input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 /* Jobs still waiting for a manager are the whole point of the Prehled page,
    so they have to stand out from the rest of the table. */
 tr.row-pending > td { background: var(--row-pending-bg); }

@@ -303,7 +303,10 @@ class MovementItemForm(RowForm):
         decimal_places=2,
         required=False,
         label='Množství (t)',
-        widget=forms.NumberInput(attrs={'placeholder': 'Množství (t)'}),
+        # Row placeholders are bare units because app.css sizes a row's number
+        # boxes to three characters; `title` carries the full name, and is also
+        # what a screen reader announces, since the row has no <label>.
+        widget=forms.NumberInput(attrs={'placeholder': 't', 'title': 'Množství (t)'}),
     )
 
 
@@ -328,7 +331,9 @@ class MachineUsageForm(RowForm):
         label='Stroj',
         empty_label='Stroj',
     )
-    hours = _hours_field(required=False, label='Hodiny', widget=forms.NumberInput(attrs={'placeholder': 'Motohodiny'}))
+    hours = _hours_field(
+        required=False, label='Hodiny', widget=forms.NumberInput(attrs={'placeholder': 'mth', 'title': 'Motohodiny'})
+    )
     # Not part of the mass balance: chained machines each process the same material.
     tons = forms.DecimalField(
         min_value=Decimal('0.01'),
@@ -336,7 +341,7 @@ class MachineUsageForm(RowForm):
         decimal_places=2,
         required=False,
         label='Tuny',
-        widget=forms.NumberInput(attrs={'placeholder': 'Tuny'}),
+        widget=forms.NumberInput(attrs={'placeholder': 't', 'title': 'Tuny'}),
     )
     # Litres, and no unit field to read — like every quantity in the app, the
     # unit is hardcoded in the prompt. Far narrower than the decimal(12, 2)
@@ -349,7 +354,7 @@ class MachineUsageForm(RowForm):
         decimal_places=2,
         required=False,
         label='Natankováno (l)',
-        widget=forms.NumberInput(attrs={'placeholder': 'Natankováno (l)'}),
+        widget=forms.NumberInput(attrs={'placeholder': 'l', 'title': 'Natankováno (l)'}),
     )
 
     def clean_litres(self):
@@ -391,7 +396,9 @@ class WorkerHoursForm(RowForm):
         label='Pracovník',
         empty_label='Pracovník',
     )
-    hours = _hours_field(required=False, label='Hodiny', widget=forms.NumberInput(attrs={'placeholder': 'Hodiny'}))
+    hours = _hours_field(
+        required=False, label='Hodiny', widget=forms.NumberInput(attrs={'placeholder': 'h', 'title': 'Hodiny'})
+    )
 
     def __init__(self, *args, user=None, viewer=None, **kwargs):
         super().__init__(*args, **kwargs)
