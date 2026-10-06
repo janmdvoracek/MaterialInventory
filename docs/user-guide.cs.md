@@ -205,18 +205,23 @@ libovolný počet řádků *Stroj + Natankováno (l)*.
 **5. Fotka**
 
 Úplně dole ve formuláři je sekce **Fotka**. Je **nepovinná** a u žádné zakázky
-se nevyžaduje. Má dvě tlačítka:
+se nevyžaduje. Klepněte na **Vyfotit nebo vybrat fotku** a vyberte:
 
-- **Vyfoťte fotku** — otevře rovnou fotoaparát a práci vyfotíte na místě.
-- **Vyberte fotku** — otevře galerii nebo soubory, když už fotku máte.
-  (Některé telefony tu nabídnou i fotoaparát, jiné ne — proto je fotoaparát
-  i zvlášť.)
+- **Vyfotit** — otevře rovnou fotoaparát a práci vyfotíte na místě.
+- **Vybrat z galerie** — otevře galerii nebo soubory, když už fotku máte.
+
+Pod tlačítkem se pak ukáže **Vybráno:** s názvem fotky. Tlačítkem **Odebrat**
+výběr zrušíte; vyberete-li fotku znovu, nahradí tu předchozí.
+
+Pokud místo jednoho tlačítka vidíte dvě pole, **Vyfoťte fotku** a **Vyberte
+fotku**, prohlížeč nespustil skript stránky. Formulář funguje stejně: první
+pole otevře fotoaparát, druhé galerii.
 
 Použijte jen jedno z nich:
 
-- Jedna fotka na zakázku. Vyberete-li v jednom tlačítku druhou, nahradí tu
-  první. Vyplníte-li obě tlačítka, aplikace zakázku neuloží a požádá vás, abyste
-  fotku buď vyfotili, nebo vybrali.
+- Jedna fotka na zakázku. Vyberete-li druhou, nahradí tu první. (Ve verzi se
+  dvěma poli: vyplníte-li obě, aplikace zakázku neuloží a požádá vás, abyste
+  fotku buď vyfotili, nebo vybrali.)
 - Přijímají se běžné formáty z telefonu — `jpg`, `png`, `webp`, `heic`.
   Dokument (třeba `pdf`) aplikace odmítne a napíše to pod polem.
 - Fotka může mít nejvýš **10 MB**. Větší aplikace odmítne, opět s hláškou u pole.
@@ -543,12 +548,13 @@ Fotka je nad povolenou velikostí. Vyfoťte ji znovu v nižším rozlišení, ne
 použijte jinou.
 
 **„Fotka může být jen jedna — buď ji vyfoťte, nebo vyberte, ne obojí."**
-Vyplnili jste obě tlačítka, **Vyfoťte fotku** i **Vyberte fotku**. Zakázka
-nese jen jednu fotku, takže použijte jen jedno z nich a odešlete znovu.
+Vyplnili jste obě pole, **Vyfoťte fotku** i **Vyberte fotku** (objeví se jen
+tehdy, když prohlížeč nespustil skript stránky). Zakázka nese jen jednu fotku,
+takže použijte jen jedno z nich a odešlete znovu.
 
-**Klepnu na „Vyberte fotku" a fotoaparát se nenabídne.**
-Některé prohlížeče (Chrome, Opera) tam ukážou jen soubory. Použijte tlačítko
-**Vyfoťte fotku**, které otevře fotoaparát přímo.
+**Klepnu na „Vybrat z galerie" a fotoaparát se nenabídne.**
+Některé prohlížeče (Chrome, Opera) tam ukážou jen soubory. Pro fotoaparát
+zvolte **Vyfotit**.
 
 **„Soubor se nepodařilo otevřít jako fotku."**
 Soubor má sice příponu fotky, ale aplikace ho nedokáže přečíst — bývá poškozený,

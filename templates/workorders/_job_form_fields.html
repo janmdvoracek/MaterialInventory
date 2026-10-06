@@ -61,6 +61,17 @@ worker believe a photo went up with the job. It is two inputs for one photo:
 the gallery — Chrome on Android offers no camera from the second at all.
 `WorkOrderForm.clean()` folds the first into the second.
 
+**static/js/photo_picker.js is the third enhancement**: it hides both inputs
+behind one „Vyfotit nebo vybrat fotku" button whose menu opens one or the
+other, and clears the other input when one gets a file, so the „ne obojí"
+refusal in `clean()` is not reached by accident. Both inputs stay in the form
+under their own names and are what the browser posts; the button and its menu
+are the <template data-photo-picker> below, so the copy lives here and not in
+the script. On `job_edit` only the gallery input and its label are hidden, not
+its wrapper — ClearableFileInput renders the stored photo and „Zrušit" around
+the input, and those have to stay — and the button goes where the input was,
+after „Změnit:".
+
 **Every error this page can produce is rendered, and that is a rule rather than
 a nicety.** Nothing is written unless all five forms validate, so an error with
 nowhere to appear is a submission that vanishes: the page comes back carrying
@@ -134,13 +145,41 @@ pressed.
 {% endfor %}
 
 <h2>Fotka</h2>
-<label for="{{ order_form.camera_photo.id_for_label }}">Vyfoťte fotku (volitelné)</label>
-{{ order_form.camera_photo }}
-{% for error in order_form.camera_photo.errors %}<p class="messages error">{{ error }}</p>{% endfor %}
+<div class="photo-field" data-photo-field>
+    <div data-photo-source="camera">
+        <label for="{{ order_form.camera_photo.id_for_label }}">Vyfoťte fotku (volitelné)</label>
+        {{ order_form.camera_photo }}
+    </div>
+    {% for error in order_form.camera_photo.errors %}<p class="messages error">{{ error }}</p>{% endfor %}
 
-<label for="{{ order_form.photo.id_for_label }}">Vyberte fotku (volitelné)</label>
-{{ order_form.photo }}
-{% for error in order_form.photo.errors %}<p class="messages error">{{ error }}</p>{% endfor %}
+    <div data-photo-source="gallery">
+        <label for="{{ order_form.photo.id_for_label }}">Vyberte fotku (volitelné)</label>
+        {{ order_form.photo }}
+    </div>
+    {% for error in order_form.photo.errors %}<p class="messages error">{{ error }}</p>{% endfor %}
+
+    {% comment %}
+    What photo_picker.js puts in place of the two inputs above: one button
+    opening a choice between them. Inert until the script clones it, so with the
+    script off the page is the two labelled inputs. Every button here is
+    type="button" — the job form's buttons are submits by default, and one of
+    these posting the form would read as the job being sent.
+    {% endcomment %}
+    <template data-photo-picker>
+        <div class="photo-picker">
+            <button class="btn secondary" type="button" data-photo-toggle aria-expanded="false">Vyfotit nebo vybrat fotku</button>
+            <div class="photo-menu" data-photo-menu hidden>
+                <button class="btn secondary" type="button" data-photo-pick="camera">Vyfotit</button>
+                <button class="btn secondary" type="button" data-photo-pick="gallery">Vybrat z galerie</button>
+            </div>
+            <p class="photo-chosen" data-photo-chosen hidden>
+                <span>Vybráno: <span data-photo-name></span></span>
+                <button class="btn secondary" type="button" data-photo-reset>Odebrat</button>
+            </p>
+        </div>
+    </template>
+</div>
 
 <script src="{% static 'js/job_rows.js' %}" defer></script>
 <script src="{% static 'js/searchable_select.js' %}" defer></script>
+<script src="{% static 'js/photo_picker.js' %}" defer></script>

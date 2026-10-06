@@ -3145,13 +3145,13 @@ class RowTemplateTests(ReviewFixtureMixin, TestCase):
         self.client.force_login(self.manager)
         for url in (reverse('transform_create'), reverse('job_edit', args=[work_order.pk])):
             response = self.client.get(url)
-            for script in ('js/job_rows.js', 'js/searchable_select.js'):
+            for script in ('js/job_rows.js', 'js/searchable_select.js', 'js/photo_picker.js'):
                 self.assertContains(response, script)
 
     def test_no_script_reaches_for_anything_off_the_server(self):
         """The htmx <script> this app used to carry pointed at unpkg.com, which
         the depot could not necessarily reach. Committed files, no CDN."""
-        for name in ('job_rows.js', 'searchable_select.js'):
+        for name in ('job_rows.js', 'searchable_select.js', 'photo_picker.js'):
             source = (settings.BASE_DIR / 'static' / 'js' / name).read_text(encoding='utf-8')
             self.assertNotIn('http://', source, name)
             self.assertNotIn('https://', source, name)
@@ -3221,6 +3221,72 @@ class SearchablePickerTests(ReviewFixtureMixin, TestCase):
         self.assertRegex(css, r'\.combo\s*\{[^}]*position:\s*relative')
         self.assertRegex(css, r'\.combo-list\s*\{[^}]*position:\s*absolute')
         self.assertRegex(css, r'\.combo select\[hidden\][^{]*\{[^}]*display:\s*none')
+
+
+class PhotoPickerTests(ReviewFixtureMixin, TestCase):
+    """The contract `static/js/photo_picker.js` reads off the „Fotka" block.
+
+    The script hides the camera and gallery inputs behind one button cloned
+    from a <template>, and like the other two it is untested in itself. What
+    it finds on the page is testable, and a mismatch fails silently — the
+    script returns early and the two inputs stay — or worse, as a menu button
+    that submits the job.
+    """
+
+    def _pages(self):
+        work_order = self.submit_job(self.worker)
+        self.client.force_login(self.manager)
+        for url in (reverse('transform_create'), reverse('job_edit', args=[work_order.pk])):
+            yield url, self.client.get(url).content.decode()
+
+    def _template(self, page):
+        match = re.search(r'<template data-photo-picker>(.*?)</template>', page, re.DOTALL)
+        self.assertIsNotNone(match)
+        return match.group(1)
+
+    def test_each_input_sits_in_its_source_wrapper(self):
+        """The script finds the inputs as `[data-photo-source] input[type=file]`."""
+        for url, page in self._pages():
+            with self.subTest(url=url):
+                self.assertIn('data-photo-field', page)
+                self.assertRegex(
+                    page,
+                    r'data-photo-source="camera">\s*<label[^>]*>[^<]*</label>\s*<input type="file" name="camera_photo"',
+                )
+                self.assertRegex(page, r'data-photo-source="gallery">\s*<label for="id_photo"')
+
+    def test_the_template_carries_the_menu_and_both_choices(self):
+        for url, page in self._pages():
+            with self.subTest(url=url):
+                template = self._template(page)
+                for hook in (
+                    'data-photo-toggle',
+                    'data-photo-menu',
+                    'data-photo-chosen',
+                    'data-photo-name',
+                    'data-photo-reset',
+                ):
+                    self.assertIn(hook, template)
+                self.assertIn('data-photo-pick="camera"', template)
+                self.assertIn('data-photo-pick="gallery"', template)
+
+    def test_no_button_in_the_template_submits(self):
+        """A <button> in a form is a submit unless told otherwise, and the
+        picker is cloned inside the job form: „Vyfotit" posting the job half
+        filled in would be the worst way for this to break."""
+        for url, page in self._pages():
+            with self.subTest(url=url):
+                buttons = re.findall(r'<button[^>]*>', self._template(page))
+                self.assertEqual(len(buttons), 4)
+                for button in buttons:
+                    self.assertIn('type="button"', button)
+
+    def test_the_stylesheet_hides_what_the_script_hides(self):
+        """`label`, `input` and `.photo-menu` all set a `display`, which beats
+        the UA stylesheet's `[hidden]`; without this rule the hidden inputs and
+        the closed menu render. The browser is the only place that shows."""
+        css = (settings.BASE_DIR / 'static' / 'css' / 'app.css').read_text(encoding='utf-8')
+        self.assertRegex(css, r'\.photo-field \[hidden\], \.photo-field input\[hidden\]\s*\{[^}]*display:\s*none')
 
 
 class TonsBoxWidthTests(TestCase):
