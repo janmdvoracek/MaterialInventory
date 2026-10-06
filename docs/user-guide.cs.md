@@ -157,7 +157,9 @@ zpětně, přepište ho na den, kdy se práce skutečně dělala.
 **4. Stroje**
 
 Řádek stroje má čtyři pole: **Stroj**, **Hodiny** (motohodiny), **Tuny**, které
-stroj zpracoval, a **Natankováno (l)**. Pokud šel materiál přes více strojů za
+stroj zpracoval, a **Natankováno (l)**. Číselná pole jsou úzká a místo názvu v nich
+je jen jednotka: **mth** (motohodiny), **t** (tuny) a **l** (litry). V řádcích
+spotřeby a výroby je u množství **t**, u spolupracovníků u hodin **h**. Pokud šel materiál přes více strojů za
 sebou, použijte více řádků. **Každý stroj uveďte jen jednou** — vybraný stroj se
 v nabídce dalšího řádku neobjeví a dva řádky se stejným strojem aplikace odmítne;
 běžel-li na zakázce víckrát, sečtěte motohodiny, tuny i litry do jednoho řádku.
