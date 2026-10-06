@@ -3223,6 +3223,30 @@ class SearchablePickerTests(ReviewFixtureMixin, TestCase):
         self.assertRegex(css, r'\.combo select\[hidden\][^{]*\{[^}]*display:\s*none')
 
 
+class TonsBoxWidthTests(TestCase):
+    """Row number boxes are three characters wide; tonnes need five digits.
+
+    The width is CSS keyed off a `tons` class, so both halves are pinned: the
+    two tonnes inputs carry the class on every row, `<template>` rows included
+    (`job_edit` renders the same widgets through the same partial), and the
+    stylesheet gives it room for five digits and the decimal separator.
+    """
+
+    def test_both_tonnes_inputs_carry_the_class(self):
+        user = User.objects.create_user(username='worker', password='pw', role=User.Role.WORKER)
+        self.client.force_login(user)
+        response = self.client.get(reverse('transform_create'))
+        for name in ('consumed-0-quantity', 'produced-0-quantity', 'machines-0-tons', 'machines-__prefix__-tons'):
+            with self.subTest(name=name):
+                self.assertRegex(response.content.decode(), rf'<input(?=[^>]*name="{name}")[^>]*class="tons"')
+        # The other number boxes stay three characters wide.
+        self.assertNotRegex(response.content.decode(), r'<input(?=[^>]*name="machines-0-hours")[^>]*class="tons"')
+
+    def test_the_stylesheet_widens_the_tons_boxes(self):
+        css = (settings.BASE_DIR / 'static' / 'css' / 'app.css').read_text(encoding='utf-8')
+        self.assertRegex(css, r'\.item-row input\[type="number"\]\.tons\s*\{[^}]*width:\s*calc\(6ch')
+
+
 class ThemeTokenTests(TestCase):
     """Dark mode is a second set of values for one set of names.
 

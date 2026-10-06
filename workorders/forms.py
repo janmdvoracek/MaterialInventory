@@ -304,9 +304,10 @@ class MovementItemForm(RowForm):
         required=False,
         label='Množství (t)',
         # Row placeholders are bare units because app.css sizes a row's number
-        # boxes to three characters; `title` carries the full name, and is also
-        # what a screen reader announces, since the row has no <label>.
-        widget=forms.NumberInput(attrs={'placeholder': 't', 'title': 'Množství (t)'}),
+        # boxes to three characters (`.tons` ones to five digits); `title`
+        # carries the full name, and is also what a screen reader announces,
+        # since the row has no <label>.
+        widget=forms.NumberInput(attrs={'placeholder': 't', 'title': 'Množství (t)', 'class': 'tons'}),
     )
 
 
@@ -347,7 +348,7 @@ class MachineUsageForm(RowForm):
         decimal_places=2,
         required=False,
         label='Tuny',
-        widget=forms.NumberInput(attrs={'placeholder': 't', 'title': 'Tuny'}),
+        widget=forms.NumberInput(attrs={'placeholder': 't', 'title': 'Tuny', 'class': 'tons'}),
     )
     # Litres, and no unit field to read — like every quantity in the app, the
     # unit is hardcoded in the prompt. Far narrower than the decimal(12, 2)

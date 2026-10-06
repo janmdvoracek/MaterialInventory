@@ -123,7 +123,7 @@ Full column reference: [docs/development.md](docs/development.md#seeding-data).
 ## Common commands
 
 ```bash
-python manage.py test                  # full suite (459 tests, needs Postgres)
+python manage.py test                  # full suite (461 tests, needs Postgres)
 python manage.py test workorders       # one app
 coverage run manage.py test && coverage html   # coverage report in htmlcov/
 ruff check . && ruff format .          # lint and format
