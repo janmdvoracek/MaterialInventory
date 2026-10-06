@@ -167,16 +167,18 @@ Na další řádky se dostanete tlačítkem **„+ další řádek"** pod nimi a
 odeberete tlačítkem **„− odebrat řádek"**. Stroje jsou nepovinné — pokud se žádný
 nepoužil, nechte řádky prázdné.
 
-**Motohodiny a tuny patří k sobě, litry stojí samostatně.** Řádek tedy můžete
-vyplnit třemi způsoby:
+**Povinný je jen stroj.** Motohodiny i tuny jsou nepovinné — vyplňte je,
+pokud je znáte, jinak je nechte prázdné (napsaná **0** znamená totéž co prázdné
+pole). Řádek tedy může vypadat takto:
 
-- **Stroj + hodiny + tuny** — stroj běžel; litry nechte prázdné (nebo napište
+- **Jen stroj**, případně **stroj + hodiny** a/nebo **tuny** — stroj na zakázce
+  běžel; co nevyplníte, zůstane nezjištěné. Litry nechte prázdné (nebo napište
   0), pokud se netankovalo.
-- **Stroj + litry** — jen se tankovalo. Hodiny ani tuny vyplňovat nemusíte.
-- **Stroj + hodiny + tuny + litry** — běžel i se tankoval, oboje na jednom řádku.
+- **Stroj + litry** (bez hodin i tun) — jen se tankovalo.
+- **Stroj + hodiny a/nebo tuny + litry** — běžel i se tankoval, oboje na jednom
+  řádku.
 
-Co aplikace odmítne: hodiny bez tun (nebo tuny bez hodin), litry bez vybraného
-stroje, a stroj, u kterého není vyplněné vůbec nic.
+Co aplikace odmítne: hodiny, tuny nebo litry bez vybraného stroje.
 
 > Tuny u stroje se **nezapočítávají** do kontroly součtů spotřeby a výroby.
 > Když materiál projde třemi stroji za sebou, projde každý z nich stejné
@@ -195,7 +197,8 @@ libovolný počet řádků *Stroj + Natankováno (l)*.
 - **Popis** můžete vyplnit, i když se nevyžaduje — v přehledech se pak zobrazí
   místo pomlčky, takže se lépe hledá.
 - Schvaluje se úplně stejně jako každá jiná zakázka a objeví se i v **Přehledu**.
-- Jakmile na takový zápis přidáte motohodiny nebo položku materiálu, přestává
+- Jakmile na takový zápis přidáte stroj bez litrů (s motohodinami, s tunami
+  nebo i bez nich) nebo položku materiálu, přestává
   to být „jen tankování" — **Lokace**, **Popis**, **Moje hodiny** i kontrola
   součtů se vrátí.
 
@@ -279,9 +282,12 @@ tun**. Obě čísla se navyšují pokaždé, když někdo ve **Zpracování** vy
 a tuny stroje a vedoucí zakázku **schválí** — neschválené zakázky se do nich
 nepočítají.
 
-U starších záznamů, které vznikly ještě předtím, než se tuny zapisovaly, není
-tonáž známá. Takové stroje mají ve sloupci **Celkem tun** pomlčku (—) — neplést
-s nulou, ta by znamenala, že stroj nic nezpracoval.
+Motohodiny i tuny jsou ve **Zpracování** nepovinné, a u starších záznamů, které
+vznikly ještě předtím, než se tuny zapisovaly, tonáž známá není. Stroj, u kterého
+v daném období nikdo hodiny (nebo tuny) nevyplnil, má v tom sloupci pomlčku (—) —
+neplést s nulou: **0 h** znamená, že stroj v daném období vůbec neběžel, a **0 t**,
+že nic nezpracoval. Kde jsou u některých záznamů čísla vyplněná a u jiných ne,
+sečtou se jen ta vyplněná.
 
 Vedle motohodin se zobrazují dvě sazby stroje: **Sazba (Kč/hod)** a
 **Cena (Kč/t)** za tunu zpracovaného materiálu. V aplikaci se nezadávají,

@@ -74,15 +74,21 @@ def _machine_costs(machine):
     An unset rate means unpriced (None), not free; zero hours with a rate is a
     real 0. „Celkem" sums the priced sides and is None if any of them is
     unknown, rather than understating the bill.
+
+    `Sum` skips NULLs, so `filtered_hours` arrives as None both when the machine
+    had no usage in range — a real 0 h, set here — and when every usage it had
+    left motohodiny blank, which stays None: unknown, like the tonnage.
     """
+    if machine.filtered_hours is None and not machine.filtered_usages:
+        machine.filtered_hours = Decimal('0')
     hours_cost = None
-    if machine.hourly_rate is not None:
-        hours_cost = (machine.filtered_hours or Decimal('0')) * machine.hourly_rate
+    if machine.hourly_rate is not None and machine.filtered_hours is not None:
+        hours_cost = machine.filtered_hours * machine.hourly_rate
     tons_cost = None
     if machine.rate_per_ton is not None and machine.filtered_tons is not None:
         tons_cost = machine.filtered_tons * machine.rate_per_ton
     # Keyed off the rates: an unset rate drops its side, while a rate with
-    # unknown tonnage keeps the side and makes the total unknown.
+    # unknown hours or tonnage keeps the side and makes the total unknown.
     priced_sides = [
         cost
         for rate, cost in ((machine.hourly_rate, hours_cost), (machine.rate_per_ton, tons_cost))
@@ -98,7 +104,8 @@ def _machine_summary(usages, form):
     """Hours, tonnage and cost per machine over `usages`, as a list.
 
     Every active machine is listed (0 h is an answer), or just the filtered one.
-    Tons summing to None means unknown, not zero.
+    Hours or tons summing to None over rows that exist means unknown, not zero;
+    `filtered_usages` is what tells that apart from no rows (see `_machine_costs`).
     """
     if form.is_bound and not form.is_valid():
         return []
@@ -111,6 +118,7 @@ def _machine_summary(usages, form):
         for machine in machines.annotate(
             filtered_hours=Sum('usages__hours', filter=in_scope),
             filtered_tons=Sum('usages__tons', filter=in_scope),
+            filtered_usages=Count('usages', filter=in_scope),
         ).order_by('name')
     ]
 
@@ -325,7 +333,7 @@ def machine_dashboard_export(request):
         [
             [
                 machine.name,
-                _csv_number(machine.filtered_hours or Decimal('0'), 1),
+                _csv_number(machine.filtered_hours, 1),
                 _csv_number(machine.filtered_tons, 2),
                 _csv_number(machine.hourly_rate, 2),
                 _csv_number(machine.rate_per_ton, 2),

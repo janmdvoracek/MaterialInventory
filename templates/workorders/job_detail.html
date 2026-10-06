@@ -95,7 +95,7 @@
         {% for usage in machine_usages %}
             <tr>
                 <td>{{ usage.machine.name }}</td>
-                <td>{{ usage.hours|floatformat:1 }} h</td>
+                <td>{% if usage.hours is None %}—{% else %}{{ usage.hours|floatformat:1 }} h{% endif %}</td>
                 <td>{{ usage.tons|floatformat:2|default:"—" }}</td>
             </tr>
         {% empty %}

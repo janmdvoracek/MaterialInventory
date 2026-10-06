@@ -727,9 +727,13 @@ the motohodiny on Stroje. That is not a reconciliation bug.
 machine put through on that job. **It is not part of the mass balance.** Chained
 machines each handle the same material, so the tonnage column sums to a multiple
 of the job's consumed total, not to it — nothing compares the two. The Transform
-form requires it on any machine row that records motohodiny, but the column is
-nullable because rows written before it existed have no answer (unknown, not
-zero), and the history table renders those as a dash.
+form no longer asks for it, and the column is nullable: a blank (or `0`) box is
+*unknown*, not zero, and so are rows written before the column existed. The
+history table renders an unknown as a dash.
+
+**`MachineUsage.hours` is nullable on the same terms.** Machines are priced
+outside the app for now, so the form asks for neither number and a usage row
+can say no more than that the machine ran on the job.
 
 `MachineRefuel.litres` is a fourth, and it lives in its own table.
 
@@ -744,38 +748,40 @@ to the day of a correction.
 the reason is not tidiness: the two rows do not imply each other. A machine can
 be refuelled on a job it did not run — a whole job can be nothing but tanking up
 — so a fill-up has to be able to exist with no usage row beside it. A nullable
-column on `MachineUsage` would have meant inventing a usage row with no hours to
-hang the litres off, and `hours` is not nullable.
+column on `MachineUsage` would have meant inventing a usage row — one that says
+the machine ran — to hang the litres off.
 
 Nothing derives litres from motohodiny or tonnage, and nothing compares them.
 Unlike `tons`, `litres` is **not nullable**: the column is new, but a fill-up
 row only ever exists because somebody typed a number into it, so there is no
 *unknown* to represent and a total of zero is a real zero.
 
-### One machine row, two halves
+### One machine row, only the machine required
 
 Both live on the Transform form's *Použité stroje* section, which is now four
 fields wide: stroj, motohodiny, tuny, natankováno (l). `MachineUsageForm` is
 therefore the one row form that does **not** follow `RowForm`'s all-or-nothing
-rule, and overrides `check_row` instead of it:
+rule, and overrides `check_row` instead of it. Only the machine is required —
+motohodiny and tuny are each optional while machines are priced outside the app:
 
 | Row | Means |
 |---|---|
 | everything blank | no row |
-| machine + hours + tons | a `MachineUsage` |
-| machine + litres | a `MachineRefuel`, and no usage row |
-| machine + hours + tons + litres | both, from one row |
-| machine + one of hours/tons | refused — the usage half is still all-or-nothing |
-| machine alone | refused — it says nothing |
-| litres with no machine | refused |
+| machine, with any of hours/tons or neither | a `MachineUsage`, the blank numbers unknown |
+| machine + litres, hours and tons blank | a `MachineRefuel`, and no usage row |
+| machine + hours and/or tons + litres | both, from one row |
+| a number with no machine | refused |
 
-**A typed `0` in the litres box is the blank box.** `clean_litres` folds it into
-`None` before `check_row` runs, so every row in the table reads the same with a
-zero as with nothing: „stroj + hodiny + tuny + 0" is a usage row and no fill-up,
-and „stroj + 0" is a machine alone and refused. Refusing the zero outright used
-to send a worker who meant „didn't refuel" off to type at least 0,01; storing it
-would write a fill-up of nothing, and on its own would make a fuel-only job that
-recorded nothing. Negative litres are still refused.
+**A typed `0` in any of the three boxes is the blank box.** `_zero_is_blank`
+folds it into `None` in `clean_hours`, `clean_tons` and `clean_litres` before
+`check_row` runs, so every row in the table reads the same with a zero as with
+nothing: „stroj + hodiny + tuny + 0" is a usage row and no fill-up, and
+„stroj + 0" is a machine alone — a usage row with both numbers unknown. For
+litres, refusing the zero outright used to send a worker who meant „didn't
+refuel" off to type at least 0,01; storing it would write a fill-up of nothing,
+and on its own would make a fuel-only job that recorded nothing. For hours and
+tons, a stored 0 would read on Stroje as a machine that ran for nothing or
+processed nothing. Negative numbers are still refused.
 
 `RowForm.clean()` keeps the early return on `self.errors` that stops the row's
 own complaint printing over a field error; only the rule itself moved into an
@@ -784,7 +790,8 @@ overridable hook.
 The no-duplicates rule is unchanged and covers both halves at once: a machine
 named twice is refused, so a machine refuelled twice on one job is one row
 carrying the sum. `_collect_rows` splits the section's rows into `JobRows.usages`
-(those with motohodiny) and `JobRows.refuels` (those with litres), and
+(every row naming a machine except „stroj + litry" alone, which `_refuel_only`
+picks out) and `JobRows.refuels` (those with litres), and
 `_write_job_rows` writes each list to its own table.
 
 `job_edit` has to put them back together: `_machine_section_rows(usages, refuels)`
@@ -799,7 +806,7 @@ data-loss trap the usage rows carry.
 **A submission carrying nothing but fill-ups is a complete, valid job.** Someone
 tanks up three machines and records that; there is no transformation involved.
 `_is_fuel_only(rows)` is true when there is at least one fill-up and no consumed
-rows, no produced rows, no motohodiny and no collaborator hours, and such a job
+rows, no produced rows, no usage rows and no collaborator hours, and such a job
 is exempt from three things that every other submission must answer:
 
 - **the mass balance**, because there are no consumed and produced totals to
@@ -816,8 +823,9 @@ It stays an ordinary `WorkOrder` in every other respect: dated, authored,
 detail page. Not being *asked* for a description is not the same as refusing
 one — a worker who types one keeps it, and the four list columns read it.
 
-Add any motohodiny or any material row and the exemption is gone: the submission
-records work, and the balance and both fields come back.
+Add any usage row — a machine without litres, numbers or not — or any material
+row and the exemption is gone: the submission records work, and the balance and
+both fields come back.
 
 ### `collaborators`
 
@@ -861,9 +869,13 @@ from when they were stock history, which made the admin refuse to delete any
 job with materials on it. `AdminJobDeleteTests`
 covers both admin paths.
 
-`tons` is nullable (rows predating the column mean *unknown*, not zero) and
-`Sum` skips NULLs, so a machine with no recorded tonnage sums to `None` and
-renders as a dash; `0 t` would claim it processed nothing.
+`hours` and `tons` are nullable (*unknown*, not zero) and `Sum` skips NULLs, so
+a machine with no recorded tonnage sums to `None` and renders as a dash; `0 t`
+would claim it processed nothing. Hours need one more step, because a machine
+with no usage rows in range also sums to `None` and that one *is* a real `0 h`:
+`_machine_summary` annotates `filtered_usages` (a `Count`) beside the sums, and
+`_machine_costs` turns a `None` into `0` only when that count is zero. A
+machine whose rows mix known and unknown numbers sums the known ones.
 
 ### Stroje is one page, laid out like Hodiny
 
@@ -909,16 +921,17 @@ reads as an answer.
 conditional, and a `Case`/`When` over an aggregate would be much harder to read
 than a loop over a table of one row per active machine.
 
-Both rules come down to telling *unknown* from *zero* — the distinction a
-nullable `MachineUsage.tons` already forces on this page:
+Both rules come down to telling *unknown* from *zero* — the distinction the
+nullable `MachineUsage.hours` and `tons` already force on this page:
 
 - **An unset rate means the machine is not priced that way. It does not mean
   free.** That side of the bill is unknown and renders as a dash, exactly as
-  the rate column beside it does. But `filtered_hours` is a real zero, so a
-  machine that *is* priced by the hour and did not run in range costs `0,00`,
-  not a dash.
+  the rate column beside it does. But a machine with no usage in range has a
+  real zero `filtered_hours`, so one that *is* priced by the hour and did not
+  run costs `0,00`, not a dash — while one that ran with motohodiny left blank
+  has an unknown hours cost.
 - **„Celkem" is unknown when any priced side is.** A machine billed per tonne
-  whose usage rows predate the `tons` column has a cost nobody can compute;
+  whose usage rows left the tonnage blank has a cost nobody can compute;
   printing the hours half of it under a „Celkem" heading would understate the
   bill, which is worse than admitting the number is unavailable. A machine
   priced on one side only totals to that side — the unpriced side is out of the
@@ -1059,7 +1072,7 @@ it names every job's author and description, not just totals.
 - **Numbers go through `number_format`**, so a tonnage is `12,50` — a number
   Excel can sum under `cs`, not text. Python code does not localise itself; see
   [localization.md](localization.md).
-- **An unknown exports blank, not `—`.** A NULL `MachineUsage.tons` or an unset
+- **An unknown exports blank, not `—`.** A NULL `MachineUsage.hours` or `tons`, or an unset
   rate renders as a dash on the page, but a dash in a spreadsheet cell is text
   that breaks a column of numbers; blank stays out of a `SUM`. A real zero is
   passed in by the caller, matching the page's `|default:"0"`. The same applies

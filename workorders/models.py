@@ -181,8 +181,10 @@ class MachineUsage(models.Model):
     machine = models.ForeignKey(
         'machines.Machine', on_delete=models.PROTECT, related_name='usages', verbose_name='stroj'
     )
-    hours = models.DecimalField(max_digits=12, decimal_places=2, verbose_name='motohodiny')
-    # Null only on rows from before the column existed: unknown, not zero.
+    # Both null when not recorded: unknown, not zero. The job form leaves them
+    # optional while machines are priced outside the app, and tons is also null
+    # on rows from before the column existed.
+    hours = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, verbose_name='motohodiny')
     tons = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, verbose_name='odpracované tuny')
 
     class Meta:
@@ -191,7 +193,8 @@ class MachineUsage(models.Model):
         verbose_name_plural = 'využití strojů'
 
     def __str__(self):
-        return f'{self.machine} - {self.hours}h (WorkOrder #{self.work_order_id})'
+        hours = '?' if self.hours is None else self.hours
+        return f'{self.machine} - {hours}h (WorkOrder #{self.work_order_id})'
 
 
 class MachineRefuel(models.Model):
