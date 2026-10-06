@@ -28,8 +28,9 @@ class JobRows(NamedTuple):
     """Everything one submission records, split the way the tables are.
 
     `usages` and `refuels` both come off the machines section: a row carrying
-    motohodiny is a `MachineUsage`, a row carrying litres is a `MachineRefuel`,
-    and one row can be both or either (see `MachineUsageForm.check_row`).
+    litres is a `MachineRefuel`, and every other row naming a machine — one
+    with motohodiny or tuny, or with nothing beside the machine at all — is a
+    `MachineUsage`, so one row can be both or either (see `MachineUsageForm`).
     """
 
     consumed: list
@@ -49,10 +50,15 @@ def _collect_rows(formsets):
     return JobRows(
         consumed=filled('consumed', 'material'),
         produced=filled('produced', 'material'),
-        usages=[row for row in machine_rows if row.get('hours') is not None],
+        usages=[row for row in machine_rows if not _refuel_only(row)],
         refuels=[row for row in machine_rows if row.get('litres') is not None],
         worker_hours={row['user']: row['hours'] for row in filled('workers', 'user')},
     )
+
+
+def _refuel_only(row):
+    """„stroj + litry" and nothing else: a fill-up, with no usage row beside it."""
+    return row.get('litres') is not None and row.get('hours') is None and row.get('tons') is None
 
 
 def _is_fuel_only(rows):

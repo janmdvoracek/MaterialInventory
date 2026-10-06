@@ -61,7 +61,7 @@ python manage.py test materials.tests.MaterialModelTests           # one class
 python manage.py test materials.tests.MaterialModelTests.test_material_str
 ```
 
-448 tests. Postgres must be reachable; expect a few minutes, and rather longer
+459 tests. Postgres must be reachable; expect a few minutes, and rather longer
 on a Windows checkout.
 
 ### Coverage
@@ -146,7 +146,8 @@ forgets its `empty_label`. See
 [localization.md](localization.md#every-modelchoicefield-needs-an-empty_label).
 
 **`MachineRefuelTests` and `MachineRefuelReportTests`** (`workorders/tests.py`)
-cover fuel: the machine row's two independent halves, the fuel-only job that is
+cover fuel and the machine row: only the machine required, motohodiny and tuny
+optional with a typed 0 stored as unknown, litres standing alone, the fuel-only job that is
 exempt from the mass balance and from „Popis"/„Moje hodiny", the `job_edit`
 round-trip that has to merge two tables back onto one row, and the Tankování card
 with its own paginator and CSV. See

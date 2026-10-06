@@ -184,7 +184,7 @@ class TransformCreateTests(TestCase):
         self.assertEqual(MachineUsage.objects.get(machine=self.machine_a).tons, Decimal('3'))
         self.assertEqual(MachineUsage.objects.get(machine=self.machine_b).tons, Decimal('3'))
 
-    def test_machine_row_missing_tons_rejected(self):
+    def test_machine_row_missing_tons_accepted(self):
         self.client.force_login(self.worker)
         data = {
             'description': 'Test job',
@@ -218,9 +218,12 @@ class TransformCreateTests(TestCase):
             'workers-MAX_NUM_FORMS': '1000',
         }
         response = self.client.post(reverse('transform_create'), data)
-        self.assertEqual(response.status_code, 200)
-        self.assertFalse(WorkOrder.objects.exists())
-        self.assertFalse(MachineUsage.objects.exists())
+        # Optional while machines are priced outside the app: the blank number
+        # is stored as unknown, not refused.
+        self.assertRedirects(response, reverse('transform_create'))
+        usage = MachineUsage.objects.get()
+        self.assertEqual(usage.hours, Decimal('2.00'))
+        self.assertIsNone(usage.tons)
 
     def test_transform_with_chained_machines_are_recorded_separately(self):
         response = self._post(
@@ -262,7 +265,7 @@ class TransformCreateTests(TestCase):
         self.assertRedirects(response, reverse('transform_create'))
         self.assertFalse(MachineUsage.objects.exists())
 
-    def test_machine_row_missing_hours_rejected(self):
+    def test_machine_row_missing_hours_accepted(self):
         self.client.force_login(self.worker)
         data = {
             'description': 'Test job',
@@ -298,9 +301,12 @@ class TransformCreateTests(TestCase):
             'workers-MAX_NUM_FORMS': '1000',
         }
         response = self.client.post(reverse('transform_create'), data)
-        self.assertEqual(response.status_code, 200)
-        self.assertFalse(WorkOrder.objects.exists())
-        self.assertFalse(MachineUsage.objects.exists())
+        # Optional while machines are priced outside the app: the blank number
+        # is stored as unknown, not refused.
+        self.assertRedirects(response, reverse('transform_create'))
+        usage = MachineUsage.objects.get()
+        self.assertIsNone(usage.hours)
+        self.assertEqual(usage.tons, Decimal('8.00'))
 
     def test_machine_row_missing_machine_rejected(self):
         self.client.force_login(self.worker)
@@ -954,7 +960,8 @@ class ReportsUsePerformedOnTests(TestCase):
         self._back_dated_job()
         response = self.client.get(reverse('machine_dashboard'), self._last_week())
         machine = response.context['machines'][0]
-        self.assertIsNone(machine.filtered_hours)
+        # No usage in range is a real 0 h, unlike usage that left motohodiny blank.
+        self.assertEqual(machine.filtered_hours, Decimal('0'))
         self.assertEqual(len(response.context['page_obj'].object_list), 0)
 
     def test_material_totals_follow_the_work(self):
@@ -1169,6 +1176,26 @@ class MachineDashboardTests(TestCase):
         self.assertEqual(machine.filtered_hours_cost, Decimal('160.00'))
         self.assertIsNone(machine.filtered_tons_cost)
         self.assertIsNone(machine.filtered_total_cost)
+
+    def test_hours_left_blank_on_every_usage_are_unknown_not_zero(self):
+        # The machine ran — there are usage rows — but nobody recorded how long,
+        # so it is a dash like an unknown tonnage, and the hours side of the bill
+        # cannot be computed either.
+        self.machine_active.hourly_rate = Decimal('80')
+        self.machine_active.save()
+        self._usage(None, tons=Decimal('5'))
+        response = self.client.get(reverse('machine_dashboard'))
+        machine = response.context['machines'][0]
+        self.assertIsNone(machine.filtered_hours)
+        self.assertIsNone(machine.filtered_hours_cost)
+        self.assertIsNone(machine.filtered_total_cost)
+        self.assertNotContains(response, '0,0 h')
+
+    def test_recorded_hours_still_sum_beside_unrecorded_ones(self):
+        self._usage(Decimal('3'))
+        self._usage(None)
+        machine = self.client.get(reverse('machine_dashboard')).context['machines'][0]
+        self.assertEqual(machine.filtered_hours, Decimal('3.00'))
 
     def test_costs_ignore_unapproved_jobs(self):
         self.machine_active.hourly_rate = Decimal('80')
@@ -1716,6 +1743,15 @@ class TableExportTests(TestCase):
         rows = self._rows(self.client.get(reverse('machine_dashboard_export')))
         self.assertEqual(rows[1][1:3], ['3,0', ''])
 
+    def test_unrecorded_hours_export_blank(self):
+        # A machine whose usage rows all left motohodiny blank: unknown, so a
+        # blank cell that SUM skips rather than a 0 it would count.
+        self._job(usage=(None, Decimal('5')))
+        self.client.force_login(self.manager)
+        rows = self._rows(self.client.get(reverse('machine_dashboard_export')))
+        self.assertEqual(rows[1][1:3], ['', '5,00'])
+        self.assertEqual(rows[1][5], '')
+
     def test_material_export_carries_the_summary_table(self):
         self._job(quantity=Decimal('12.5'))
         self.client.force_login(self.manager)
@@ -1959,7 +1995,9 @@ def job_payload(
         data[f'machines-{i}-machine'] = row['machine'].pk
         if 'hours' in row:
             data[f'machines-{i}-hours'] = str(row['hours'])
-            # Tuny go with the motohodiny; a row naming only litres is a fill-up.
+        # Tuny default in beside motohodiny, so most tests need only name the
+        # hours; a row naming only litres is a fill-up.
+        if 'hours' in row or 'tons' in row:
             data[f'machines-{i}-tons'] = str(row.get('tons', '5'))
         if 'litres' in row:
             data[f'machines-{i}-litres'] = str(row['litres'])
@@ -3418,7 +3456,6 @@ class RowErrorVisibilityTests(ReviewFixtureMixin, TestCase):
         response = self._submit(**{'machines-0-hours': '0.3'})
         self.assertEqual(response.status_code, 200)
         self.assertFalse(WorkOrder.objects.exists())
-        self.assertNotContains(response, 'Vyplňte motohodiny i tuny')
         self.assertContains(response, 'Hodiny:')
 
     def test_a_genuinely_half_filled_row_still_says_so(self):
@@ -3672,8 +3709,8 @@ class HoursWidthTests(ReviewFixtureMixin, TestCase):
 class MachineRefuelTests(ReviewFixtureMixin, TestCase):
     """Fuel is a fourth record type, in its own table, on the machines section.
 
-    Three things to hold. A machine row's two halves are independent: motohodiny
-    and tuny still go together, litres stand alone, and one row can carry both.
+    Three things to hold. Only the machine is required: motohodiny and tuny are
+    each optional, litres stand alone, and one row can carry all three.
     A submission that is nothing but fill-ups is a whole valid job, which means
     it is exempt from the mass balance and from the two job fields every other
     job must answer. And `job_edit` has to put both halves back on one row per
@@ -3729,14 +3766,24 @@ class MachineRefuelTests(ReviewFixtureMixin, TestCase):
         # No fill-up of nothing: the row is a usage row and only that.
         self.assertFalse(MachineRefuel.objects.exists())
 
-    def test_zero_litres_alone_says_nothing(self):
+    def test_zero_litres_alone_is_a_machine_with_nothing_recorded(self):
         # Treated as blank all the way through, „stroj + 0" is a machine with
-        # nothing beside it — not a fuel-only job that recorded nothing.
+        # nothing beside it: a usage row, and no fill-up of nothing.
+        self.client.force_login(self.worker)
+        response = self._submit([{'machine': self.machine_a, 'litres': '0'}])
+        self.assertRedirects(response, reverse('transform_create'))
+        usage = MachineUsage.objects.get()
+        self.assertIsNone(usage.hours)
+        self.assertIsNone(usage.tons)
+        self.assertFalse(MachineRefuel.objects.exists())
+
+    def test_zero_litres_alone_is_not_a_fuel_only_job(self):
+        # With no fill-up it records work, so the job is asked everything a
+        # work job is — rather than being a fuel-only job that recorded nothing.
         self.client.force_login(self.worker)
         response = self._fuel_only([{'machine': self.machine_a, 'litres': '0'}])
         self.assertEqual(response.status_code, 200)
         self.assertFalse(WorkOrder.objects.exists())
-        self.assertContains(response, 'natankované litry')
 
     def test_the_litres_box_allows_zero_but_not_less(self):
         self.client.force_login(self.worker)
@@ -3747,14 +3794,48 @@ class MachineRefuelTests(ReviewFixtureMixin, TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(WorkOrder.objects.exists())
 
-    def test_hours_without_tons_is_still_refused(self):
-        # The usage half keeps its own all-or-nothing rule; litres relaxing the
-        # row must not relax that too.
+    def test_hours_without_tons_is_a_usage_row(self):
+        # Machines are priced outside the app for now, so neither number is
+        # asked for; the one left blank is stored as unknown.
         self.client.force_login(self.worker)
         response = self._submit([{'machine': self.machine_a, 'hours': Decimal('2'), 'tons': ''}])
-        self.assertEqual(response.status_code, 200)
-        self.assertFalse(WorkOrder.objects.exists())
-        self.assertContains(response, 'Vyplňte motohodiny i tuny')
+        self.assertRedirects(response, reverse('transform_create'))
+        usage = MachineUsage.objects.get()
+        self.assertEqual(usage.hours, Decimal('2.00'))
+        self.assertIsNone(usage.tons)
+
+    def test_tons_without_hours_is_a_usage_row(self):
+        self.client.force_login(self.worker)
+        response = self._submit([{'machine': self.machine_a, 'hours': '', 'tons': Decimal('5')}])
+        self.assertRedirects(response, reverse('transform_create'))
+        usage = MachineUsage.objects.get()
+        self.assertIsNone(usage.hours)
+        self.assertEqual(usage.tons, Decimal('5.00'))
+
+    def test_zero_hours_and_tons_are_the_blank_box(self):
+        # As with litres: a worker who types 0 means „not recorded", and a stored
+        # 0 would read on Stroje as a machine that ran and processed nothing.
+        self.client.force_login(self.worker)
+        response = self._submit([{'machine': self.machine_a, 'hours': '0', 'tons': '0'}])
+        self.assertRedirects(response, reverse('transform_create'))
+        usage = MachineUsage.objects.get()
+        self.assertIsNone(usage.hours)
+        self.assertIsNone(usage.tons)
+
+    def test_negative_hours_and_tons_are_refused(self):
+        self.client.force_login(self.worker)
+        for field in ('hours', 'tons'):
+            with self.subTest(field=field):
+                response = self._submit([{'machine': self.machine_a, field: '-1'}])
+                self.assertEqual(response.status_code, 200)
+                self.assertFalse(WorkOrder.objects.exists())
+
+    def test_hours_with_litres_and_no_tons_records_both(self):
+        self.client.force_login(self.worker)
+        response = self._submit([{'machine': self.machine_a, 'hours': Decimal('2'), 'litres': Decimal('30')}])
+        self.assertRedirects(response, reverse('transform_create'))
+        self.assertEqual(MachineUsage.objects.get().hours, Decimal('2.00'))
+        self.assertEqual(MachineRefuel.objects.get().litres, Decimal('30.00'))
 
     def test_litres_without_a_machine_is_refused(self):
         self.client.force_login(self.worker)
@@ -3763,14 +3844,47 @@ class MachineRefuelTests(ReviewFixtureMixin, TestCase):
         self.assertFalse(WorkOrder.objects.exists())
         self.assertContains(response, 'Vyberte stroj')
 
-    def test_a_machine_with_nothing_beside_it_is_refused(self):
-        # Naming a machine and leaving every number blank says nothing at all,
-        # and would write neither a usage row nor a fill-up.
+    def test_a_machine_with_nothing_beside_it_is_a_usage_row(self):
+        # Naming the machine still says it ran on the job, with both numbers
+        # unknown rather than zero.
         self.client.force_login(self.worker)
         response = self._submit([{'machine': self.machine_a}])
+        self.assertRedirects(response, reverse('transform_create'))
+        usage = MachineUsage.objects.get()
+        self.assertEqual(usage.machine, self.machine_a)
+        self.assertIsNone(usage.hours)
+        self.assertIsNone(usage.tons)
+        self.assertFalse(MachineRefuel.objects.exists())
+
+    def test_a_machine_alone_beside_fill_ups_ends_the_fuel_only_exemption(self):
+        # It is a usage row, so the job records work and must balance.
+        self.client.force_login(self.worker)
+        response = self._fuel_only([{'machine': self.machine_a, 'litres': Decimal('60')}, {'machine': self.machine_b}])
         self.assertEqual(response.status_code, 200)
         self.assertFalse(WorkOrder.objects.exists())
-        self.assertContains(response, 'natankované litry')
+
+    def test_edit_keeps_a_machine_recorded_with_no_numbers(self):
+        """The row comes back with the machine selected and both boxes empty,
+        and saving it as rendered keeps the usage row rather than dropping it."""
+        work_order = self.submit_job(self.worker, machine_rows=[{'machine': self.machine_a}])
+        self.client.force_login(self.manager)
+        formset = self.client.get(reverse('job_edit', args=[work_order.pk])).context['machine_formset']
+        self.assertEqual(formset.forms[0].initial, {'machine': self.machine_a.pk, 'hours': None, 'tons': None})
+        response = self._submit([{'machine': self.machine_a}], url=reverse('job_edit', args=[work_order.pk]))
+        self.assertRedirects(response, reverse('job_detail', args=[work_order.pk]))
+        usage = MachineUsage.objects.get()
+        self.assertIsNone(usage.hours)
+        self.assertIsNone(usage.tons)
+
+    def test_the_job_pages_show_a_dash_for_unrecorded_hours(self):
+        work_order = self.submit_job(self.worker, machine_rows=[{'machine': self.machine_a}])
+        WorkOrder.objects.filter(pk=work_order.pk).update(status=WorkOrder.Status.APPROVED)
+        self.client.force_login(self.manager)
+        for url in (reverse('job_detail', args=[work_order.pk]), reverse('machine_dashboard')):
+            with self.subTest(url=url):
+                content = self.client.get(url).content.decode()
+                # The hours cell follows the machine's name in both tables.
+                self.assertRegex(content, r'<td>Crusher A</td>\s*<td>—</td>')
 
     def test_a_job_of_nothing_but_fill_ups_is_valid(self):
         self.client.force_login(self.worker)

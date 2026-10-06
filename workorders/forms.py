@@ -62,10 +62,10 @@ def clean_photo_upload(photo):
         raise forms.ValidationError('Soubor se nepodařilo otevřít jako fotku.') from None
 
 
-def _hours_field(**kwargs):
+def _hours_field(min_value=Decimal('0.5'), **kwargs):
     """Hours as the job form takes them: half-hour steps, capped at the column width."""
     return forms.DecimalField(
-        min_value=Decimal('0.5'), max_digits=HOURS_MAX_DIGITS, step_size=Decimal('0.5'), decimal_places=1, **kwargs
+        min_value=min_value, max_digits=HOURS_MAX_DIGITS, step_size=Decimal('0.5'), decimal_places=1, **kwargs
     )
 
 
@@ -278,8 +278,8 @@ class RowForm(forms.Form):
     def check_row(self, cleaned_data):
         """The row's own rule: blank, or filled in completely.
 
-        A hook rather than inline, because `MachineUsageForm` has two halves
-        that stand alone and so cannot use this rule. The early return above
+        A hook rather than inline, because `MachineUsageForm` requires only
+        its machine and so cannot use this rule. The early return above
         stays in one place either way.
         """
         filled = [cleaned_data.get(name) for name in self.fields]
@@ -310,17 +310,19 @@ class MovementItemForm(RowForm):
 class MachineUsageForm(RowForm):
     """One machine on a job: what it ran, and/or the fuel put into it.
 
-    Two independent halves, which is why this row does not follow `RowForm`'s
-    all-or-nothing rule. Motohodiny and tuny go together — one without the other
-    is a half-typed usage row — but litres stand alone, so „stroj + litry" is a
-    complete row that writes a `MachineRefuel` and no `MachineUsage`. That is
-    what lets a whole job be nothing but fill-ups; see `_is_fuel_only`.
+    Only the machine is required, which is why this row does not follow
+    `RowForm`'s all-or-nothing rule. Machines are priced outside the app for
+    now, so motohodiny and tuny are optional and a 0 in either is the blank box
+    (see `_zero_is_blank`): asking for them only had workers typing numbers
+    nobody read. A machine named on its own is a usage row with both unknown —
+    it still says the machine ran on the job. Litres stand alone, so „stroj +
+    litry" with motohodiny and tuny blank writes a `MachineRefuel` and no
+    `MachineUsage`. That is what lets a whole job be nothing but fill-ups; see
+    `_is_fuel_only`.
     """
 
     catalog_field = 'machine'
-    incomplete_error = 'Vyplňte motohodiny i tuny, nebo obojí nechte prázdné a vyplňte jen natankované litry.'
     missing_machine_error = 'Vyberte stroj, nebo řádek nechte prázdný.'
-    nothing_recorded_error = 'U stroje vyplňte motohodiny a tuny, nebo natankované litry.'
 
     machine = forms.ModelChoiceField(
         queryset=Machine.objects.filter(is_active=True),
@@ -328,10 +330,16 @@ class MachineUsageForm(RowForm):
         label='Stroj',
         empty_label='Stroj',
     )
-    hours = _hours_field(required=False, label='Hodiny', widget=forms.NumberInput(attrs={'placeholder': 'Motohodiny'}))
+    # Both optional, and both accept 0, which `_zero_is_blank` stores as unknown.
+    hours = _hours_field(
+        min_value=Decimal('0'),
+        required=False,
+        label='Hodiny',
+        widget=forms.NumberInput(attrs={'placeholder': 'Motohodiny'}),
+    )
     # Not part of the mass balance: chained machines each process the same material.
     tons = forms.DecimalField(
-        min_value=Decimal('0.01'),
+        min_value=Decimal('0'),
         max_digits=7,
         decimal_places=2,
         required=False,
@@ -352,32 +360,34 @@ class MachineUsageForm(RowForm):
         widget=forms.NumberInput(attrs={'placeholder': 'Natankováno (l)'}),
     )
 
+    def _zero_is_blank(self, name):
+        """A typed 0 is the blank box: every rule below sees what an empty box gives."""
+        value = self.cleaned_data.get(name)
+        return None if value == 0 else value
+
+    def clean_hours(self):
+        """0 motohodiny is „not recorded", stored as unknown rather than as a real zero."""
+        return self._zero_is_blank('hours')
+
+    def clean_tons(self):
+        """0 tuny is „not recorded", stored as unknown rather than as a real zero."""
+        return self._zero_is_blank('tons')
+
     def clean_litres(self):
         """A typed 0 is the blank box, not a fill-up of nothing.
 
         Refusing it sent a worker who wrote „0" for „didn't refuel" off to type
         at least 0,01 — the opposite of what they meant. Stored, it would be a
         `MachineRefuel` of zero litres, and on a row with no motohodiny it would
-        turn „stroj + 0" into a fuel-only job that recorded nothing. Folding it
-        into `None` means every rule below sees exactly what an empty box gives.
+        turn „stroj + 0" into a fuel-only job that recorded nothing.
         """
-        litres = self.cleaned_data.get('litres')
-        return None if litres == 0 else litres
+        return self._zero_is_blank('litres')
 
     def check_row(self, cleaned_data):
         machine = cleaned_data.get('machine')
-        hours = cleaned_data.get('hours')
-        tons = cleaned_data.get('tons')
-        litres = cleaned_data.get('litres')
-        if not any((machine, hours, tons, litres)):
-            return
-        if machine is None:
+        numbers = (cleaned_data.get('hours'), cleaned_data.get('tons'), cleaned_data.get('litres'))
+        if machine is None and any(value is not None for value in numbers):
             raise forms.ValidationError(self.missing_machine_error)
-        # The usage half is all-or-nothing on its own; the fuel half is not.
-        if (hours is None) != (tons is None):
-            raise forms.ValidationError(self.incomplete_error)
-        if hours is None and litres is None:
-            raise forms.ValidationError(self.nothing_recorded_error)
 
 
 class WorkerHoursForm(RowForm):
