@@ -7,7 +7,7 @@ from decimal import Decimal
 
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
-from django.db.models import Count, Q, Sum
+from django.db.models import Count, F, Max, OuterRef, Q, Subquery, Sum
 from django.db.models.functions import Abs, Coalesce
 from django.http import HttpResponse
 from django.shortcuts import render
@@ -75,9 +75,11 @@ def _machine_costs(machine):
     real 0. „Celkem" sums the priced sides and is None if any of them is
     unknown, rather than understating the bill.
 
-    `Sum` skips NULLs, so `filtered_hours` arrives as None both when the machine
-    had no usage in range — a real 0 h, set here — and when every usage it had
-    left motohodiny blank, which stays None: unknown, like the tonnage.
+    `filtered_hours` is hours *run* in range (see `_run_hours_by_machine`), not
+    the meter reading. It arrives as None both when the machine had no usage in
+    range — a real 0 h, set here — and when no usage it had has a known run
+    time (motohodiny left blank, or only the machine's first reading), which
+    stays None: unknown, like the tonnage.
     """
     if machine.filtered_hours is None and not machine.filtered_usages:
         machine.filtered_hours = Decimal('0')
@@ -101,9 +103,12 @@ def _machine_costs(machine):
 
 
 def _machine_summary(usages, form):
-    """Hours, tonnage and cost per machine over `usages`, as a list.
+    """Meter reading, hours run, tonnage and cost per machine over `usages`, as a list.
 
     Every active machine is listed (0 h is an answer), or just the filtered one.
+    Motohodiny are the machine's hour-meter reading, so `filtered_reading` is
+    the highest one in range — a reading, not a sum, and None with no rows —
+    while `filtered_hours` is the hours run that the cost is priced on.
     Hours or tons summing to None over rows that exist means unknown, not zero;
     `filtered_usages` is what tells that apart from no rows (see `_machine_costs`).
     """
@@ -113,14 +118,53 @@ def _machine_summary(usages, form):
     if form.is_bound and form.cleaned_data.get('machine'):
         machines = machines.filter(pk=form.cleaned_data['machine'].pk)
     in_scope = Q(usages__in=usages.values('pk'))
-    return [
-        _machine_costs(machine)
-        for machine in machines.annotate(
-            filtered_hours=Sum('usages__hours', filter=in_scope),
-            filtered_tons=Sum('usages__tons', filter=in_scope),
-            filtered_usages=Count('usages', filter=in_scope),
-        ).order_by('name')
-    ]
+    run_hours = _run_hours_by_machine(usages)
+    machines = machines.annotate(
+        filtered_reading=Max('usages__hours', filter=in_scope),
+        filtered_tons=Sum('usages__tons', filter=in_scope),
+        filtered_usages=Count('usages', filter=in_scope),
+    ).order_by('name')
+    for machine in machines:
+        machine.filtered_hours = run_hours.get(machine.pk)
+    return [_machine_costs(machine) for machine in machines]
+
+
+def _run_hours_by_machine(usages):
+    """Hours run per machine over `usages`: the known `run_hours`, summed.
+
+    A machine missing from the result had no row with a known run time.
+    """
+    totals = {}
+    for machine_id, hours in usages.values_list('machine', 'run_hours'):
+        if hours is not None:
+            totals[machine_id] = totals.get(machine_id, Decimal('0')) + hours
+    return totals
+
+
+def _with_run_hours(usages):
+    """Annotate each usage with `run_hours`, the time the machine ran on that job.
+
+    Motohodiny are the machine's hour-meter reading, so a job's run time is its
+    reading minus the machine's previous approved reading. „Previous" is by
+    value, not by date: the meter only counts up, so the next lower reading is
+    the one before it however late a job was submitted or approved — and since
+    it is computed on every render, a back-dated job recalculates its
+    neighbours. Equal readings tie-break on pk, so a repeat counts once. The
+    previous reading is looked up across every approved job, not just the
+    filtered ones, or the first row in a date range would lose its baseline.
+    A blank reading, or a machine's first, has no run time (None).
+    """
+    previous = (
+        MachineUsage.objects.filter(
+            machine=OuterRef('machine'),
+            work_order__status=WorkOrder.Status.APPROVED,
+            hours__isnull=False,
+        )
+        .filter(Q(hours__lt=OuterRef('hours')) | Q(hours=OuterRef('hours'), pk__lt=OuterRef('pk')))
+        .order_by('-hours', '-pk')
+        .values('hours')[:1]
+    )
+    return usages.annotate(previous_hours=Subquery(previous), run_hours=F('hours') - F('previous_hours'))
 
 
 def _filtered_machine_usages(request):
@@ -131,7 +175,7 @@ def _filtered_machine_usages(request):
         .select_related('machine', 'work_order', 'work_order__created_by')
         .order_by('-work_order__performed_on', '-id')
     )
-    return form, form.filter(usages)
+    return form, form.filter(_with_run_hours(usages))
 
 
 def _filtered_machine_refuels(request):
@@ -322,7 +366,8 @@ def machine_dashboard_export(request):
         'stav-stroju',
         [
             'Stroj',
-            'Hodiny',
+            'Stav motohodin',
+            'Hodin za období',
             'Tuny',
             'Sazba (Kč/hod)',
             'Cena (Kč/t)',
@@ -333,6 +378,7 @@ def machine_dashboard_export(request):
         [
             [
                 machine.name,
+                _csv_number(machine.filtered_reading, 1),
                 _csv_number(machine.filtered_hours, 1),
                 _csv_number(machine.filtered_tons, 2),
                 _csv_number(machine.hourly_rate, 2),

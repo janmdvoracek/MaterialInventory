@@ -775,7 +775,10 @@ Two unrelated numbers. Do not derive one from the other.
   `UniqueConstraint` allows one row per person per job, and the form refuses a
   second row for someone already named rather than reaching it — see *One row
   each* above.
-- **`MachineUsage.hours`** is motohodiny — machine runtime.
+- **`MachineUsage.hours`** is motohodiny — the machine's **hour-meter
+  reading** at the job (*„Stav motohodin"*), not the time it ran on the job.
+  Stroje works the run time out from consecutive readings; see
+  [Motohodiny are meter readings](#motohodiny-are-meter-readings).
 
 The Hodiny report totals `WorkerHours` only, so it has no fixed relationship to
 the motohodiny on Stroje. That is not a reconciliation bug.
@@ -904,8 +907,10 @@ person with hours who is not a collaborator.
 ### Machine totals are derived, never stored
 
 `Machine` carries no running counter. Every figure on Stroje is an annotation
-over the rows the page's filter allows: `Sum('usages__hours')` and
-`Sum('usages__tons')` from `MachineUsage`, and `Sum('refuels__litres')` with
+over the rows the page's filter allows: `Max('usages__hours')` (the latest
+meter reading) and `Sum('usages__tons')` from `MachineUsage`, the hours run
+summed from each row's `run_hours` (see
+[Motohodiny are meter readings](#motohodiny-are-meter-readings)), and `Sum('refuels__litres')` with
 `Count('refuels')` from `MachineRefuel`.
 
 There used to be a `Machine.total_hours` column, maintained by
@@ -928,11 +933,44 @@ covers both admin paths.
 
 `hours` and `tons` are nullable (*unknown*, not zero) and `Sum` skips NULLs, so
 a machine with no recorded tonnage sums to `None` and renders as a dash; `0 t`
-would claim it processed nothing. Hours need one more step, because a machine
-with no usage rows in range also sums to `None` and that one *is* a real `0 h`:
-`_machine_summary` annotates `filtered_usages` (a `Count`) beside the sums, and
-`_machine_costs` turns a `None` into `0` only when that count is zero. A
-machine whose rows mix known and unknown numbers sums the known ones.
+would claim it processed nothing. Hours run need one more step, because a
+machine with no usage rows in range also has none and that one *is* a real
+`0 h`: `_machine_summary` annotates `filtered_usages` (a `Count`) beside the
+sums, and `_machine_costs` turns a `None` into `0` only when that count is zero.
+A machine whose rows mix known and unknown numbers sums the known ones.
+
+### Motohodiny are meter readings
+
+What a worker types into the machine row's motohodiny box is the machine's
+hour-meter reading (four or five digits), not how long it ran on the job. So
+Stroje shows two different hour figures:
+
+- **„Stav motohodin"** in the summary is `filtered_reading`, the **highest**
+  reading among the filtered rows — where the meter stood at the end of the
+  range. A machine with no rows in range has no reading and shows a dash.
+- **„Hodin na zakázce"** on each detail row is `run_hours`: that row's reading
+  minus the machine's previous approved reading. **„Hodin za období"** in the
+  summary is those summed (`_run_hours_by_machine`), and it is what
+  **„Cena za hodiny" prices** — a meter reading times a rate would be
+  meaningless.
+
+`_with_run_hours` annotates `run_hours` with a correlated subquery, and three
+choices in it matter:
+
+- **„Previous" is by value, not by date.** The meter only counts up, so the
+  next lower reading is the one before it, however late a job was submitted,
+  back-dated or approved. Nothing is stored: it is recomputed on every render,
+  so approving or correcting a job in the middle recalculates its neighbours.
+  Equal readings tie-break on pk, so a repeated reading counts once (the second
+  gets `0 h`).
+- **The baseline is every approved row of that machine, not just the filtered
+  ones.** Otherwise the first row in a date range would lose its predecessor
+  and the hours run in the range would come up short. Pending jobs are neither
+  shown nor used as a baseline, like everywhere else.
+- **A machine's first reading, or a blank one, has no run time** (`None`, a
+  dash). The cost uses the rows that do have one, the same „sum the known ones"
+  rule as above; only a machine none of whose rows has a run time shows an
+  unknown hours cost.
 
 ### Stroje is one page, laid out like Hodiny
 
@@ -969,7 +1007,7 @@ reads as an answer.
 
 | Column | Value |
 |---|---|
-| **Cena za hodiny** | `filtered_hours × hourly_rate` |
+| **Cena za hodiny** | `filtered_hours` (hours run in range) `× hourly_rate` |
 | **Cena za tuny** | `filtered_tons × rate_per_ton` |
 | **Celkem** | the sides the machine is priced on, added up |
 
@@ -985,8 +1023,8 @@ nullable `MachineUsage.hours` and `tons` already force on this page:
   free.** That side of the bill is unknown and renders as a dash, exactly as
   the rate column beside it does. But a machine with no usage in range has a
   real zero `filtered_hours`, so one that *is* priced by the hour and did not
-  run costs `0,00`, not a dash — while one that ran with motohodiny left blank
-  has an unknown hours cost.
+  run costs `0,00`, not a dash — while one that ran with motohodiny left blank,
+  or whose only reading in range is its first ever, has an unknown hours cost.
 - **„Celkem" is unknown when any priced side is.** A machine billed per tonne
   whose usage rows left the tonnage blank has a cost nobody can compute;
   printing the hours half of it under a „Celkem" heading would understate the

@@ -61,7 +61,7 @@ python manage.py test materials.tests.MaterialModelTests           # one class
 python manage.py test materials.tests.MaterialModelTests.test_material_str
 ```
 
-471 tests. Postgres must be reachable; expect a few minutes, and rather longer
+483 tests. Postgres must be reachable; expect a few minutes, and rather longer
 on a Windows checkout.
 
 ### Coverage
@@ -286,8 +286,9 @@ touched, so a location retired in the admin is not revived by a re-seed. The
 committed `locations.example.csv` is placeholders; replace them with the real
 sites.
 
-A machine has no stored hours to seed. Its motohodiny and tonnage on Stroje are
-summed from the approved usage rows every time the page is rendered.
+A machine has no stored hours to seed. Its motohodiny reading, hours run and
+tonnage on Stroje are worked out from the approved usage rows every time the
+page is rendered.
 
 ### Users
 

@@ -8,12 +8,14 @@
     <div class="table-scroll">
     <table>
         <thead>
-            <tr><th>Stroj</th><th>Hodin</th><th>Tun</th><th>Sazba (Kč/hod)</th><th>Cena (Kč/t)</th><th>Cena za hodiny (Kč)</th><th>Cena za tuny (Kč)</th><th>Celkem (Kč)</th></tr>
+            <tr><th>Stroj</th><th>Stav motohodin</th><th>Hodin za období</th><th>Tun</th><th>Sazba (Kč/hod)</th><th>Cena (Kč/t)</th><th>Cena za hodiny (Kč)</th><th>Cena za tuny (Kč)</th><th>Celkem (Kč)</th></tr>
         </thead>
         <tbody>
         {% for machine in machines %}
             <tr>
                 <td>{{ machine.name }}</td>
+                {# The highest meter reading in range; the hours run beside it are what is priced. #}
+                <td>{{ machine.filtered_reading|floatformat:1|default:"—" }}</td>
                 <td>{% if machine.filtered_hours is None %}—{% else %}{{ machine.filtered_hours|floatformat:1 }} h{% endif %}</td>
                 <td>{{ machine.filtered_tons|floatformat:2|default:"—" }}</td>
                 <td>{{ machine.hourly_rate|floatformat:2|default:"—" }}</td>
@@ -24,7 +26,7 @@
                 <td>{{ machine.filtered_total_cost|floatformat:2|default:"—" }}</td>
             </tr>
         {% empty %}
-            <tr><td colspan="8">Žádné stroje neodpovídají zadaným filtrům.</td></tr>
+            <tr><td colspan="9">Žádné stroje neodpovídají zadaným filtrům.</td></tr>
         {% endfor %}
         </tbody>
     </table>
@@ -91,14 +93,15 @@
     <div class="table-scroll">
     <table>
         <thead>
-            <tr><th>Provedeno</th><th>Stroj</th><th>Hodiny</th><th>Tuny</th><th>Zakázka</th><th>Kým</th></tr>
+            <tr><th>Provedeno</th><th>Stroj</th><th>Hodin na zakázce</th><th>Tuny</th><th>Zakázka</th><th>Kým</th></tr>
         </thead>
         <tbody>
         {% for usage in page_obj %}
             <tr>
                 <td>{{ usage.work_order.performed_on|date:"Y-m-d" }}</td>
                 <td>{{ usage.machine.name }}</td>
-                <td>{% if usage.hours is None %}—{% else %}{{ usage.hours|floatformat:1 }} h{% endif %}</td>
+                {# Reading minus the previous one, recalculated on every render — see _with_run_hours. #}
+                <td>{% if usage.run_hours is None %}—{% else %}{{ usage.run_hours|floatformat:1 }} h{% endif %}</td>
                 <td>{{ usage.tons|floatformat:2|default:"—" }}</td>
                 <td>{{ usage.work_order.description|default:"—" }}</td>
                 <td>{{ usage.work_order.created_by.username }}</td>

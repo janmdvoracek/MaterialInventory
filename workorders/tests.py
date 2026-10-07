@@ -953,7 +953,7 @@ class ReportsUsePerformedOnTests(TestCase):
         self._back_dated_job()
         response = self.client.get(reverse('machine_dashboard'), self._that_month())
         machine = response.context['machines'][0]
-        self.assertEqual(machine.filtered_hours, Decimal('3.00'))
+        self.assertEqual(machine.filtered_reading, Decimal('3.00'))
         self.assertEqual(machine.filtered_tons, Decimal('7.00'))
 
     def test_machine_totals_stay_out_of_the_week_it_was_typed_in(self):
@@ -1047,7 +1047,7 @@ class MachineDashboardTests(TestCase):
         # created_at is when it was written, and the page dates it by its job.
         old = self._usage(Decimal('4'), tons=Decimal('10'))
         WorkOrder.objects.filter(pk=old.work_order_id).update(performed_on=date.today() - timedelta(days=40))
-        self._usage(Decimal('1.5'), tons=Decimal('6'))
+        self._usage(Decimal('5.5'), tons=Decimal('6'))
         response = self.client.get(
             reverse('machine_dashboard'), {'date_from': (date.today() - timedelta(days=7)).isoformat()}
         )
@@ -1068,7 +1068,8 @@ class MachineDashboardTests(TestCase):
         self.assertEqual(list(response.context['machines']), [])
 
     def test_dashboard_shows_approved_hours(self):
-        self._usage(Decimal('12.5'))
+        self._usage(Decimal('100'))
+        self._usage(Decimal('112.5'))
         response = self.client.get(reverse('machine_dashboard'))
         # Comma decimal separator: template output is localised under cs.
         self.assertContains(response, '12,5 h')
@@ -1092,7 +1093,7 @@ class MachineDashboardTests(TestCase):
         self._usage(Decimal('3'))
         response = self.client.get(reverse('machine_dashboard'))
         self.assertIsNone(response.context['machines'][0].filtered_tons)
-        self.assertContains(response, '3,0 h')
+        self.assertEqual(response.context['machines'][0].filtered_reading, Decimal('3.00'))
 
     def test_dashboard_ignores_hours_from_unapproved_jobs(self):
         # A job nobody has signed off must not move the number a manager reads
@@ -1115,17 +1116,18 @@ class MachineDashboardTests(TestCase):
 
     def test_dashboard_shows_dash_for_unset_rates(self):
         # Both rates are optional, so an unpriced machine must still render a
-        # row. Six dashes: an unused machine has no tonnage either, and the
-        # three money columns are unknown rather than zero for a machine that
-        # is not priced at all.
+        # row. Seven dashes: an unused machine has no meter reading and no
+        # tonnage either, and the three money columns are unknown rather than
+        # zero for a machine that is not priced at all.
         response = self.client.get(reverse('machine_dashboard'))
-        self.assertContains(response, '—', count=6)
+        self.assertContains(response, '—', count=7)
 
     def test_cost_columns_multiply_the_totals_by_the_rates(self):
         self.machine_active.hourly_rate = Decimal('80')
         self.machine_active.rate_per_ton = Decimal('35.50')
         self.machine_active.save()
-        self._usage(Decimal('2.5'), tons=Decimal('10'))
+        self._usage(Decimal('100'))
+        self._usage(Decimal('102.5'), tons=Decimal('10'))
         machine = self.client.get(reverse('machine_dashboard')).context['machines'][0]
         self.assertEqual(machine.filtered_hours_cost, Decimal('200.00'))
         self.assertEqual(machine.filtered_tons_cost, Decimal('355.00'))
@@ -1138,7 +1140,7 @@ class MachineDashboardTests(TestCase):
         self.machine_active.save()
         old = self._usage(Decimal('4'))
         WorkOrder.objects.filter(pk=old.work_order_id).update(performed_on=date.today() - timedelta(days=40))
-        self._usage(Decimal('1.5'))
+        self._usage(Decimal('5.5'))
         response = self.client.get(
             reverse('machine_dashboard'), {'date_from': (date.today() - timedelta(days=7)).isoformat()}
         )
@@ -1149,7 +1151,8 @@ class MachineDashboardTests(TestCase):
         # is a dash, and the total is what the machine *is* priced on.
         self.machine_active.hourly_rate = Decimal('80')
         self.machine_active.save()
-        self._usage(Decimal('2'), tons=Decimal('10'))
+        self._usage(Decimal('100'))
+        self._usage(Decimal('102'), tons=Decimal('10'))
         machine = self.client.get(reverse('machine_dashboard')).context['machines'][0]
         self.assertEqual(machine.filtered_hours_cost, Decimal('160.00'))
         self.assertIsNone(machine.filtered_tons_cost)
@@ -1171,7 +1174,8 @@ class MachineDashboardTests(TestCase):
         self.machine_active.hourly_rate = Decimal('80')
         self.machine_active.rate_per_ton = Decimal('35.50')
         self.machine_active.save()
-        self._usage(Decimal('2'), tons=None)
+        self._usage(Decimal('100'), tons=None)
+        self._usage(Decimal('102'), tons=None)
         machine = self.client.get(reverse('machine_dashboard')).context['machines'][0]
         self.assertEqual(machine.filtered_hours_cost, Decimal('160.00'))
         self.assertIsNone(machine.filtered_tons_cost)
@@ -1192,7 +1196,8 @@ class MachineDashboardTests(TestCase):
         self.assertNotContains(response, '0,0 h')
 
     def test_recorded_hours_still_sum_beside_unrecorded_ones(self):
-        self._usage(Decimal('3'))
+        self._usage(Decimal('100'))
+        self._usage(Decimal('103'))
         self._usage(None)
         machine = self.client.get(reverse('machine_dashboard')).context['machines'][0]
         self.assertEqual(machine.filtered_hours, Decimal('3.00'))
@@ -1207,8 +1212,123 @@ class MachineDashboardTests(TestCase):
     def test_costs_render_with_the_czech_comma(self):
         self.machine_active.hourly_rate = Decimal('80')
         self.machine_active.save()
-        self._usage(Decimal('2.5'))
+        self._usage(Decimal('100'))
+        self._usage(Decimal('102.5'))
         self.assertContains(self.client.get(reverse('machine_dashboard')), '200,00')
+
+
+class MachineReadingTests(TestCase):
+    """Motohodiny are the machine's hour-meter reading, not a duration.
+
+    Stroje's summary shows the highest reading and prices the hours run; each
+    detail row shows its reading minus the machine's previous approved one.
+    """
+
+    def setUp(self):
+        self.worker = User.objects.create_user(username='worker', password='pw', role=User.Role.WORKER)
+        self.manager = User.objects.create_user(username='manager', password='pw', role=User.Role.MANAGER)
+        self.machine = Machine.objects.create(name='Crusher A', hourly_rate=Decimal('80'))
+        self.client.force_login(self.manager)
+
+    def _reading(self, hours, days_ago=0, machine=None, status=WorkOrder.Status.APPROVED):
+        work_order = WorkOrder.objects.create(
+            created_by=self.worker,
+            description='job',
+            status=status,
+            performed_on=date.today() - timedelta(days=days_ago),
+        )
+        return MachineUsage.objects.create(work_order=work_order, machine=machine or self.machine, hours=hours)
+
+    def _run_hours(self, response):
+        return {usage.pk: usage.run_hours for usage in response.context['page_obj']}
+
+    def test_summary_shows_the_highest_reading_and_prices_the_hours_run(self):
+        self._reading(Decimal('1000'))
+        self._reading(Decimal('1008'))
+        self._reading(Decimal('1012.5'))
+        response = self.client.get(reverse('machine_dashboard'))
+        machine = response.context['machines'][0]
+        self.assertEqual(machine.filtered_reading, Decimal('1012.5'))
+        self.assertEqual(machine.filtered_hours, Decimal('12.5'))
+        self.assertEqual(machine.filtered_hours_cost, Decimal('1000.00'))
+        self.assertContains(response, '1012,5')
+
+    def test_each_row_shows_the_time_since_the_previous_reading(self):
+        first = self._reading(Decimal('1000'))
+        second = self._reading(Decimal('1008'))
+        third = self._reading(Decimal('1012.5'))
+        run = self._run_hours(self.client.get(reverse('machine_dashboard')))
+        # The first reading has nothing to compare against.
+        self.assertEqual(run, {first.pk: None, second.pk: Decimal('8'), third.pk: Decimal('4.5')})
+
+    def test_a_late_submission_recalculates_its_neighbours(self):
+        # The job at 1008 is typed in after the one at 1012.5: by value it sits
+        # between them, so it splits the 12.5 h rather than going negative.
+        self._reading(Decimal('1000'), days_ago=3)
+        later = self._reading(Decimal('1012.5'), days_ago=1)
+        late = self._reading(Decimal('1008'), days_ago=2)
+        run = self._run_hours(self.client.get(reverse('machine_dashboard')))
+        self.assertEqual(run[late.pk], Decimal('8'))
+        self.assertEqual(run[later.pk], Decimal('4.5'))
+
+    def test_the_baseline_may_lie_outside_the_date_range(self):
+        self._reading(Decimal('1000'), days_ago=40)
+        recent = self._reading(Decimal('1006'))
+        response = self.client.get(
+            reverse('machine_dashboard'), {'date_from': (date.today() - timedelta(days=7)).isoformat()}
+        )
+        self.assertEqual(self._run_hours(response), {recent.pk: Decimal('6')})
+        machine = response.context['machines'][0]
+        self.assertEqual(machine.filtered_reading, Decimal('1006'))
+        self.assertEqual(machine.filtered_hours, Decimal('6'))
+
+    def test_a_pending_reading_is_not_a_baseline(self):
+        self._reading(Decimal('1000'))
+        self._reading(Decimal('1005'), status=WorkOrder.Status.PENDING)
+        approved = self._reading(Decimal('1008'))
+        run = self._run_hours(self.client.get(reverse('machine_dashboard')))
+        self.assertEqual(run[approved.pk], Decimal('8'))
+
+    def test_a_repeated_reading_counts_once(self):
+        self._reading(Decimal('1000'))
+        self._reading(Decimal('1008'))
+        self._reading(Decimal('1008'))
+        machine = self.client.get(reverse('machine_dashboard')).context['machines'][0]
+        self.assertEqual(machine.filtered_hours, Decimal('8'))
+
+    def test_readings_of_other_machines_are_not_a_baseline(self):
+        other = Machine.objects.create(name='Excavator B')
+        self._reading(Decimal('1000'), machine=other)
+        usage = self._reading(Decimal('1008'))
+        run = self._run_hours(self.client.get(reverse('machine_dashboard')))
+        self.assertIsNone(run[usage.pk])
+
+    def test_a_blank_reading_has_no_run_time_and_is_no_baseline(self):
+        self._reading(Decimal('1000'))
+        blank = self._reading(None)
+        after = self._reading(Decimal('1008'))
+        run = self._run_hours(self.client.get(reverse('machine_dashboard')))
+        self.assertIsNone(run[blank.pk])
+        self.assertEqual(run[after.pk], Decimal('8'))
+
+    def test_only_a_first_reading_leaves_the_hours_cost_unknown(self):
+        self._reading(Decimal('1000'))
+        machine = self.client.get(reverse('machine_dashboard')).context['machines'][0]
+        self.assertEqual(machine.filtered_reading, Decimal('1000'))
+        self.assertIsNone(machine.filtered_hours)
+        self.assertIsNone(machine.filtered_hours_cost)
+
+    def test_a_machine_with_no_reading_in_range_shows_a_dash_not_zero(self):
+        machine = self.client.get(reverse('machine_dashboard')).context['machines'][0]
+        self.assertIsNone(machine.filtered_reading)
+        self.assertEqual(machine.filtered_hours, Decimal('0'))
+
+    def test_the_job_form_asks_for_the_meter_reading(self):
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('transform_create'))
+        self.assertRegex(
+            response.content.decode(), r'<input(?=[^>]*name="machines-0-hours")[^>]*title="Stav motohodin"'
+        )
 
 
 class MachineUsageDetailTests(TestCase):
@@ -1696,20 +1816,24 @@ class TableExportTests(TestCase):
     def test_numbers_use_the_czech_decimal_comma(self):
         # A dot would be read as a thousands separator (or as text) by an Excel
         # running under cs, so the file has to agree with what the page renders.
-        self._job(usage=(Decimal('12.5'), Decimal('20.5')))
+        self._job(usage=(Decimal('100'), None))
+        self._job(usage=(Decimal('112.5'), Decimal('20.5')))
         self.client.force_login(self.manager)
         response = self.client.get(reverse('machine_dashboard_export'))
-        self.assertIn('12,5;20,50;83,00', response.content.decode('utf-8-sig'))
+        self.assertIn('112,5;12,5;20,50;83,00', response.content.decode('utf-8-sig'))
 
     def test_machine_export_carries_the_summary_table(self):
-        self._job(usage=(Decimal('12.5'), Decimal('20.5')))
+        # Motohodiny are meter readings: the latest one, then the hours run.
+        self._job(usage=(Decimal('100'), None))
+        self._job(usage=(Decimal('112.5'), Decimal('20.5')))
         self.client.force_login(self.manager)
         rows = self._rows(self.client.get(reverse('machine_dashboard_export')))
         self.assertEqual(
             rows[0],
             [
                 'Stroj',
-                'Hodiny',
+                'Stav motohodin',
+                'Hodin za období',
                 'Tuny',
                 'Sazba (Kč/hod)',
                 'Cena (Kč/t)',
@@ -1723,25 +1847,34 @@ class TableExportTests(TestCase):
         # The machine is priced by the hour only, so „Celkem" is that side.
         # No thousands separator: `USE_THOUSAND_SEPARATOR` is off, and the
         # Czech one is a non-breaking space that Excel would not parse.
-        self.assertEqual(rows[1], ['Crusher A', '12,5', '20,50', '83,00', '', '1037,50', '', '1037,50'])
+        self.assertEqual(rows[1], ['Crusher A', '112,5', '12,5', '20,50', '83,00', '', '1037,50', '', '1037,50'])
 
     def test_unknown_cost_exports_blank_rather_than_zero(self):
         # Billed per tonne with the tonnage unknown: „Celkem" is not computable,
         # and a 0 Kč in a spreadsheet column would be summed as a free machine.
         Machine.objects.filter(pk=self.machine.pk).update(rate_per_ton=Decimal('35.50'))
-        self._job(usage=(Decimal('2'), None))
+        self._job(usage=(Decimal('100'), None))
+        self._job(usage=(Decimal('102'), None))
         self.client.force_login(self.manager)
         rows = self._rows(self.client.get(reverse('machine_dashboard_export')))
-        self.assertEqual(rows[1][5:], ['166,00', '', ''])
+        self.assertEqual(rows[1][6:], ['166,00', '', ''])
 
     def test_unknown_tonnage_exports_blank_but_idle_hours_export_zero(self):
         # `tons` is nullable because rows predating the column mean *unknown*,
         # while a machine with no rows in range really did run zero hours — the
         # same distinction the page draws with a dash and a 0.
-        self._job(usage=(Decimal('3'), None))
+        self._job(usage=(Decimal('100'), None))
+        self._job(usage=(Decimal('103'), None))
         self.client.force_login(self.manager)
         rows = self._rows(self.client.get(reverse('machine_dashboard_export')))
-        self.assertEqual(rows[1][1:3], ['3,0', ''])
+        self.assertEqual(rows[1][1:4], ['103,0', '3,0', ''])
+
+    def test_a_first_reading_exports_a_blank_run_time(self):
+        # One reading has nothing to subtract from: the hours run are unknown.
+        self._job(usage=(Decimal('100'), None))
+        self.client.force_login(self.manager)
+        rows = self._rows(self.client.get(reverse('machine_dashboard_export')))
+        self.assertEqual(rows[1][1:4], ['100,0', '', ''])
 
     def test_unrecorded_hours_export_blank(self):
         # A machine whose usage rows all left motohodiny blank: unknown, so a
@@ -1749,8 +1882,8 @@ class TableExportTests(TestCase):
         self._job(usage=(None, Decimal('5')))
         self.client.force_login(self.manager)
         rows = self._rows(self.client.get(reverse('machine_dashboard_export')))
-        self.assertEqual(rows[1][1:3], ['', '5,00'])
-        self.assertEqual(rows[1][5], '')
+        self.assertEqual(rows[1][1:4], ['', '', '5,00'])
+        self.assertEqual(rows[1][6], '')
 
     def test_material_export_carries_the_summary_table(self):
         self._job(quantity=Decimal('12.5'))
@@ -1774,19 +1907,22 @@ class TableExportTests(TestCase):
         # The link carries the page's querystring, so the file has to be the
         # table that was on screen and not the unfiltered report.
         self._job(usage=(Decimal('4'), Decimal('10')), performed_on=date.today() - timedelta(days=40))
-        self._job(usage=(Decimal('1.5'), Decimal('6')))
+        self._job(usage=(Decimal('5.5'), Decimal('6')))
         self.client.force_login(self.manager)
         response = self.client.get(
             reverse('machine_dashboard_export'), {'date_from': (date.today() - timedelta(days=7)).isoformat()}
         )
-        # The money follows the filter too — it is the same rows, priced.
-        self.assertEqual(self._rows(response)[1], ['Crusher A', '1,5', '6,00', '83,00', '', '124,50', '', '124,50'])
+        # The money follows the filter too — it is the same rows, priced. The
+        # reading before the range is still the baseline for the one inside it.
+        self.assertEqual(
+            self._rows(response)[1], ['Crusher A', '5,5', '1,5', '6,00', '83,00', '', '124,50', '', '124,50']
+        )
 
     def test_unapproved_job_is_not_exported(self):
         # A pending job is invisible in every report; the download is one.
         self._job(usage=(Decimal('4'), Decimal('10')), status=WorkOrder.Status.PENDING)
         self.client.force_login(self.manager)
-        self.assertEqual(self._rows(self.client.get(reverse('machine_dashboard_export')))[1][1:3], ['0,0', ''])
+        self.assertEqual(self._rows(self.client.get(reverse('machine_dashboard_export')))[1][1:4], ['', '0,0', ''])
 
     def test_invalid_filter_exports_a_header_and_nothing_else(self):
         # Same rule as the page: an unusable filter must not fall through to
@@ -2090,8 +2226,8 @@ class JobReviewTests(ReviewFixtureMixin, TestCase):
         self.assertEqual([row['user'] for row in response.context['summary']], [self.worker])
         response = self.client.get(reverse('machine_dashboard'))
         self.assertEqual(len(response.context['page_obj'].object_list), 1)
-        response = self.client.get(reverse('machine_dashboard'))
-        self.assertContains(response, '2,0 h')
+        machine = next(m for m in response.context['machines'] if m == self.machine_a)
+        self.assertEqual(machine.filtered_reading, Decimal('2.0'))
 
     def test_approve_records_who_signed_it_off(self):
         work_order = self.submit_job(self.worker)
@@ -3560,7 +3696,7 @@ class RowErrorVisibilityTests(ReviewFixtureMixin, TestCase):
         response = self._submit(**{'machines-0-hours': '0.3'})
         self.assertEqual(response.status_code, 200)
         self.assertFalse(WorkOrder.objects.exists())
-        self.assertContains(response, 'Hodiny:')
+        self.assertContains(response, 'Stav motohodin:')
 
     def test_a_genuinely_half_filled_row_still_says_so(self):
         # The guard must not swallow the rule it sits in front of: a row with a

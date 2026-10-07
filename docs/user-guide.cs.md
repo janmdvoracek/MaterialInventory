@@ -156,13 +156,16 @@ zpětně, přepište ho na den, kdy se práce skutečně dělala.
 
 **4. Stroje**
 
-Řádek stroje má čtyři pole: **Stroj**, **Hodiny** (motohodiny), **Tuny**, které
-stroj zpracoval, a **Natankováno (l)**. Číselná pole jsou úzká a místo názvu v nich
+Řádek stroje má čtyři pole: **Stroj**, **Stav motohodin**, **Tuny**, které
+stroj zpracoval, a **Natankováno (l)**. Do motohodin pište **stav počítadla
+motohodin stroje** (např. 12345), ne kolik hodin stroj na zakázce běžel —
+kolik běžel, si aplikace dopočítá z předchozího stavu. Číselná pole jsou úzká a místo názvu v nich
 je jen jednotka: **mth** (motohodiny), **t** (tuny) a **l** (litry). V řádcích
 spotřeby a výroby je u množství **t**, u spolupracovníků u hodin **h**. Pokud šel materiál přes více strojů za
 sebou, použijte více řádků. **Každý stroj uveďte jen jednou** — vybraný stroj se
 v nabídce dalšího řádku neobjeví a dva řádky se stejným strojem aplikace odmítne;
-běžel-li na zakázce víckrát, sečtěte motohodiny, tuny i litry do jednoho řádku.
+běžel-li na zakázce víckrát, sečtěte tuny i litry do jednoho řádku a u motohodin
+uveďte poslední stav počítadla.
 Na další řádky se dostanete tlačítkem **„+ další řádek"** pod nimi a přebytečný
 odeberete tlačítkem **„− odebrat řádek"**. Stroje jsou nepovinné — pokud se žádný
 nepoužil, nechte řádky prázdné.
@@ -291,14 +294,28 @@ odstraní. Odstraněnou ani přepsanou fotku už nelze vrátit.
 
 ## Stroje
 
-Přehled strojů, jejich **celkových motohodin** a **celkového počtu zpracovaných
-tun**. Obě čísla se navyšují pokaždé, když někdo ve **Zpracování** vyplní hodiny
-a tuny stroje a vedoucí zakázku **schválí** — neschválené zakázky se do nich
+Přehled strojů, jejich **motohodin** a **celkového počtu zpracovaných tun**.
+Čísla se mění pokaždé, když někdo ve **Zpracování** vyplní motohodiny a tuny
+stroje a vedoucí zakázku **schválí** — neschválené zakázky se do nich
 nepočítají.
+
+U motohodin se zapisuje **stav počítadla**, proto jsou v přehledu dvě čísla:
+
+- **Stav motohodin** — nejvyšší zapsaný stav ve zvoleném období, tedy kde
+  počítadlo stálo na jeho konci.
+- **Hodin za období** — kolik stroj v období odběhl: součet hodin na
+  jednotlivých zakázkách.
+
+V **Detailu používání strojů** je u každé zakázky sloupec **Hodin na zakázce**:
+zapsaný stav minus předchozí stav téhož stroje. Předchozí stav se hledá podle
+hodnoty, ne podle data, takže nevadí, když se zakázky zapíší nebo schválí
+v jiném pořadí — čísla se pokaždé přepočítají. U úplně prvního zapsaného stavu
+stroje (a u zakázky bez motohodin) je pomlčka (—), protože není s čím
+porovnat.
 
 Motohodiny i tuny jsou ve **Zpracování** nepovinné, a u starších záznamů, které
 vznikly ještě předtím, než se tuny zapisovaly, tonáž známá není. Stroj, u kterého
-v daném období nikdo hodiny (nebo tuny) nevyplnil, má v tom sloupci pomlčku (—) —
+v daném období nikdo motohodiny (nebo tuny) nevyplnil, má v tom sloupci pomlčku (—) —
 neplést s nulou: **0 h** znamená, že stroj v daném období vůbec neběžel, a **0 t**,
 že nic nezpracoval. Kde jsou u některých záznamů čísla vyplněná a u jiných ne,
 sečtou se jen ta vyplněná.
@@ -312,7 +329,7 @@ nastavené filtrem**:
 
 | Sloupec | Jak vzniká |
 |---|---|
-| **Cena za hodiny (Kč)** | motohodiny × **Sazba (Kč/hod)** |
+| **Cena za hodiny (Kč)** | **Hodin za období** × **Sazba (Kč/hod)** |
 | **Cena za tuny (Kč)** | zpracované tuny × **Cena (Kč/t)** |
 | **Celkem (Kč)** | součet toho, čím je stroj naceněný |
 

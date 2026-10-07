@@ -90,12 +90,12 @@
     <h2>Použité stroje</h2>
     <div class="table-scroll">
     <table>
-        <thead><tr><th>Stroj</th><th>Motohodiny</th><th>Tuny</th></tr></thead>
+        <thead><tr><th>Stroj</th><th>Stav motohodin</th><th>Tuny</th></tr></thead>
         <tbody>
         {% for usage in machine_usages %}
             <tr>
                 <td>{{ usage.machine.name }}</td>
-                <td>{% if usage.hours is None %}—{% else %}{{ usage.hours|floatformat:1 }} h{% endif %}</td>
+                <td>{{ usage.hours|floatformat:1|default:"—" }}</td>
                 <td>{{ usage.tons|floatformat:2|default:"—" }}</td>
             </tr>
         {% empty %}

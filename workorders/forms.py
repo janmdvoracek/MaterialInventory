@@ -368,11 +368,13 @@ class MachineUsageForm(RowForm):
         empty_label='Stroj',
     )
     # Both optional, and both accept 0, which `_zero_is_blank` stores as unknown.
+    # Motohodiny are the machine's hour-meter reading, not the time it ran on
+    # this job: Stroje works the run time out from consecutive readings.
     hours = _hours_field(
         min_value=Decimal('0'),
         required=False,
-        label='Hodiny',
-        widget=forms.NumberInput(attrs={'placeholder': 'mth', 'title': 'Motohodiny', 'class': 'mth'}),
+        label='Stav motohodin',
+        widget=forms.NumberInput(attrs={'placeholder': 'mth', 'title': 'Stav motohodin', 'class': 'mth'}),
     )
     # Not part of the mass balance: chained machines each process the same material.
     tons = forms.DecimalField(
