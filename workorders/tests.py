@@ -3426,13 +3426,15 @@ class PhotoPickerTests(ReviewFixtureMixin, TestCase):
 
 
 class NumberBoxWidthTests(TestCase):
-    """Row number boxes are three characters wide; tonnes and motohodiny five.
+    """Row number boxes are three characters wide; tonnes, motohodiny and hours five.
 
     Tonnage runs to five digits, and motohodiny are the machine's hour-meter
-    reading, which is four or five. The width is CSS keyed off a `tons` / `mth`
-    class, so both halves are pinned: the inputs carry their class on every
-    row, `<template>` rows included (`job_edit` renders the same widgets
-    through the same partial), and the stylesheet gives both five characters —
+    reading, which is four or five; a collaborator's hours match them so the
+    workers row lines up with the tonnes boxes. The width is CSS keyed off a
+    `tons` / `mth` / `hours` class, so both halves are pinned: the inputs carry
+    their class on every row, `<template>` rows included (`job_edit` renders
+    the same widgets through the same partial), and the stylesheet gives all
+    three five characters —
     with the picker's basis one character down, so the machines row stays as
     wide as it was.
     """
@@ -3448,18 +3450,22 @@ class NumberBoxWidthTests(TestCase):
             'machines-__prefix__-tons': 'tons',
             'machines-0-hours': 'mth',
             'machines-__prefix__-hours': 'mth',
+            'workers-0-hours': 'hours',
+            'workers-__prefix__-hours': 'hours',
         }
         for name, css_class in wide.items():
             with self.subTest(name=name):
                 self.assertRegex(content, rf'<input(?=[^>]*name="{name}")[^>]*class="{css_class}"')
         # The other number boxes stay three characters wide.
-        for name in ('machines-0-litres', 'workers-0-hours'):
+        for name in ('machines-0-litres', 'machines-__prefix__-litres'):
             with self.subTest(name=name):
                 self.assertNotRegex(content, rf'<input(?=[^>]*name="{name}")[^>]*class=')
 
-    def test_the_stylesheet_widens_the_tons_and_mth_boxes(self):
+    def test_the_stylesheet_widens_the_tons_mth_and_hours_boxes(self):
         css = (settings.BASE_DIR / 'static' / 'css' / 'app.css').read_text(encoding='utf-8')
-        self.assertRegex(css, r'\.item-row input\[type="number"\]:is\(\.tons, \.mth\)\s*\{[^}]*width:\s*calc\(5ch')
+        self.assertRegex(
+            css, r'\.item-row input\[type="number"\]:is\(\.tons, \.mth, \.hours\)\s*\{[^}]*width:\s*calc\(5ch'
+        )
         self.assertRegex(css, r'\.item-row > div\s*\{[^}]*flex:\s*1 1 calc\(7rem - 1ch\)')
 
 

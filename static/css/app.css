@@ -215,7 +215,7 @@ nav.bottom a:hover, nav.bottom a:active { color: var(--brand-green); }
 /* A row wraps rather than crushing its boxes. The picker's names are long and
    the numbers beside it are two or three digits, so a row's number boxes are
    sized to three characters and the picker takes the rest: even the four-field
-   machines row (stroj, motohodiny, tuny, litry) fits a phone on one line, and
+   machines row (stroj, motohodiny, litry, tuny) fits a phone on one line, and
    wraps only when the picker would fall below its basis. Placeholders are
    bare units (t, mth, l, h) to fit — see the row forms in workorders/forms.py.
    The spin buttons go too, because a desktop browser draws them inside the box,
@@ -224,7 +224,8 @@ nav.bottom a:hover, nav.bottom a:active { color: var(--brand-green); }
    (12345, 123.4), and motohodiny are the machine's hour-meter reading, which
    is four or five. The picker's basis gives up one character of that so the
    machines row is no wider than it was with three-character motohodiny and
-   six-character tonnes. */
+   six-character tonnes. A collaborator's hours (.hours) are five characters
+   too, only so the workers row lines up with the tonnes boxes beneath it. */
 .item-row { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: flex-end; margin-bottom: 0.5rem; }
 .date-override { margin-top: 1rem; }
 .item-row > div { flex: 1 1 calc(7rem - 1ch); }
@@ -236,7 +237,7 @@ nav.bottom a:hover, nav.bottom a:active { color: var(--brand-green); }
     appearance: textfield;
     -moz-appearance: textfield;
 }
-.item-row input[type="number"]:is(.tons, .mth) { width: calc(5ch + 1rem + 2px); }
+.item-row input[type="number"]:is(.tons, .mth, .hours) { width: calc(5ch + 1rem + 2px); }
 .item-row input[type="number"]::-webkit-inner-spin-button,
 .item-row input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 /* Jobs still waiting for a manager are the whole point of the Prehled page,

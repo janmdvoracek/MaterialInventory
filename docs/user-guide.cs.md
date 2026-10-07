@@ -156,8 +156,8 @@ zpětně, přepište ho na den, kdy se práce skutečně dělala.
 
 **4. Stroje**
 
-Řádek stroje má čtyři pole: **Stroj**, **Stav motohodin**, **Tuny**, které
-stroj zpracoval, a **Natankováno (l)**. Do motohodin pište **stav počítadla
+Řádek stroje má čtyři pole: **Stroj**, **Stav motohodin**, **Natankováno (l)**
+a **Tuny**, které stroj zpracoval. Do motohodin pište **stav počítadla
 motohodin stroje** (např. 12345), ne kolik hodin stroj na zakázce běžel —
 kolik běžel, si aplikace dopočítá z předchozího stavu. Číselná pole jsou úzká a místo názvu v nich
 je jen jednotka: **mth** (motohodiny), **t** (tuny) a **l** (litry). V řádcích

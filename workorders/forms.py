@@ -351,7 +351,7 @@ class MovementItemForm(RowForm):
         required=False,
         label='Množství (t)',
         # Row placeholders are bare units because app.css sizes a row's number
-        # boxes to three characters (`.tons` and `.mth` ones to five); `title`
+        # boxes to three characters (`.tons`, `.mth` and `.hours` ones to five); `title`
         # carries the full name, and is also what a screen reader announces,
         # since the row has no <label>.
         widget=forms.NumberInput(attrs={'placeholder': 't', 'title': 'Množství (t)', 'class': 'tons'}),
@@ -391,15 +391,6 @@ class MachineUsageForm(RowForm):
         label='Stav motohodin',
         widget=forms.NumberInput(attrs={'placeholder': 'mth', 'title': 'Stav motohodin', 'class': 'mth'}),
     )
-    # Not part of the mass balance: chained machines each process the same material.
-    tons = forms.DecimalField(
-        min_value=Decimal('0'),
-        max_value=TONS_MAX,
-        decimal_places=2,
-        required=False,
-        label='Tuny',
-        widget=forms.NumberInput(attrs={'placeholder': 't', 'title': 'Tuny', 'class': 'tons'}),
-    )
     # Litres, and no unit field to read — like every quantity in the app, the
     # unit is hardcoded in the prompt. Capped at `LITRES_MAX`. Zero is accepted
     # and means „netankovalo se", exactly like leaving the box blank — see
@@ -411,6 +402,16 @@ class MachineUsageForm(RowForm):
         required=False,
         label='Natankováno (l)',
         widget=forms.NumberInput(attrs={'placeholder': 'l', 'title': 'Natankováno (l)'}),
+    )
+    # Last in the row, after the litres, the way the tonnes box ends a material row.
+    # Not part of the mass balance: chained machines each process the same material.
+    tons = forms.DecimalField(
+        min_value=Decimal('0'),
+        max_value=TONS_MAX,
+        decimal_places=2,
+        required=False,
+        label='Tuny',
+        widget=forms.NumberInput(attrs={'placeholder': 't', 'title': 'Tuny', 'class': 'tons'}),
     )
 
     def _zero_is_blank(self, name):
@@ -455,7 +456,9 @@ class WorkerHoursForm(RowForm):
         empty_label='Pracovník',
     )
     hours = _hours_field(
-        required=False, label='Hodiny', widget=forms.NumberInput(attrs={'placeholder': 'h', 'title': 'Hodiny'})
+        required=False,
+        label='Hodiny',
+        widget=forms.NumberInput(attrs={'placeholder': 'h', 'title': 'Hodiny', 'class': 'hours'}),
     )
 
     def __init__(self, *args, user=None, viewer=None, **kwargs):

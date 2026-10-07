@@ -131,7 +131,8 @@ a placeholder for the same reason — a bare unit (`t`, `mth`, `l`, `h`), becaus
 the picker, whose names are long. The two tonnes boxes (`Množství (t)` and the
 machine row's `Tuny`, `class="tons"`) and the machine row's motohodiny
 (`class="mth"`, an hour-meter reading of four or five digits) are the
-exceptions, at five characters; the picker's basis is one character narrower
+exceptions, at five characters, and so is a collaborator's `h` (`class="hours"`),
+only so the workers row lines up with the tonnes boxes beneath it; the picker's basis is one character narrower
 to pay for it. The full name goes in `title`, which is both
 the desktop tooltip and, with no `<label>` on the row, the accessible name.
 

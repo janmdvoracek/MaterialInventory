@@ -852,7 +852,7 @@ row only ever exists because somebody typed a number into it, so there is no
 ### One machine row, only the machine required
 
 Both live on the Transform form's *Použité stroje* section, which is now four
-fields wide: stroj, motohodiny, tuny, natankováno (l). `MachineUsageForm` is
+fields wide: stroj, motohodiny, natankováno (l), tuny. `MachineUsageForm` is
 therefore the one row form that does **not** follow `RowForm`'s all-or-nothing
 rule, and overrides `check_row` instead of it. Only the machine is required —
 motohodiny and tuny are each optional while machines are priced outside the app:
