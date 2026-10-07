@@ -216,15 +216,18 @@ nav.bottom a:hover, nav.bottom a:active { color: var(--brand-green); }
    the numbers beside it are two or three digits, so a row's number boxes are
    sized to three characters and the picker takes the rest: even the four-field
    machines row (stroj, motohodiny, tuny, litry) fits a phone on one line, and
-   wraps only when the picker would fall below its 7rem basis. Placeholders are
+   wraps only when the picker would fall below its basis. Placeholders are
    bare units (t, mth, l, h) to fit — see the row forms in workorders/forms.py.
    The spin buttons go too, because a desktop browser draws them inside the box,
-   where they would eat two of the three characters. Tonnes are the exception:
-   a job's tonnage runs to five digits, so `.tons` boxes take five digits and
-   the decimal separator (12345, 1234.5). */
+   where they would eat two of the three characters. Tonnes and motohodiny are
+   the exceptions, at five characters: a job's tonnage runs to five digits
+   (12345, 123.4), and motohodiny are the machine's hour-meter reading, which
+   is four or five. The picker's basis gives up one character of that so the
+   machines row is no wider than it was with three-character motohodiny and
+   six-character tonnes. */
 .item-row { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: flex-end; margin-bottom: 0.5rem; }
 .date-override { margin-top: 1rem; }
-.item-row > div { flex: 1 1 7rem; }
+.item-row > div { flex: 1 1 calc(7rem - 1ch); }
 .item-row > div:has(> input[type="number"]) { flex: 0 0 auto; }
 .item-row input[type="number"] {
     width: calc(3ch + 1rem + 2px);
@@ -233,7 +236,7 @@ nav.bottom a:hover, nav.bottom a:active { color: var(--brand-green); }
     appearance: textfield;
     -moz-appearance: textfield;
 }
-.item-row input[type="number"].tons { width: calc(6ch + 1rem + 2px); }
+.item-row input[type="number"]:is(.tons, .mth) { width: calc(5ch + 1rem + 2px); }
 .item-row input[type="number"]::-webkit-inner-spin-button,
 .item-row input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 /* Jobs still waiting for a manager are the whole point of the Prehled page,

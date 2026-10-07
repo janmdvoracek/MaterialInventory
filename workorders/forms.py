@@ -337,7 +337,7 @@ class MovementItemForm(RowForm):
         required=False,
         label='Množství (t)',
         # Row placeholders are bare units because app.css sizes a row's number
-        # boxes to three characters (`.tons` ones to five digits); `title`
+        # boxes to three characters (`.tons` and `.mth` ones to five); `title`
         # carries the full name, and is also what a screen reader announces,
         # since the row has no <label>.
         widget=forms.NumberInput(attrs={'placeholder': 't', 'title': 'Množství (t)', 'class': 'tons'}),
@@ -372,7 +372,7 @@ class MachineUsageForm(RowForm):
         min_value=Decimal('0'),
         required=False,
         label='Hodiny',
-        widget=forms.NumberInput(attrs={'placeholder': 'mth', 'title': 'Motohodiny'}),
+        widget=forms.NumberInput(attrs={'placeholder': 'mth', 'title': 'Motohodiny', 'class': 'mth'}),
     )
     # Not part of the mass balance: chained machines each process the same material.
     tons = forms.DecimalField(

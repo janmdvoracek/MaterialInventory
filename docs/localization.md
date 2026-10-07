@@ -129,8 +129,10 @@ the empty option is doing the labelling. Each number input on those rows carries
 a placeholder for the same reason — a bare unit (`t`, `mth`, `l`, `h`), because
 `app.css` sizes those boxes to three characters and gives the rest of the row to
 the picker, whose names are long. The two tonnes boxes (`Množství (t)` and the
-machine row's `Tuny`) are the exception: they carry `class="tons"` and are wide
-enough for five digits and the decimal separator. The full name goes in `title`, which is both
+machine row's `Tuny`, `class="tons"`) and the machine row's motohodiny
+(`class="mth"`, an hour-meter reading of four or five digits) are the
+exceptions, at five characters; the picker's basis is one character narrower
+to pay for it. The full name goes in `title`, which is both
 the desktop tooltip and, with no `<label>` on the row, the accessible name.
 
 `EmptyLabelTests` in `workorders/tests.py` fails if a new field forgets. `ModelMultipleChoiceField` — `collaborators`, for

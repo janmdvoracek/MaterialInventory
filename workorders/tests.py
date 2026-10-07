@@ -3289,28 +3289,42 @@ class PhotoPickerTests(ReviewFixtureMixin, TestCase):
         self.assertRegex(css, r'\.photo-field \[hidden\], \.photo-field input\[hidden\]\s*\{[^}]*display:\s*none')
 
 
-class TonsBoxWidthTests(TestCase):
-    """Row number boxes are three characters wide; tonnes need five digits.
+class NumberBoxWidthTests(TestCase):
+    """Row number boxes are three characters wide; tonnes and motohodiny five.
 
-    The width is CSS keyed off a `tons` class, so both halves are pinned: the
-    two tonnes inputs carry the class on every row, `<template>` rows included
-    (`job_edit` renders the same widgets through the same partial), and the
-    stylesheet gives it room for five digits and the decimal separator.
+    Tonnage runs to five digits, and motohodiny are the machine's hour-meter
+    reading, which is four or five. The width is CSS keyed off a `tons` / `mth`
+    class, so both halves are pinned: the inputs carry their class on every
+    row, `<template>` rows included (`job_edit` renders the same widgets
+    through the same partial), and the stylesheet gives both five characters —
+    with the picker's basis one character down, so the machines row stays as
+    wide as it was.
     """
 
-    def test_both_tonnes_inputs_carry_the_class(self):
+    def test_wide_inputs_carry_their_class(self):
         user = User.objects.create_user(username='worker', password='pw', role=User.Role.WORKER)
         self.client.force_login(user)
-        response = self.client.get(reverse('transform_create'))
-        for name in ('consumed-0-quantity', 'produced-0-quantity', 'machines-0-tons', 'machines-__prefix__-tons'):
+        content = self.client.get(reverse('transform_create')).content.decode()
+        wide = {
+            'consumed-0-quantity': 'tons',
+            'produced-0-quantity': 'tons',
+            'machines-0-tons': 'tons',
+            'machines-__prefix__-tons': 'tons',
+            'machines-0-hours': 'mth',
+            'machines-__prefix__-hours': 'mth',
+        }
+        for name, css_class in wide.items():
             with self.subTest(name=name):
-                self.assertRegex(response.content.decode(), rf'<input(?=[^>]*name="{name}")[^>]*class="tons"')
+                self.assertRegex(content, rf'<input(?=[^>]*name="{name}")[^>]*class="{css_class}"')
         # The other number boxes stay three characters wide.
-        self.assertNotRegex(response.content.decode(), r'<input(?=[^>]*name="machines-0-hours")[^>]*class="tons"')
+        for name in ('machines-0-litres', 'workers-0-hours'):
+            with self.subTest(name=name):
+                self.assertNotRegex(content, rf'<input(?=[^>]*name="{name}")[^>]*class=')
 
-    def test_the_stylesheet_widens_the_tons_boxes(self):
+    def test_the_stylesheet_widens_the_tons_and_mth_boxes(self):
         css = (settings.BASE_DIR / 'static' / 'css' / 'app.css').read_text(encoding='utf-8')
-        self.assertRegex(css, r'\.item-row input\[type="number"\]\.tons\s*\{[^}]*width:\s*calc\(6ch')
+        self.assertRegex(css, r'\.item-row input\[type="number"\]:is\(\.tons, \.mth\)\s*\{[^}]*width:\s*calc\(5ch')
+        self.assertRegex(css, r'\.item-row > div\s*\{[^}]*flex:\s*1 1 calc\(7rem - 1ch\)')
 
 
 class ThemeTokenTests(TestCase):
