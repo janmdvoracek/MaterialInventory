@@ -15,10 +15,24 @@ from materials.models import Material
 from .models import WorkOrder
 from .photos import UnreadablePhoto, shrink_photo
 
-# The hours columns are decimal(12, 2), so 10 integer digits. DecimalValidator
-# allows max_digits - decimal_places integer digits: 10 + the 1 decimal place
-# typed here = 11. Wider, and an oversized value is a 500 instead of a field error.
-HOURS_MAX_DIGITS = 11
+# Upper bounds for the job form's number boxes. Each is rendered as the box's
+# `max`, so a phone refuses an extra digit before posting, and checked again by
+# the field. Whole numbers on purpose: Django's „menší nebo rovna %(limit_value)s"
+# prints the limit unlocalised, and 99999 reads the same under `cs` as anywhere.
+# All four sit far inside their decimal(12, 2) columns, which is also what keeps
+# an oversized value a field error rather than a `numeric field overflow` 500.
+# `WorkOrderAdminForm`'s inlines repeat them, or a value saved in the admin would
+# be refused the next time the job is opened on `job_edit`.
+#
+# A person's hours on one job: a job is one day (`performed_on`).
+WORKER_HOURS_MAX = Decimal('24')
+# A machine's hour-meter reading: five digits, the width of the `.mth` box.
+METER_READING_MAX = Decimal('99999')
+# Tonnes on a material row or a machine row: five digits, the `.tons` box.
+TONS_MAX = Decimal('99999')
+# One machine's fill-up. Above the tank of anything a depot runs, low enough
+# that a slipped extra zero on an ordinary fill is refused.
+LITRES_MAX = Decimal('2000')
 
 # „Popis" is the job's label and the „Zakázka" column on four reports, so a
 # one-liner. The column is varchar(255); this cap is the form's alone (tighter
@@ -62,10 +76,10 @@ def clean_photo_upload(photo):
         raise forms.ValidationError('Soubor se nepodařilo otevřít jako fotku.') from None
 
 
-def _hours_field(min_value=Decimal('0.5'), **kwargs):
-    """Hours as the job form takes them: half-hour steps, capped at the column width."""
+def _hours_field(min_value=Decimal('0.5'), max_value=WORKER_HOURS_MAX, **kwargs):
+    """Hours as the job form takes them: half-hour steps, a person's day at most."""
     return forms.DecimalField(
-        min_value=min_value, max_digits=HOURS_MAX_DIGITS, step_size=Decimal('0.5'), decimal_places=1, **kwargs
+        min_value=min_value, max_value=max_value, step_size=Decimal('0.5'), decimal_places=1, **kwargs
     )
 
 
@@ -332,7 +346,7 @@ class MovementItemForm(RowForm):
     )
     quantity = forms.DecimalField(
         min_value=Decimal('0.01'),
-        max_digits=7,
+        max_value=TONS_MAX,
         decimal_places=2,
         required=False,
         label='Množství (t)',
@@ -372,6 +386,7 @@ class MachineUsageForm(RowForm):
     # this job: Stroje works the run time out from consecutive readings.
     hours = _hours_field(
         min_value=Decimal('0'),
+        max_value=METER_READING_MAX,
         required=False,
         label='Stav motohodin',
         widget=forms.NumberInput(attrs={'placeholder': 'mth', 'title': 'Stav motohodin', 'class': 'mth'}),
@@ -379,20 +394,19 @@ class MachineUsageForm(RowForm):
     # Not part of the mass balance: chained machines each process the same material.
     tons = forms.DecimalField(
         min_value=Decimal('0'),
-        max_digits=7,
+        max_value=TONS_MAX,
         decimal_places=2,
         required=False,
         label='Tuny',
         widget=forms.NumberInput(attrs={'placeholder': 't', 'title': 'Tuny', 'class': 'tons'}),
     )
     # Litres, and no unit field to read — like every quantity in the app, the
-    # unit is hardcoded in the prompt. Far narrower than the decimal(12, 2)
-    # column, so it needs no width cap of its own (see `HOURS_MAX_DIGITS`).
-    # Zero is accepted and means „netankovalo se", exactly like leaving the box
-    # blank — see `clean_litres`.
+    # unit is hardcoded in the prompt. Capped at `LITRES_MAX`. Zero is accepted
+    # and means „netankovalo se", exactly like leaving the box blank — see
+    # `clean_litres`.
     litres = forms.DecimalField(
         min_value=Decimal('0'),
-        max_digits=7,
+        max_value=LITRES_MAX,
         decimal_places=2,
         required=False,
         label='Natankováno (l)',

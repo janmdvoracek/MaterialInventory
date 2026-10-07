@@ -181,8 +181,8 @@ of those are prose columns.
 The form caps it at `NOTES_MAX_LENGTH` (2000) while the column has no limit of
 its own. That is the allowed direction — a form tighter than its model needs no
 migration — and it turns an accidental paste into a field error rather than an
-unbounded row. The opposite direction is the bug the `hours` fields guard
-against; see [Resizing a section](#resizing-a-section) for `HOURS_MAX_DIGITS`.
+unbounded row. The opposite direction is the bug the number boxes' upper bounds
+guard against; see [How large a number can be](#how-large-a-number-can-be).
 
 Both live on `_job_form_fields.html`, so `transform_create` and `job_edit` get
 them together, and both render their own errors — the required one especially,
@@ -199,6 +199,39 @@ Both fields carry `required=False` on `WorkOrderForm` and are re-imposed by
 tell a job that records work from one that records a tank of diesel. The error
 is Django's own `required` message, taken off the field, so it reads the same as
 every other required field on the page and comes from the same catalog.
+
+### How large a number can be
+
+Every number box on the job form has an upper bound, declared once in
+`workorders/forms.py`:
+
+| Constant | Limit | Boxes |
+|---|---|---|
+| `WORKER_HOURS_MAX` | 24 | „Moje hodiny" and each collaborator's hours — a job is one day (`performed_on`) |
+| `METER_READING_MAX` | 99 999 | „Stav motohodin" — a five-digit hour meter, the width of the `.mth` box |
+| `TONS_MAX` | 99 999 | a material row's quantity and a machine row's tuny — five digits, the `.tons` box |
+| `LITRES_MAX` | 2 000 | „Natankováno" — above any one machine's tank, below an ordinary fill with a slipped extra zero |
+
+Each is passed as the field's `max_value`, which Django renders as the input's
+`max`: a phone refuses the value before posting, and the field refuses it again
+for a browser that did not, with Django's own „Ujistěte se, že tato hodnota je
+menší nebo rovna …". The limits are **whole numbers on purpose** — that message
+prints the limit unlocalised, and `99999` reads the same under `cs` as anywhere,
+where `99999.99` would show a dot in a UI that writes `99 999,99`.
+
+They are the form's alone — the columns are all `decimal(12, 2)` — which is the
+allowed direction, needing no migration. The other direction is a bug: a form
+field wider than its column validates a value that then fails the INSERT with
+`numeric field overflow`, an unhandled 500. The hours fields used to be exactly
+that until they were capped at the column width; all four bounds now sit far
+inside it, so the overflow is out of reach. **The admin's inlines repeat the
+bounds** (`CappedInline` in `workorders/admin.py`, signed for a line item's
+quantity, which is stored negative when consumed), or a value saved there would
+be refused the next time the job is opened on `job_edit` — the same reason the
+admin repeats the description cap. A row stored before the bounds may exceed
+one; it still renders, but correcting that job means fixing the value first.
+`ValueLimitTests` covers the rendered `max`, the refusal, the inclusive edge and
+the admin.
 
 ### A photo of the work
 

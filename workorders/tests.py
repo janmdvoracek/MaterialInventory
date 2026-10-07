@@ -3896,54 +3896,107 @@ class DescriptionAndNotesTests(ReviewFixtureMixin, TestCase):
                 self.assertContains(response, '<textarea')
 
 
-class HoursWidthTests(ReviewFixtureMixin, TestCase):
-    """The hours form fields must not accept more than their columns hold.
+class ValueLimitTests(ReviewFixtureMixin, TestCase):
+    """Every number box on the job form has an upper bound, rendered and enforced.
 
-    `WorkerHours.hours` and `MachineUsage.hours` are `decimal(12, 2)`, so ten
-    integer digits. A form field wider than that validated the value, reached
-    the INSERT and came back as `DataError: numeric field overflow` — an
-    unhandled 500 rather than a message on the field.
+    `WORKER_HOURS_MAX`, `METER_READING_MAX`, `TONS_MAX` and `LITRES_MAX` in
+    `workorders/forms.py`. Each goes out as the input's `max`, so a phone
+    refuses an extra digit before posting, and the field refuses it again for
+    a browser that did not. All four sit far inside the decimal(12, 2) columns,
+    which is what keeps an oversized value a field error rather than a
+    `numeric field overflow` 500. The admin's inlines repeat them.
     """
 
-    def _submit(self, **overrides):
+    def _payload(self, quantity='5', **overrides):
         payload = job_payload(
-            [{'material': self.material_raw, 'quantity': Decimal('5')}],
-            [{'material': self.material_finished, 'quantity': Decimal('5')}],
-            machine_rows=[{'machine': self.machine_a, 'hours': Decimal('2'), 'tons': Decimal('5')}],
+            [{'material': self.material_raw, 'quantity': quantity}],
+            [{'material': self.material_finished, 'quantity': quantity}],
+            machine_rows=[{'machine': self.machine_a, 'hours': '2', 'tons': '5', 'litres': '50'}],
+            worker_rows=[{'user': self.other_worker, 'hours': '1'}],
         )
         payload.update(overrides)
+        return payload
+
+    def _submit(self, payload):
         self.client.force_login(self.worker)
         return self.client.post(reverse('transform_create'), payload)
 
-    def test_own_hours_too_wide_are_refused_by_the_form(self):
-        response = self._submit(hours='99999999999.5')
-        self.assertEqual(response.status_code, 200)
-        self.assertFalse(WorkOrder.objects.exists())
+    def test_every_number_box_renders_its_limit(self):
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('transform_create'))
+        html = response.content.decode()
+        for name, limit in (
+            ('hours', '24'),
+            ('consumed-0-quantity', '99999'),
+            ('produced-0-quantity', '99999'),
+            ('machines-0-hours', '99999'),
+            ('machines-0-tons', '99999'),
+            ('machines-0-litres', '2000'),
+            ('workers-0-hours', '24'),
+        ):
+            with self.subTest(name=name):
+                tag = re.search(rf'<input[^>]*name="{name}"[^>]*>', html).group(0)
+                self.assertIn(f'max="{limit}"', tag)
 
-    def test_machine_hours_too_wide_are_refused_by_the_form(self):
-        response = self._submit(**{'machines-0-hours': '99999999999.5'})
-        self.assertEqual(response.status_code, 200)
-        self.assertFalse(MachineUsage.objects.exists())
+    def test_a_value_over_its_limit_is_refused_with_nothing_written(self):
+        over = {
+            'hours': '24.5',
+            'workers-0-hours': '24.5',
+            'consumed-0-quantity': '99999.01',
+            'machines-0-hours': '99999.5',
+            'machines-0-tons': '99999.01',
+            'machines-0-litres': '2000.01',
+        }
+        for name, value in over.items():
+            with self.subTest(name=name):
+                response = self._submit(self._payload(**{name: value}))
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, 'menší nebo rovna')
+                self.assertFalse(WorkOrder.objects.exists())
 
-    def test_collaborator_hours_too_wide_are_refused_by_the_form(self):
-        response = self._submit(
+    def test_every_limit_itself_is_accepted_and_stored(self):
+        # The bound is inclusive: one step less and a legitimate value is refused.
+        payload = self._payload(
+            quantity='99999',
+            hours='24',
             **{
-                'workers-TOTAL_FORMS': '1',
-                'workers-0-user': str(self.other_worker.pk),
-                'workers-0-hours': '99999999999.5',
-            }
+                'workers-0-hours': '24',
+                'machines-0-hours': '99999',
+                'machines-0-tons': '99999',
+                'machines-0-litres': '2000',
+            },
         )
-        self.assertEqual(response.status_code, 200)
-        self.assertFalse(WorkerHours.objects.exists())
-
-    def test_the_widest_value_the_form_accepts_actually_stores(self):
-        # The cap has to land exactly on what the column holds: one digit less
-        # and a legitimate value is refused, one more and this is a 500. Ten
-        # integer digits and the one decimal place the field allows is the
-        # widest `decimal(12, 2)` takes.
-        response = self._submit(hours='9999999999.5')
+        response = self._submit(payload)
         self.assertRedirects(response, reverse('transform_create'))
-        self.assertEqual(WorkerHours.objects.get(user=self.worker).hours, Decimal('9999999999.50'))
+        self.assertEqual(WorkerHours.objects.get(user=self.worker).hours, Decimal('24'))
+        self.assertEqual(WorkerHours.objects.get(user=self.other_worker).hours, Decimal('24'))
+        usage = MachineUsage.objects.get()
+        self.assertEqual((usage.hours, usage.tons), (Decimal('99999'), Decimal('99999')))
+        self.assertEqual(MachineRefuel.objects.get().litres, Decimal('2000'))
+        self.assertEqual(
+            sorted(StockMovement.objects.values_list('quantity', flat=True)), [Decimal('-99999'), Decimal('99999')]
+        )
+
+    def test_the_admin_inlines_carry_the_same_limits(self):
+        # Without them a value saved in the admin would be refused the next
+        # time the job is opened on `job_edit`.
+        work_order = self.submit_job(
+            self.worker, machine_rows=[{'machine': self.machine_a, 'hours': '2', 'litres': '50'}]
+        )
+        admin_user = User.objects.create_superuser(username='root', password='pw', role=User.Role.ADMIN)
+        self.client.force_login(admin_user)
+        html = self.client.get(reverse('admin:workorders_workorder_change', args=[work_order.pk])).content.decode()
+        for name, limits in (
+            ('movements-0-quantity', ('max="99999"', 'min="-99999"')),
+            ('machine_usages-0-hours', ('max="99999"',)),
+            ('machine_usages-0-tons', ('max="99999"',)),
+            ('machine_refuels-0-litres', ('max="2000"',)),
+            ('worker_hours-0-hours', ('max="24"',)),
+        ):
+            with self.subTest(name=name):
+                tag = re.search(rf'<input[^>]*name="{name}"[^>]*>', html).group(0)
+                for limit in limits:
+                    self.assertIn(limit, tag)
 
 
 class MachineRefuelTests(ReviewFixtureMixin, TestCase):

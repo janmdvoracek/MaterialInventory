@@ -1,37 +1,74 @@
 from django import forms
 from django.contrib import admin
-from django.core.validators import MaxLengthValidator
+from django.core.validators import MaxLengthValidator, MaxValueValidator, MinValueValidator
 
-from .forms import DESCRIPTION_MAX_LENGTH, clean_photo_upload
+from .forms import (
+    DESCRIPTION_MAX_LENGTH,
+    LITRES_MAX,
+    METER_READING_MAX,
+    TONS_MAX,
+    WORKER_HOURS_MAX,
+    clean_photo_upload,
+)
 from .models import MachineRefuel, MachineUsage, StockMovement, WorkerHours, WorkOrder, discard_photo
 
 
+class CappedInline(admin.TabularInline):
+    """An inline holding its number columns to the job form's upper bounds.
+
+    `caps` maps a field name to its limit. Without them a value saved here would
+    be refused the next time the job is opened on `job_edit`, the same reason
+    `WorkOrderAdminForm` repeats the description cap.
+    """
+
+    caps = {}
+    # Fields stored signed, so the cap bounds the size either way.
+    signed = ()
+
+    def formfield_for_dbfield(self, db_field, request, **kwargs):
+        field = super().formfield_for_dbfield(db_field, request, **kwargs)
+        limit = self.caps.get(db_field.name)
+        if limit is not None:
+            field.validators.append(MaxValueValidator(limit))
+            field.widget.attrs['max'] = str(limit)
+            if db_field.name in self.signed:
+                field.validators.append(MinValueValidator(-limit))
+                field.widget.attrs['min'] = str(-limit)
+        return field
+
+
 # Line items are edited only through this inline, never registered on their own.
-class MovementInline(admin.TabularInline):
+class MovementInline(CappedInline):
     model = StockMovement
     extra = 1
     fields = ('material', 'movement_type', 'quantity')
+    caps = {'quantity': TONS_MAX}
+    # Consumed rows are stored negative.
+    signed = ('quantity',)
 
 
-class MachineUsageInline(admin.TabularInline):
+class MachineUsageInline(CappedInline):
     model = MachineUsage
     extra = 1
     fields = ('machine', 'hours', 'tons')
+    caps = {'hours': METER_READING_MAX, 'tons': TONS_MAX}
 
 
 # Fuel is its own table, so its own inline — and, like every other row type, it
 # is never registered top-level: a fill-up exists only as part of a job, and a
 # second „Tankování" section in the index would shadow the worker form's.
-class MachineRefuelInline(admin.TabularInline):
+class MachineRefuelInline(CappedInline):
     model = MachineRefuel
     extra = 1
     fields = ('machine', 'litres')
+    caps = {'litres': LITRES_MAX}
 
 
-class WorkerHoursInline(admin.TabularInline):
+class WorkerHoursInline(CappedInline):
     model = WorkerHours
     extra = 1
     fields = ('user', 'hours')
+    caps = {'hours': WORKER_HOURS_MAX}
 
 
 class WorkOrderAdminForm(forms.ModelForm):
