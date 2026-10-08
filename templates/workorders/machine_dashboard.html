@@ -85,6 +85,7 @@
         </tbody>
     </table>
     </div>
+    <a class="btn" href="{% url 'machine_refuel_detail_export' %}?{{ querystring }}">Stáhnout do CSV / Excelu</a>
 </div>
 {# Its own page parameter, so paging the fill-ups leaves the usage rows put. #}
 {% include "workorders/_pagination.html" with page_obj=fuel_page.page_obj querystring=fuel_page.querystring page_param=fuel_page.page_param %}

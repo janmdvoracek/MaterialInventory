@@ -1147,17 +1147,20 @@ summary above is what restricts itself to `is_active=True`.
 Hodiny, Stroje and Materiál each carry a „Stáhnout do CSV / Excelu" button at
 the foot of their **summary** card — „Souhrn", „Stav strojů", „Souhrn
 materiálů" — Stroje carries a second one under „Tankování", its other summary,
-and Materiál carries one under „Detail položek".
+and two detail tables carry one as well: Materiál's „Detail položek" and
+Stroje's „Detail tankování".
 
-**That detail table is the one exception, and it is deliberate.** Everywhere
+**Those two detail tables are the exceptions, and they are deliberate.** Everywhere
 else the paginated rows underneath a summary are the working-out and the
 summary is the report. Materiál's rows are not working-out: they are the only
 place in the app that says what a single job consumed and produced, one line at
 a time, which is what a manager reconciling a month against delivery notes
-actually needs. Stroje's usage rows have no such reading — the totals *are* the
-question there — so they stay unexported, and so do the fill-ups.
+actually needs. The fill-ups under „Detail tankování" are the same kind of
+record for fuel — one line per tank-up, to hold against fuel receipts. Stroje's
+usage rows have no such reading — the totals *are* the question there — so
+they stay unexported.
 
-**The detail file is every row the filter allows, not the page on screen.** The
+**A detail file is every row the filter allows, not the page on screen.** The
 table paginates at `HISTORY_PAGE_SIZE`; a file holding rows 1–50 of 300 under
 the heading of the whole filter would be worse than no file. The summaries have
 no equivalent trap, being one row per material or machine.
@@ -1172,6 +1175,7 @@ rather than merely intended:
 | „Stav strojů" | `machine_dashboard_export` | `_filtered_machine_usages` + `_machine_summary` |
 | „Tankování" | `machine_refuel_export` | `_filtered_machine_refuels` + `_refuel_summary` |
 | „Souhrn materiálů" | `material_dashboard_export` | `_filtered_material_movements` + `_material_summary` |
+| „Detail tankování" | `machine_refuel_detail_export` | `_filtered_machine_refuels` |
 | „Detail položek" | `material_detail_export` | `_filtered_material_movements` |
 | „Souhrn" (hodiny) | `time_worked_export` | `_time_worked_scope` |
 
@@ -1184,9 +1188,9 @@ exactly as it is out of the page, and an invalid filter exports a header row
 and nothing else.
 
 Each export carries the same gate as its page: `time_worked_export` is
-`login_required` (a worker downloads their own row), the other four are
-`role_required(MANAGER, ADMIN)`. The detail file is the one most worth gating —
-it names every job's author and description, not just totals.
+`login_required` (a worker downloads their own row), the other five are
+`role_required(MANAGER, ADMIN)`. The detail files are the ones most worth
+gating — they name every job's author and description, not just totals.
 
 **The file format answers "CSV or Excel" once, and adds no dependency.**
 `_csv_response` writes `;`-delimited rows behind a UTF-8 BOM:

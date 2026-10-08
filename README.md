@@ -28,9 +28,9 @@ and code are in English.
 
 Each summary table on those last three downloads as a CSV that opens straight
 into Excel — semicolon-delimited, UTF-8 BOM, comma decimals — over whatever
-filter the page is showing; Machines has two, one per summary card. Materials has
-a further download under its line items, the one row-level export: every row the
-filter allows, not the page on screen.
+filter the page is showing; Machines has two, one per summary card. Two detail
+tables download too — Materials' line items and Machines' fill-ups — each as every
+row the filter allows, not the page on screen.
 
 Any photo attached to a job is linked from its Review page and nowhere else. It
 is shrunk on upload to a JPEG of at most 1600 px (a few hundred KB, HEIC from an

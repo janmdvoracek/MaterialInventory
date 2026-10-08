@@ -407,6 +407,32 @@ def machine_refuel_export(request):
 
 
 @role_required(*REVIEWER_ROLES)
+def machine_refuel_detail_export(request):
+    """„Detail tankování" as a CSV — the fill-ups one per line.
+
+    Like `material_detail_export` it is the whole filtered set, not the page of
+    `fuel_page` that was on screen, and for the same reason.
+    """
+    _, refuels = _filtered_machine_refuels(request)
+    return _csv_response(
+        'detail-tankovani',
+        ['Provedeno', 'Stroj', 'Natankováno (l)', 'Zakázka', 'Kým'],
+        [
+            [
+                # ISO, like the page's „Provedeno" column.
+                refuel.work_order.performed_on.isoformat(),
+                refuel.machine.name,
+                _csv_number(refuel.litres, 2),
+                # Blank rather than the page's „—", as on the Materiál detail file.
+                refuel.work_order.description,
+                refuel.work_order.created_by.username,
+            ]
+            for refuel in refuels
+        ],
+    )
+
+
+@role_required(*REVIEWER_ROLES)
 def material_dashboard_export(request):
     """„Souhrn materiálů" as a CSV, built from the same helpers as the page."""
     form, movements = _filtered_material_movements(request)

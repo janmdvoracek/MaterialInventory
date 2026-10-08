@@ -17,9 +17,14 @@ urlpatterns = [
     path('machines/fuel/export/', reports.machine_refuel_export, name='machine_refuel_export'),
     path('materials/export/', reports.material_dashboard_export, name='material_dashboard_export'),
     path('hours/export/', reports.time_worked_export, name='time_worked_export'),
-    # The one row-level download: Materiál's line items, the whole filtered set
-    # rather than the page on screen.
+    # The two row-level downloads: Materiál's line items and Stroje's fill-ups,
+    # each the whole filtered set rather than the page on screen.
     path('materials/detail/export/', reports.material_detail_export, name='material_detail_export'),
+    path(
+        'machines/fuel/detail/export/',
+        reports.machine_refuel_detail_export,
+        name='machine_refuel_detail_export',
+    ),
     # MEDIA_URL. Uploaded job photos are served by Django behind the same gate
     # as the jobs themselves — never by the proxy, which would put them on the
     # internet the way /static/ is. `path` converter, so the stored

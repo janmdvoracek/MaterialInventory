@@ -365,8 +365,9 @@ litrů, zakázkou a tím, kdo ji zapsal.
 - **Detail tankování** a **Detail používání strojů** se stránkují každý zvlášť —
   přechod na další stránku jedné tabulky s druhou nehýbe.
 
-Obě souhrnné tabulky — **Stav strojů** i **Tankování** — mají vlastní tlačítko
-**Stáhnout do CSV / Excelu**; stáhne se přesně to, co máte nastavené filtrem.
+Obě souhrnné tabulky — **Stav strojů** i **Tankování** — a také **Detail
+tankování** mají vlastní tlačítko **Stáhnout do CSV / Excelu**; stáhne se
+přesně to, co máte nastavené filtrem.
 
 Filtrovat lze podle stroje, data a podle toho, kdo zakázku zapsal
 (**Vytvořil**); filtr se vztahuje i na tabulky s tankováním.
@@ -476,6 +477,8 @@ pak klepněte na tlačítko.
 |---|---|
 | **Hodiny** | Tabulka **Souhrn** — pracovník, hodiny, počet zakázek |
 | **Stroje** | Tabulka **Stav strojů** — stroj, hodiny, tuny, obě sazby a tři sloupce s cenou |
+| **Stroje** | Tabulka **Tankování** — stroj, počet tankování, natankované litry |
+| **Stroje** | Tabulka **Detail tankování** — datum, stroj, litry, zakázka, kdo ji zapsal |
 | **Materiál** | Tabulka **Souhrn materiálů** — spotřebováno, vyrobeno, rozdíl |
 | **Materiál** | Tabulka **Detail položek** — datum, lokace, materiál, druh, množství, zakázka, kdo ji zapsal |
 
@@ -485,7 +488,10 @@ spotřebovala a co vyrobila, řádek po řádku. Hodí se, když si měsíc pot�
 odsouhlasit s dodacími listy; souhrn na to nestačí, protože v něm je z každého
 materiálu jen jedno číslo.
 
-Do tohoto souboru se stáhnou **všechny řádky, které filtr pustí** — ne jenom ta
+Stejně funguje tlačítko pod **Detailem tankování** na **Strojích** — stáhne
+jednotlivá tankování, řádek po řádku, třeba na kontrolu proti dokladům za naftu.
+
+Do těchto dvou souborů se stáhnou **všechny řádky, které filtr pustí** — ne jenom ta
 stránka, kterou máte zrovna otevřenou. Pod tabulkou se čísluje po padesáti
 řádcích, v souboru je jich tolik, kolik jich filtru odpovídá.
 

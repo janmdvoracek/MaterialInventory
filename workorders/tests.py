@@ -1956,6 +1956,8 @@ class TableExportTests(TestCase):
             'machine_dashboard_export',
             'material_dashboard_export',
             'material_detail_export',
+            'machine_refuel_export',
+            'machine_refuel_detail_export',
         ):
             with self.subTest(name=name):
                 response = self.client.get(reverse(name))
@@ -4480,6 +4482,56 @@ class MachineRefuelReportTests(TestCase):
         # Gated like the page it hangs off; hiding the nav link is not access control.
         self.client.force_login(self.worker)
         self.assertEqual(self.client.get(reverse('machine_refuel_export')).status_code, 403)
+
+    def _detail_rows(self, **params):
+        response = self.client.get(reverse('machine_refuel_detail_export'), params)
+        return list(csv.reader(io.StringIO(response.content.decode('utf-8-sig')), delimiter=';'))
+
+    def test_the_detail_export_carries_the_fill_ups(self):
+        self._refuel(Decimal('25.5'), performed_on=date(2026, 9, 1))
+        rows = self._detail_rows()
+        self.assertEqual(rows[0], ['Provedeno', 'Stroj', 'Natankováno (l)', 'Zakázka', 'Kým'])
+        self.assertEqual(rows[1], ['2026-09-01', 'Crusher A', '25,50', 'job', 'worker'])
+
+    def test_the_detail_export_is_a_bom_csv_named_for_the_day(self):
+        response = self.client.get(reverse('machine_refuel_detail_export'))
+        self.assertTrue(response.content.startswith(b'\xef\xbb\xbf'))
+        self.assertEqual(
+            response['Content-Disposition'],
+            f'attachment; filename="detail-tankovani-{date.today().isoformat()}.csv"',
+        )
+
+    def test_the_detail_export_is_every_row_not_one_page(self):
+        for _ in range(HISTORY_PAGE_SIZE + 1):
+            self._refuel(Decimal('1'))
+        self.assertEqual(len(self._detail_rows()), HISTORY_PAGE_SIZE + 2)
+
+    def test_the_detail_export_follows_the_filter_and_hides_pending_jobs(self):
+        self._refuel(Decimal('40'), performed_on=date.today() - timedelta(days=40))
+        self._refuel(Decimal('15'))
+        self._refuel(Decimal('7'), status=WorkOrder.Status.PENDING)
+        self._refuel(Decimal('5'), machine=self.other)
+        rows = self._detail_rows(date_from=(date.today() - timedelta(days=7)).isoformat(), machine=self.machine.pk)
+        self.assertEqual([row[2] for row in rows[1:]], ['15,00'])
+
+    def test_the_detail_export_leaves_a_missing_description_blank(self):
+        refuel = self._refuel(Decimal('40'))
+        WorkOrder.objects.filter(pk=refuel.work_order_id).update(description='')
+        self.assertEqual(self._detail_rows()[1][3], '')
+
+    def test_an_invalid_filter_exports_only_a_header_on_the_detail_too(self):
+        self._refuel(Decimal('40'))
+        self.assertEqual(len(self._detail_rows(date_from='not-a-date')), 1)
+
+    def test_a_worker_cannot_reach_the_detail_export(self):
+        self.client.force_login(self.worker)
+        self.assertEqual(self.client.get(reverse('machine_refuel_detail_export')).status_code, 403)
+
+    def test_both_fuel_downloads_are_linked_from_the_page(self):
+        response = self.client.get(reverse('machine_dashboard'), {'date_from': '2026-01-01'})
+        for name in ('machine_refuel_export', 'machine_refuel_detail_export'):
+            with self.subTest(name=name):
+                self.assertContains(response, f'{reverse(name)}?date_from=2026-01-01')
 
 
 class JobPhotoTests(ReviewFixtureMixin, TestCase):
