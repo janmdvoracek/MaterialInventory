@@ -718,6 +718,8 @@ of it; no other dropdown in the app is enhanced, because no other one is long.
 **The `<select>` is still what the form posts.** It keeps its `name`, its
 `value` and its place in the page; `hidden` is not `disabled`, so it is
 submitted exactly as before, and the text box has no `name` and posts nothing.
+It does carry an `id` (the select's own plus `-search`), only because Chrome
+flags a form field with neither; never give it a `name`.
 The box takes at most 40 characters (`SEARCH_MAX_LENGTH`); with nothing on the
 server behind it, that limit only stops a stray paste becoming an unreadable
 search, and a chosen label longer than that is still shown whole.

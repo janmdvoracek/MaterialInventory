@@ -69,7 +69,8 @@
         var wrapper = document.createElement('div');
         var input = document.createElement('input');
         var list = document.createElement('ul');
-        var listId = (select.id || 'combo-' + select.name) + '-list';
+        var baseId = select.id || 'combo-' + select.name;
+        var listId = baseId + '-list';
         var placeholder = placeholderOf(select);
         var shown = [];
         var active = -1;
@@ -78,6 +79,10 @@
         select.parentNode.insertBefore(wrapper, select);
         wrapper.appendChild(select);
 
+        // An id but never a name: a name would post the search text with the
+        // form. The id is only there so the browser does not flag a form field
+        // with neither.
+        input.id = baseId + '-search';
         input.type = 'text';
         input.className = 'combo-input';
         input.value = labelOf(select);
