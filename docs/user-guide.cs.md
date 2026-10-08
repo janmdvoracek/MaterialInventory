@@ -15,6 +15,7 @@ adrese, kterou vám dal správce, a přihlaste se uživatelským jménem a hesle
 ## Obsah
 
 - [Přihlášení a změna hesla](#přihlášení-a-změna-hesla)
+- [Aplikace v telefonu](#aplikace-v-telefonu)
 - [Spodní menu](#spodní-menu)
 - [Zpracování](#zpracování)
 - [Schvalování](#schvalování)
@@ -34,6 +35,26 @@ změňte**: nahoře vpravo klepněte na **Změnit heslo**, zadejte současné he
 a dvakrát nové.
 
 Odhlásíte se odkazem **Odhlásit se** vpravo nahoře.
+
+## Aplikace v telefonu
+
+Stránku si můžete přidat na plochu telefonu jako aplikaci **VyrobaPK**. Pak ji
+otevřete jednou ikonou, bez hledání adresy, a běží přes celou obrazovku bez
+lišty prohlížeče. Je to pořád stejná aplikace se stejným přihlášením — nic se
+nestahuje z obchodu.
+
+- **Android (Chrome):** otevřete adresu aplikace, klepněte na nabídku **⋮**
+  vpravo nahoře a zvolte **Nainstalovat aplikaci** (nebo **Přidat na plochu**).
+  Chrome to někdy nabídne sám dole na obrazovce.
+- **iPhone (Safari):** otevřete adresu v Safari, klepněte na tlačítko
+  **Sdílet** (čtvereček se šipkou) a zvolte **Přidat na plochu**.
+
+Na iPhonu se aplikace z plochy přihlašuje zvlášť — poprvé se v ní přihlaste
+znovu, i když jste přihlášeni v Safari.
+
+Když telefon nemá signál, aplikace ukáže stránku **Bez připojení** místo chyby
+prohlížeče. Zápis se bez připojení odeslat nedá — počkejte na signál a klepněte
+na **Zkusit znovu**.
 
 ## Spodní menu
 

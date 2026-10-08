@@ -10,6 +10,8 @@
     <link rel="icon" href="{% static 'img/favicon.ico' %}" sizes="16x16 32x32 48x48">
     <link rel="icon" type="image/png" href="{% static 'img/favicon-32.png' %}" sizes="32x32">
     <link rel="apple-touch-icon" href="{% static 'img/apple-touch-icon.png' %}">
+    <link rel="manifest" href="{% url 'web_manifest' %}">
+    <meta name="apple-mobile-web-app-title" content="VyrobaPK">
     <link rel="stylesheet" href="{% static 'css/app.css' %}"></head>
 <body class="page-{{ request.resolver_match.url_name }}">
     <header>
@@ -50,5 +52,6 @@
         {% endif %}
     </nav>
     {% endif %}
+    <script src="{% static 'js/pwa.js' %}" data-service-worker="{% url 'service_worker' %}" defer></script>
 </body>
 </html>

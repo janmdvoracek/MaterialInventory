@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import reports, views
+from . import pwa, reports, views
 
 urlpatterns = [
     # Zpracování is the landing page — it is what a worker opens the app to do,
@@ -30,6 +30,12 @@ urlpatterns = [
     # internet the way /static/ is. `path` converter, so the stored
     # job_photos/<year>/<month>/<name> reaches the view in one piece.
     path('media/<path:path>', views.protected_media, name='protected_media'),
+    # Installing the app on a phone as VyrobaPK (workorders/pwa.py). Public, and
+    # the worker has to sit at the root: it only controls pages at or below its
+    # own URL, so under /static/ it would control nothing.
+    path('manifest.webmanifest', pwa.manifest, name='web_manifest'),
+    path('sw.js', pwa.service_worker, name='service_worker'),
+    path('offline/', pwa.offline, name='offline'),
     # Manager review of recorded jobs. Every view behind these is gated by
     # role_required, not just hidden from the nav.
     path('jobs/', views.job_dashboard, name='job_dashboard'),

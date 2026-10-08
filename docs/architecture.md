@@ -800,6 +800,72 @@ stylesheet. `PhotoPickerTests` covers the contract: each input sits in its
 `data-photo-source` wrapper, the template carries the hooks the script reads,
 none of its buttons submits, and that CSS rule exists.
 
+### Installing the app (VyrobaPK)
+
+The site installs on a phone's home screen as **VyrobaPK** — a progressive web
+app. Installed, it opens full-screen from its own icon, with no browser bar,
+and is otherwise the same website: same server, same login, same pages.
+Android's Chrome offers „Nainstalovat aplikaci"; on an iPhone it is Safari's
+Share → „Přidat na plochu". There is no store listing.
+
+`workorders/pwa.py` serves three public URLs, none behind a login — the browser
+fetches the manifest without cookies, and the login page is where a new phone
+first lands:
+
+- **`/manifest.webmanifest`** — name, icons, `display: standalone`, and
+  `start_url` pointing at Zpracování. A template (`templates/pwa/`) rather
+  than a file in `static/`, so the icon URLs go through `{% static %}` and come
+  out hashed in production like every other asset.
+- **`/sw.js`** — the service worker, also a template. It has to sit at the
+  root: a worker controls only pages at or below its own URL, so under
+  `/static/` it would control nothing.
+- **`/offline/`** — what the worker shows when a page will not load.
+
+`base.html` links the manifest, sets `apple-mobile-web-app-title`, and loads
+`static/js/pwa.js` on every page. That file reads the worker's URL off its own
+`data-service-worker` attribute and registers it, and nothing else.
+
+**The worker does one thing.** A failed page load is answered with the cached
+offline page instead of the browser's own error; that page's stylesheet and
+logo fall back to the cache too, network first. It caches no other page,
+leaves every non-GET request alone and queues nothing, so a submission made
+with no signal fails exactly as it always did, and Back still has the form.
+That is the same rule the three job-form scripts follow: offline submission
+would be behaviour only a script could perform, out of the suite's sight, and
+it would be a project of its own — a queue, replay, and what to do when the
+job it replays was meanwhile approved or edited.
+
+Two details keep the offline page honest:
+
+- **It is cached anonymous.** The worker fetches it with
+  `credentials: 'omit'`, so the copy it keeps has no nav, no user and no CSRF
+  token — it is shown to whoever opens the app offline.
+- **It updates itself.** A browser installs a new worker only when the script's
+  bytes change, so `service_worker` writes in a version: a hash of the cached
+  URLs (hashed in production, so a stylesheet change moves them) and of
+  `offline.html`'s rendered markup. Edit either and installed phones pick it up
+  on their next visit.
+
+The icons are the stone mark from `logo.png` on white: `icon-192.png` and
+`icon-512.png`, plus `icon-maskable-512.png` with the mark inside the 80 %
+circle an Android launcher may crop to. The manifest's `theme_color` is the
+light `theme-color` meta in `base.html`, kept in step by hand like the metas
+and `--chrome-bg`.
+
+**Service workers need a secure context** — HTTPS, or `localhost` itself. A
+phone opening the dev server by LAN IP gets the plain website with no install
+prompt, and the Claude desktop app's browser pane refuses service workers
+outright. To try it on an Android phone against the dev server, connect it by
+USB, run `adb reverse tcp:8000 tcp:8000` and open `http://localhost:8000` in
+Chrome.
+
+`PwaTests` covers the contract: the manifest is public, valid and names icons
+that exist at the sizes it claims; every page links it and loads `pwa.js`; the
+worker is JavaScript at `/sw.js`, caches the offline page and its two assets
+and nothing else, skips non-GETs, and changes version when what it caches
+does; and the offline page carries nothing personal. What the worker does in a
+browser is untested, like the scripts.
+
 ### `WorkerHours` vs `MachineUsage`
 
 Two unrelated numbers. Do not derive one from the other.
@@ -1261,12 +1327,19 @@ the reports only if they get a separate audience or deployment.
 | `/hours/export/` | `time_worked_export` | The Hodiny summary as a CSV |
 | `/machines/export/` | `machine_dashboard_export` | „Stav strojů" as a CSV |
 | `/materials/export/` | `material_dashboard_export` | „Souhrn materiálů" as a CSV |
+| `/manifest.webmanifest` | `web_manifest` | The PWA manifest — public |
+| `/sw.js` | `service_worker` | The service worker — public, at the root for its scope |
+| `/offline/` | `offline` | What the worker shows with no signal — public |
 
 The five `/jobs/` views are the review pages, and every one of them carries
 `@role_required(MANAGER, ADMIN)`.
 
 The three `/export/` URLs are downloads rather than pages: no template, no nav
 entry, and each gated exactly like the page it hangs off.
+
+The last three make the app installable and are public by design; see
+"Installing the app (VyrobaPK)". They live in `workorders/pwa.py`, a third
+views module.
 
 `LOGIN_REDIRECT_URL`, the header logo and the post-submit redirect all point at
 `transform_create`. Login and password change are Django's own generic views,
@@ -1507,11 +1580,12 @@ multiplies the `Sum` by the number of matched collaborators.
   auth, but there were never any serializers, viewsets or routes. It and the
   `REST_FRAMEWORK` settings block are gone.
 - **No JavaScript framework, and three scripts of the app's own — all on the
-  same page.** `static/js/job_rows.js` resizes a section of the job form in the
+  same page** — plus `pwa.js` on every page, which only registers the service
+  worker (see "Installing the app (VyrobaPK)"). `static/js/job_rows.js` resizes a section of the job form in the
   DOM, `static/js/searchable_select.js` makes its four dropdowns
   type-to-narrow and `static/js/photo_picker.js` puts its two photo inputs
-  behind one button; every other page is a plain form POST with no script at
-  all. All three are **progressive enhancement and nothing more** — the searchable
+  behind one button; every other page is a plain form POST with no script of
+  its own. All three are **progressive enhancement and nothing more** — the searchable
   pickers hide a `<select>` that is still what the form posts, and the
   „+ další řádek" / „− odebrat řádek"
   buttons remain ordinary submits that the server still answers by re-rendering

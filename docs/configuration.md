@@ -345,6 +345,13 @@ and fetches the hashed `app.css` the login page links.
 > `<select>`s and its photo button to the two inputs rather than breaking
 > anything. Worth one manual `curl` after a deploy that touches them.
 
+The installable-app files *are* checked, because they are public: the script
+fetches `/manifest.webmanifest`, requires it to name a **hashed**
+`icon-512.png` and that icon to be served — a manifest pointing at a missing
+icon is a phone that never offers the install — and requires `/sw.js` to come
+back as JavaScript, the one content type a browser will register a service
+worker from.
+
 To check by hand before pushing, run that script in a clean worktree (see its
 header), or do it step by step:
 

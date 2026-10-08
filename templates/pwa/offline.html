@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% comment %}
+What the service worker shows when a page will not load. The worker fetches
+this without cookies and keeps the copy, so it renders as an anonymous page —
+no nav, no user, no CSRF token — and it must stay that way: it is shown to
+whoever opens the app offline. Its markup is part of the worker's version hash
+(workorders/pwa.py), so editing it reaches installed phones by itself.
+
+„Zkusit znovu" is a plain link to the current address: the offline page is
+answered *at* the URL that failed, so following it retries that page.
+{% endcomment %}
+{% block title %}Bez připojení{% endblock %}
+{% block content %}
+<div class="card">
+    <h1>Bez připojení</h1>
+    <p>VyrobaPK potřebuje připojení k internetu a teď se k serveru nedostane.</p>
+    <p>Až bude signál, zkuste to znovu.</p>
+    <a class="btn" href="">Zkusit znovu</a>
+</div>
+{% endblock %}

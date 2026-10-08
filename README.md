@@ -25,6 +25,7 @@ and code are in English.
 | **Machines** (*Stroje*) | One filter over hours and tonnage per machine, its two rates (Kč/hod, Kč/t), what those come to in money — per hours, per tonnes, and in total — and the individual usage rows behind it all. Plus a *Tankování* card over the same filter: litres and fill-up count per machine, and the individual fill-ups. Manager/Admin nav entry. |
 | **Materials** (*Materiál*) | Tonnage consumed, produced and net per material over a date range, and the individual line items behind those totals — "how much 8/16 did we make last month?" — optionally for one location. Manager/Admin only. |
 | **Hours** (*Hodiny*) | Hours worked per person, for payroll and job costing. For a worker, also their own last few jobs with the review status of each. |
+| **Install** (*VyrobaPK*) | The site installs on a phone's home screen as an app — Chrome's „Nainstalovat aplikaci" on Android, Safari's „Přidat na plochu" on an iPhone — and opens full-screen from its own icon. Same server, same login; with no signal it shows an offline page instead of the browser's error. No app store involved. |
 
 Each summary table on those last three downloads as a CSV that opens straight
 into Excel — semicolon-delimited, UTF-8 BOM, comma decimals — over whatever
@@ -61,7 +62,9 @@ are still ordinary submits answered by the server.
 and worker dropdowns, writing the pick back to a `<select>` that is still what
 the form posts. `static/js/photo_picker.js` puts the camera and gallery inputs
 behind one „Fotka" button. With any of them blocked or broken the form works
-unchanged.
+unchanged. A fourth, `static/js/pwa.js`, is on every page and only registers the
+service worker that makes the site installable; see
+[architecture.md](docs/architecture.md#installing-the-app-vyrobapk).
 WhiteNoise serves static files; Gunicorn runs the app in production. Ruff
 handles linting and formatting.
 
@@ -125,7 +128,7 @@ Full column reference: [docs/development.md](docs/development.md#seeding-data).
 ## Common commands
 
 ```bash
-python manage.py test                  # full suite (483 tests, needs Postgres)
+python manage.py test                  # full suite (501 tests, needs Postgres)
 python manage.py test workorders       # one app
 coverage run manage.py test && coverage html   # coverage report in htmlcov/
 ruff check . && ruff format .          # lint and format

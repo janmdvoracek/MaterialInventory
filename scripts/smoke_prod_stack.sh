@@ -103,6 +103,19 @@ css=$(grep -o '/static/css/app\.[0-9a-f]\{12\}\.css' "$page" | head -n 1) || tru
 [ "$(http_status "$BASE$css")" = 200 ] || fail "$css is linked but not served"
 ok "hashed static files are served ($css)"
 
+# The installable app (workorders/pwa.py). The manifest is a template so its
+# icons go through {% static %}; an unhashed or missing icon here is a phone
+# that will not offer the install. The worker must be JavaScript at the root.
+manifest="$WORK/manifest.json"
+[ "$(curl -k -s -o "$manifest" -w '%{http_code}' "$BASE/manifest.webmanifest")" = 200 ] \
+    || fail "/manifest.webmanifest is not served without a login"
+icon=$(grep -o '/static/img/icon-512\.[0-9a-f]\{12\}\.png' "$manifest" | head -n 1) || true
+[ -n "$icon" ] || fail "the manifest names no hashed icon-512.png"
+[ "$(http_status "$BASE$icon")" = 200 ] || fail "$icon is in the manifest but not served"
+sw_type=$(curl -k -s -o /dev/null -w '%{content_type}' "$BASE/sw.js")
+[[ $sw_type == text/javascript* ]] || fail "/sw.js answered '$sw_type', not JavaScript — the browser will refuse it"
+ok "the PWA manifest, its icons and the service worker are served"
+
 username=smoke-test
 password=$(openssl rand -hex 16)
 "${DC[@]}" exec -T -e SMOKE_USERNAME="$username" -e SMOKE_PASSWORD="$password" web python manage.py shell -c \
