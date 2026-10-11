@@ -8,28 +8,20 @@ from django.utils import timezone
 
 
 def job_photo_path(instance, filename):
-    """Where an uploaded job photo is stored, under MEDIA_ROOT.
+    """`job_photos/<upload year>/<month>/<uuid>.<ext>` under MEDIA_ROOT.
 
-    The name is a fresh uuid rather than the phone's: `IMG_0001.jpg` collides
-    on every second upload, and the original carries nothing worth keeping.
-    The extension stays, because it is what the browser is told the file is
-    when it is handed back — `.jpg` for every upload since they are shrunk. Foldered by upload month so one directory does not
-    grow without bound — by today's date, not `performed_on`, which an edit can
-    move while the stored file cannot.
+    A uuid because phone file names collide. Upload month rather than
+    `performed_on`, which an edit can move while the file can't.
     """
     suffix = filename.rsplit('.', 1)[-1].lower() if '.' in filename else 'jpg'
     return f'job_photos/{timezone.localdate():%Y/%m}/{uuid4().hex}.{suffix}'
 
 
 def discard_photo(photo):
-    """Delete a stored photo's file once the write that let go of it commits.
+    """Delete a stored photo's file once the current transaction commits.
 
-    `on_commit`, not now: a file outliving a rolled-back write is an orphan
-    nobody notices, while deleting one early would leave a surviving row
-    pointing at nothing. Every way a photo's file is let go of comes through
-    here — a `JobPhoto` deleted, on its own or with its job
-    (`_delete_photo_file`), and a file replaced in the admin
-    (`WorkOrderAdmin.save_formset`) — because Django removes it on neither.
+    On commit, because an orphaned file is harmless while a row pointing at a
+    deleted file is not. Called by `_delete_photo_file` and `WorkOrderAdmin.save_formset`.
     """
     if not photo:
         return
@@ -61,10 +53,8 @@ class WorkOrder(models.Model):
         blank=True,
         verbose_name='spolupracovníci',
     )
-    # Where the work was done. Nullable for jobs recorded before the column
-    # existed and for fuel-only jobs, which are not asked for one; required on
-    # every other job by the view (see `WORK_FIELDS`). A label, not a stock
-    # location: nothing is balanced or summed per location.
+    # A label, not a stock location. Null on old and fuel-only jobs; the view
+    # requires it otherwise (`WORK_FIELDS`).
     location = models.ForeignKey(
         'locations.Location',
         on_delete=models.PROTECT,
@@ -74,7 +64,6 @@ class WorkOrder(models.Model):
         verbose_name='lokace',
     )
     description = models.CharField(max_length=255, verbose_name='popis')
-    # Free-form and optional, unlike `description`: a whole paragraph, not a one-liner.
     notes = models.TextField(blank=True, verbose_name='poznámky')
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING, verbose_name='stav')
     reviewed_at = models.DateTimeField(null=True, blank=True, verbose_name='posouzeno')
@@ -167,7 +156,7 @@ class WorkerHours(models.Model):
 
 
 class MachineUsage(models.Model):
-    """One machine's hours and processed tonnage on a single transformation job."""
+    """One machine on a job: its hour-meter reading and the tonnage it processed."""
 
     work_order = models.ForeignKey(
         WorkOrder, on_delete=models.CASCADE, related_name='machine_usages', verbose_name='zakázka'
@@ -175,9 +164,7 @@ class MachineUsage(models.Model):
     machine = models.ForeignKey(
         'machines.Machine', on_delete=models.PROTECT, related_name='usages', verbose_name='stroj'
     )
-    # Both null when not recorded: unknown, not zero. The job form leaves them
-    # optional while machines are priced outside the app, and tons is also null
-    # on rows from before the column existed.
+    # Null means not recorded (unknown), not zero. `hours` is the meter reading.
     hours = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, verbose_name='motohodiny')
     tons = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, verbose_name='odpracované tuny')
 
@@ -192,16 +179,9 @@ class MachineUsage(models.Model):
 
 
 class MachineRefuel(models.Model):
-    """Fuel put into one machine on a single job, in litres.
+    """Fuel put into one machine on a job, in litres.
 
-    Its own table rather than a column on `MachineUsage`, because the two are
-    independent: a machine can be refuelled on a job that ran no hours at all —
-    a job may be nothing but fill-ups — so a refuel row has to be able to exist
-    with no usage row beside it. Litres are not part of the mass balance and no
-    report derives them from hours or tonnage.
-
-    Like `MachineUsage` and `StockMovement` it carries no timestamp of its own;
-    its date is its job's `performed_on`, because `job_edit` rewrites every row.
+    Its own table because a machine can be refuelled on a job it didn't run.
     """
 
     work_order = models.ForeignKey(
@@ -210,9 +190,7 @@ class MachineRefuel(models.Model):
     machine = models.ForeignKey(
         'machines.Machine', on_delete=models.PROTECT, related_name='refuels', verbose_name='stroj'
     )
-    # Not nullable, unlike `MachineUsage.tons`: the column is new but a refuel
-    # row only ever exists because someone typed a number into it, so there is
-    # no "unknown" to represent and a zero total is a real zero.
+    # Not nullable: a refuel row exists only because someone typed a number.
     litres = models.DecimalField(max_digits=12, decimal_places=2, verbose_name='natankované litry')
 
     class Meta:
@@ -225,17 +203,10 @@ class MachineRefuel(models.Model):
 
 
 class JobPhoto(models.Model):
-    """One photo of the work on a job, taken on the phone that fills the form in.
+    """One photo attached to a job (up to `forms.PHOTO_MAX_COUNT`).
 
-    Its own table rather than a column on `WorkOrder`, because a job carries as
-    many as `forms.PHOTO_MAX_COUNT`. Like every other row of a job it cascades
-    when the job is deleted, and nothing reads it but `job_detail`.
-
-    A plain FileField and not an ImageField: the forms decode, shrink and
-    re-encode every upload to a small JPEG themselves (`clean_photo_upload`,
-    through pillow-heif so an iPhone's HEIC opens), and ImageField's own check
-    would only decode it a second time. Never public: MEDIA_ROOT is not served,
-    the file goes out through `protected_media`.
+    A FileField, not an ImageField: the form already decodes and shrinks every
+    upload. Served only through `protected_media`.
     """
 
     work_order = models.ForeignKey(WorkOrder, on_delete=models.CASCADE, related_name='photos', verbose_name='zakázka')
@@ -251,12 +222,8 @@ class JobPhoto(models.Model):
         return f'Fotka #{self.pk} (WorkOrder #{self.work_order_id})'
 
 
-# The file is not the row's to keep once the row is gone: Django deletes neither
-# on `delete()` nor on a cascade. A signal rather than a line in each view,
-# because a photo also dies with its job — through `job_delete`, the admin's
-# delete page and its „delete selected", a queryset delete — and through the
-# admin inline's delete box. Registering this receiver is itself what keeps
-# Django off its fast-delete path for the cascade, so it fires for every row.
+# Django never deletes a FileField's file. A signal covers every path (views,
+# cascades, admin bulk delete); registering it also disables fast-delete for the cascade.
 @receiver(post_delete, sender=JobPhoto)
 def _delete_photo_file(sender, instance, **kwargs):
     discard_photo(instance.file)

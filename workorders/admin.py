@@ -15,11 +15,9 @@ from .models import JobPhoto, MachineRefuel, MachineUsage, StockMovement, Worker
 
 
 class CappedInline(admin.TabularInline):
-    """An inline holding its number columns to the job form's upper bounds.
+    """An inline capping its number fields at the job form's bounds (`caps`: field -> limit).
 
-    `caps` maps a field name to its limit. Without them a value saved here would
-    be refused the next time the job is opened on `job_edit`, the same reason
-    `WorkOrderAdminForm` repeats the description cap.
+    Otherwise a value saved here would be refused when the job is next opened on `job_edit`.
     """
 
     caps = {}
@@ -55,9 +53,7 @@ class MachineUsageInline(CappedInline):
     caps = {'hours': METER_READING_MAX, 'tons': TONS_MAX}
 
 
-# Fuel is its own table, so its own inline — and, like every other row type, it
-# is never registered top-level: a fill-up exists only as part of a job, and a
-# second „Tankování" section in the index would shadow the worker form's.
+# Like every row type of a job, edited only as an inline, never registered top-level.
 class MachineRefuelInline(CappedInline):
     model = MachineRefuel
     extra = 1
@@ -78,18 +74,15 @@ class JobPhotoForm(forms.ModelForm):
         fields = ('file',)
 
     def clean_file(self):
-        # Shrunk like one sent through the job form, or an upload here would
-        # be the one full-size photo on a disk sized for small ones.
+        # Shrunk exactly like a job-form upload.
         return clean_photo_upload(self.cleaned_data.get('file'))
 
 
-# Like every other row of a job, edited here and never registered top-level.
 class JobPhotoInline(admin.TabularInline):
     model = JobPhoto
     form = JobPhotoForm
     extra = 1
-    # The job form's own cap, or a job saved here would be refused the next
-    # time a photo is added to it on `job_edit`.
+    # The job form's cap, so a job filled up here still accepts edits on `job_edit`.
     max_num = PHOTO_MAX_COUNT
 
 
@@ -100,8 +93,7 @@ class WorkOrderAdminForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # The job form's cap, not the column's 255: a longer description saved
-        # here would be refused the next time the job is opened on `job_edit`.
+        # The job form's cap, not the column's 255, so the job stays editable on `job_edit`.
         description = self.fields['description']
         description.max_length = DESCRIPTION_MAX_LENGTH
         description.validators.append(MaxLengthValidator(DESCRIPTION_MAX_LENGTH))
@@ -134,9 +126,8 @@ class WorkOrderAdmin(admin.ModelAdmin):
         super().save_model(request, obj, form, change)
 
     def save_formset(self, request, form, formset, change):
-        # A file swapped on a stored photo row: the admin's widget writes the
-        # column directly, so the old file would stay on disk. A row deleted
-        # here, or with its job, is covered by the post_delete receiver.
+        # A file swapped on a surviving row: the post_delete receiver can't see
+        # this case, so discard the old file here.
         if formset.model is JobPhoto:
             for photo_form in formset.forms:
                 if photo_form.instance.pk and 'file' in photo_form.changed_data:

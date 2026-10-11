@@ -1,10 +1,6 @@
 {% comment %}
-Page links for `page_obj`, carrying the filters along in `querystring`.
-
-`page_param` is the query parameter this table pages on, because a page can hold
-two independent tables — Stroje holds the machine usages and the fill-ups — and
-paging one has to leave the other where it was. `_paginated` supplies all three
-keys, and a page's second table includes this template with its own set of them.
+Page links for `page_obj`, keeping the filters (`querystring`). `page_param`
+lets Stroje's two tables page independently; `_paginated` supplies all three.
 {% endcomment %}
 {% if page_obj.has_other_pages %}
 <p>

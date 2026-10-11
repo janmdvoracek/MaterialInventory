@@ -133,13 +133,8 @@ class AdminLinkTests(TestCase):
 
 
 class AdminGateTests(TestCase):
-    """/admin/ is served only to a session that already belongs to an admin.
-
-    The deployment is a public VPS, so Django's own admin login form would be
-    the one page on the internet where guessing a password is worth the effort.
-    `AdminSessionRequiredMiddleware` 404s the whole prefix instead — including
-    /admin/login/, which is the point — leaving the app's own /login/, which
-    django-axes rate-limits, as the only login form there is.
+    """/admin/ (login page included) is a 404 unless the session is already an admin's, so the app's rate-limited
+    /login/ is the only login form on the internet.
     """
 
     def setUp(self):
@@ -203,13 +198,7 @@ class AdminGateTests(TestCase):
 
 
 class AdminIndexTests(TestCase):
-    """What the admin index does *not* offer.
-
-    The first two were dropped because they looked like features and were not:
-    one duplicated what the job page already edits, the other could not have any
-    effect at all. The third is kept out for a different reason — it would be
-    the only English in a Czech admin.
-    """
+    """Sections the admin index leaves out: line items (an inline), auth groups (unused), axes (no Czech)."""
 
     def setUp(self):
         self.admin_user = User.objects.create_superuser(username='admin', password='pw', role=User.Role.ADMIN)
@@ -288,11 +277,8 @@ class AdminUserListTests(TestCase):
 
 
 class AdminCzechTests(TestCase):
-    """The admin is Czech from three separate mechanisms, each of which fails
-    silently back to English: app `verbose_name`s, model/field `verbose_name`s,
-    and the `LOCALE_PATHS` catalog that patches strings Django itself has not
-    translated. The catalog is the fragile one — it is read from the compiled
-    .mo, so editing the .po without running `compilemessages` changes nothing.
+    """The admin is Czech through three mechanisms (app labels, model and field labels, the LOCALE_PATHS catalog),
+    each failing silently to English. The catalog is read from the compiled .mo, so a stale one fails here.
     """
 
     def setUp(self):
@@ -389,12 +375,7 @@ class RoleRequiredDecoratorTests(TestCase):
 
 
 class LoginRateLimitTests(TestCase):
-    """django-axes, configured to lock the *account* rather than the address.
-
-    The app is on the public internet and Django ships no brute-force
-    protection, so this is the one thing the old LAN perimeter was doing that
-    had to be replaced with code. The policy lives in `config/settings.py`.
-    """
+    """django-axes locks the *account*, not the address. The policy lives in `config/settings.py`."""
 
     def setUp(self):
         self.password = 'correct-horse-battery'

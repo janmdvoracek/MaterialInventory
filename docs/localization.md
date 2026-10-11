@@ -1,83 +1,33 @@
 # Localization
 
-The app is used by Czech depot workers and its interface is entirely in Czech.
-This is achieved two ways at once, and the split matters.
+The interface is entirely Czech, through three mechanisms:
 
 | Layer | Mechanism |
 |---|---|
-| **App copy** — labels, buttons, messages, choice labels | **Hardcoded Czech strings** in the source |
-| **Framework strings** — admin chrome, `contrib.auth`, validation errors | `LANGUAGE_CODE = 'cs'`, using the `.mo` catalogs Django ships |
-| **Framework strings Django never translated** | `LOCALE_PATHS` → `locale/cs/LC_MESSAGES/django.po`, holding Django msgids only |
+| App copy: labels, buttons, messages | **hardcoded Czech strings** in the source |
+| Django's own strings: admin, auth, validation errors | `LANGUAGE_CODE = 'cs'` and Django's shipped catalogs |
+| Django strings it never translated | `locale/cs/LC_MESSAGES/django.po`, holding Django msgids only |
 
-The three are complementary, not alternatives. `LANGUAGE_CODE` is what turns
-`This field is required.` into `Toto pole je vyžadováno.` without anyone writing
-it; hardcoding covers everything the app says in its own voice; the local
-catalog patches the dozen strings Django added faster than its Czech
-translators kept up with. See [the admin](#the-admin) below.
+> **Keep new UI text hardcoded.** Don't introduce `{% trans %}` or `gettext` for app copy. A half-migrated i18n setup is worse than either approach. Full i18n would be a deliberate project.
 
-> **Keep new user-facing text hardcoded.** Do not introduce `{% trans %}` or
-> `gettext` for app copy. A half-migrated i18n setup is worse than either
-> approach on its own: some strings move to `.po` files, most don't, and nobody
-> can tell which without checking. If full i18n is ever wanted, that is a
-> deliberate project, not something to start incidentally.
-
-`LocaleMiddleware` is **deliberately not installed**. The language is fixed, not
-negotiated from `Accept-Language`, so a worker with an English phone still gets
-a Czech app.
-
----
-
-The Czech locale has real consequences for numbers, dates, and forms. Read this
-section before touching any of them.
+`LocaleMiddleware` is not installed, so the language is fixed: an English phone still gets Czech.
 
 ## Numbers render with a comma
 
-`{{ row.hours }}` renders **`12,50`**, not `12.50`.
+`{{ row.hours }}` renders `12,50`, so tests asserting on rendered numbers need the comma.
 
-So tests asserting on rendered quantities must use the comma:
+**Form inputs are not localised.** Fields default to `localize=False`, so `<input type="number">` takes `12.50`, and a comma is rejected with „Zadejte číslo.". Leave it that way: `localize=True` turns the input into a text field and costs phone users the numeric keypad.
 
-```python
-self.assertContains(response, '12,50')  # correct
-self.assertContains(response, '12.50')  # will fail
-```
+**Code outside templates must localise itself:**
 
-**Form inputs are not localized.** Django form fields default to
-`localize=False`, so `NumberInput` still renders and accepts `value="12.50"`
-with a dot, and a comma typed into a `DecimalField` is rejected with
-`Zadejte číslo.`
+- The mass-balance error passes its totals through `formats.localize`.
+- The CSV exports use `number_format(value, decimal_pos=N)`. That comma is also why the files are `;`-delimited (Excel under `cs` splits on `;`), with a UTF-8 BOM so „Štěrk" isn't mojibake.
 
-Leave it that way. Setting `localize=True` would make the field accept commas,
-but it also downgrades the widget from `<input type="number">` to a plain text
-input — costing every mobile user their numeric keypad, on an app used almost
-entirely from phones. The current asymmetry is the better trade.
+## Dates
 
-**Anything rendered outside a template has to localize itself.** Templates do
-it for free; `str(value)` and f-strings do not. Two places in the app:
+Czech `DATE_INPUT_FORMATS` doesn't list ISO, but Django appends `%Y-%m-%d` to every locale, so `<input type="date">` values parse. Bound forms re-render the submitted string, so filters survive pagination.
 
-- The mass-balance error message (`_balance_error`) puts its totals through
-  `django.utils.formats.localize`, or it would report `9.5` in an app that
-  shows `9,5` everywhere else.
-- The summary CSV exports call `number_format(value, decimal_pos=N)` per cell.
-  That comma is also why the files are **`;`-delimited**: Excel under `cs`
-  splits a `.csv` on the locale's list separator, which is the semicolon, and a
-  comma decimal and a comma delimiter cannot share a file. The same files carry
-  a UTF-8 BOM, without which Excel opens „Štěrk" as mojibake. See
-  [architecture.md](architecture.md).
-
-## Dates still round-trip
-
-Czech `DATE_INPUT_FORMATS` is `%d.%m.%Y`-first and does not list ISO. Django
-appends `%Y-%m-%d` to every locale's list anyway, so the `<input type="date">`
-widgets on the filter forms parse normally. Bound forms re-render the raw
-submitted string, so filters survive pagination.
-
-The one trap: an **unbound** date field with a Python `date` as `initial`
-renders as `14.08.2026`, which `<input type="date">` rejects as invalid and
-displays blank — the pre-fill is lost with no error anywhere.
-
-One form does exactly this. `WorkOrderForm.performed_on` on the Transform form
-is pre-filled with today, and on `job_edit` with the job's own date, so its
-widget carries an explicit format:
+**The trap:** an *unbound* date field with a Python `date` as initial renders `14.08.2026`, which `<input type="date">` shows as blank. `WorkOrderForm.performed_on` is exactly that case, so its widget sets the format:
 
 ```python
 performed_on = forms.DateField(
@@ -86,129 +36,41 @@ performed_on = forms.DateField(
 )
 ```
 
-Any new pre-filled date field needs the same, and two tests in
-`PerformedOnTests` assert the rendered `value=` to catch it going missing.
+Any new pre-filled date field needs the same. `PerformedOnTests` asserts the rendered `value=`.
 
-## The clock in native pickers is the device's, not ours
-
-Everything the app renders is 24-hour: templates use an explicit `H:i` and Czech
-`TIME_FORMAT` is `G:i`.
-
-The app no longer renders an `<input type="datetime-local">` anywhere — it
-existed only for the back-dating checkbox on Příjem and Výdej, and went with
-them. It is recorded here because the caveat returns with the widget: browsers
-draw that control themselves and format it from the **browser or OS language**,
-so a Czech-configured phone shows 24h while an English-configured one shows
-AM/PM, and `lang="cs"` does not override it. The alternative — a text field
-taking `20.08.2026 07:30`, which Czech `DATETIME_INPUT_FORMATS` already parses —
-guarantees 24-hour but costs the tap-to-pick calendar on phones. That trade was
-settled in favour of the native control, the same way as `localize=False` on
-quantities above.
-
-## Keep explicit date formats in templates
-
-Timestamps use `|date:"Y-m-d H:i"`, which is locale-independent. A bare
-`{{ usage.created_at }}` would render `14. srpna 2026` instead.
-
-## Every `ModelChoiceField` needs an `empty_label`
-
-Django 6 defaults it to `- Select an option -`, which is **not a translatable
-string**. It renders in English even under `cs` and cannot be fixed by the
-locale — only by setting it explicitly.
-
-The wording depends on what a blank choice *means*:
-
-| Form type | Blank means | Wording |
-|---|---|---|
-| Transform formset rows | it *is* the label | `Materiál`, `Stroj`, `Pracovník` |
-| Filter (hours, machine usage) | "don't filter by this" | `Všechny stroje`, `Všichni pracovníci`, `Všichni uživatelé` |
-
-The transform rows use the bare noun rather than a `Vyberte ...` prompt because
-each row renders its selects side by side with no room for a visible label, so
-the empty option is doing the labelling. Each number input on those rows carries
-a placeholder for the same reason — a bare unit (`t`, `mth`, `l`, `h`), because
-`app.css` sizes those boxes to three characters and gives the rest of the row to
-the picker, whose names are long. The two tonnes boxes (`Množství (t)` and the
-machine row's `Tuny`, `class="tons"`) and the machine row's motohodiny
-(`class="mth"`, an hour-meter reading of four or five digits) are the
-exceptions, at five characters, and so is a collaborator's `h` (`class="hours"`),
-only so the workers row lines up with the tonnes boxes beneath it; the picker's basis is one character narrower
-to pay for it. The full name goes in `title`, which is both
-the desktop tooltip and, with no `<label>` on the row, the accessible name.
-
-`EmptyLabelTests` in `workorders/tests.py` fails if a new field forgets. `ModelMultipleChoiceField` — `collaborators`, for
-example — has no blank option and needs nothing.
+Templates use explicit formats (`|date:"Y-m-d H:i"`, 24-hour). A bare `{{ some_date }}` would render `14. srpna 2026`. The app has no `datetime-local` inputs; those show AM/PM on English phones regardless of `lang="cs"`.
 
 ## Time zones
 
-`USE_TZ` stays on, so **the database stores UTC**. `TIME_ZONE` affects only
-rendering. No filter depends on it: the date filters compare
-`WorkOrder.performed_on`, a `DateField` with no time and no zone, so a job
-recorded at 00:30 local cannot land on the previous UTC day the way a
-`created_at__date` lookup could.
+`USE_TZ` is on, so the database stores UTC and `TIME_ZONE` affects only rendering. The date filters compare `performed_on`, a plain `DateField`, so no job can slip to the previous UTC day. Python code formatting a datetime must call `timezone.localtime()`; nothing does today.
 
-Templates localize automatically. **Python code does not.** Anything formatting
-a datetime outside a template must call `timezone.localtime()` explicitly.
-Nothing does today: the summary CSV exports format decimals and put one
-`timezone.localdate()` in a filename, and a date carries no zone to get wrong.
+## Every `ModelChoiceField` needs an `empty_label`
+
+Django's default, `- Select an option -`, renders in English even under `cs`. Set it explicitly:
+
+| Form | A blank choice means | Wording |
+|---|---|---|
+| job-form rows | it *is* the label | `Materiál`, `Stroj`, `Pracovník` |
+| filters | "don't filter" | `Všechny stroje`, `Všechny materiály`, `Všichni pracovníci`, `Všichni uživatelé`, `Všechny lokace` |
+
+Row selects sit side by side with no visible labels, so the empty option does the labelling. For the same reason, the row number boxes carry a unit placeholder (`t`, `mth`, `l`, `h`) and the full name as `title`, which is also their accessible name.
+
+`EmptyLabelTests` fails if a field forgets. `ModelMultipleChoiceField` has no blank option and needs nothing.
 
 ## The admin
 
-The Django admin is Czech as well, and it takes three mechanisms to get there.
-A new model or ModelAdmin needs all three, or it will show English in one spot.
+A new model or `ModelAdmin` needs all three of these, or it shows English somewhere:
 
-**1. App labels.** Each `AppConfig` carries a `verbose_name` — `Materiály`, `Lokace`,
-`Stroje`, `Zakázky`, `Uživatelé`. Without it the admin index groups models under the
-Python package name. (Django's own `Autentizace a autorizace`
-section is gone as well — `auth.Group` is unregistered in `accounts/admin.py`,
-since this app never consults permissions.)
+1. **App labels.** `verbose_name` on each `AppConfig`: `Materiály`, `Stroje`, `Lokace`, `Zakázky`, `Uživatelé`. (`auth.Group` is unregistered, which removes Django's own section.)
+2. **Model and field names.** `verbose_name`/`verbose_name_plural` in every `Meta`, and a lowercase `verbose_name` on every field. Label changes need a migration (`AlterField`).
+3. **`LOCALE_PATHS`.** `locale/cs/LC_MESSAGES/django.po` supplies Django strings missing from its `cs` catalog: `- Select an option -`, the delete confirmation, the `date_hierarchy` label on `WorkOrderAdmin`, the user-add help text, and the screen-reader-only `Search %(name)s` / `Pagination %(name)s` headings. Django msgids only; never app strings.
 
-**2. Model and field names.** Every `Meta` sets `verbose_name` and
-`verbose_name_plural`, and every field sets a lowercase `verbose_name` (Django
-capitalizes it where it needs to). Note that this is a **migration**:
-`makemigrations` emits an `AlterField` for a label-only change, and CI's
-`makemigrations --check` step fails if it is not committed.
+**The runtime reads the compiled `.mo`.** Both files are committed. After editing the `.po`, run:
 
-**3. `LOCALE_PATHS`.** Some strings cannot be reached by either of the above,
-because they are Django's own and the `cs` catalogs Django ships have no entry
-for them — the msgid falls straight back to English no matter what
-`LANGUAGE_CODE` says. `locale/cs/LC_MESSAGES/django.po` supplies them:
+```bash
+python manage.py compilemessages -l cs --ignore=.venv
+```
 
-| String | Where it shows |
-|---|---|
-| `- Select an option -` | the blank option in every admin `<select>` |
-| `Filter by %(field_name)s` | the `date_hierarchy` bar on `WorkOrderAdmin`, the only admin that has one |
-| `Are you sure you want to delete the %(object_name)s …` | delete confirmation |
-| `After you’ve created a user, …` | the user add form |
-| `Search %(name)s`, `Pagination %(name)s` | screen-reader-only headings |
+Keep the `--ignore`, or it recompiles every catalog in the virtualenv. `AdminCzechTests` fails if the `.mo` is missing or stale.
 
-This is the one place the project uses the i18n framework. It stays narrow on
-purpose: **Django msgids only.** App copy is still hardcoded, and putting an
-app string in here would restart exactly the half-migrated split the rule above
-exists to prevent.
-
-> **The runtime reads the compiled `.mo`, not the `.po`.** Both are committed.
-> Editing the `.po` without recompiling changes nothing, silently:
->
-> ```bash
-> python manage.py compilemessages -l cs --ignore=.venv
-> ```
->
-> Keep the `--ignore`: `compilemessages` walks the tree from the project root
-> and will otherwise recompile every catalog inside the virtualenv too.
-
-`AdminCzechTests` in `accounts/tests.py` covers all three layers, and fails if
-the `.mo` is missing or stale — so a forgotten `compilemessages` is caught by
-CI rather than by a manager seeing English.
-
-### What LOCALE_PATHS cannot fix
-
-`filter_horizontal` builds its labels in JavaScript from the `djangojs` catalog,
-and the admin's `jsi18n` view loads only `django.contrib.admin`'s own locale
-directories — it ignores `LOCALE_PATHS` entirely. Three of those strings
-("Choose %s by selecting them and then select the "Choose" arrow button.") have
-no Czech translation, so the widget renders half-English.
-
-`WorkOrderAdmin` therefore uses the plain multi-select for `collaborators`,
-whose help text *is* translated. Don't reintroduce `filter_horizontal` without
-re-checking that.
+**`filter_horizontal` can't be translated.** Its labels come from the `djangojs` catalog, which ignores `LOCALE_PATHS`. `WorkOrderAdmin` therefore uses a plain multi-select for `collaborators`.

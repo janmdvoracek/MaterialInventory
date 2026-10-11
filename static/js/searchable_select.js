@@ -1,54 +1,32 @@
 /*
- * Type-to-narrow pickers for the job form's four dropdowns — spolupracovníci,
- * spotřebováno, vyrobeno and stroje.
+ * Type-to-filter pickers for the job form's four row sections.
  *
- * Progressive enhancement, on the same terms as job_rows.js. The `<select>`
- * stays in the DOM, keeps its name and its value, and is what the browser
- * posts; this file only hides it behind a text box that filters its options
- * and writes the chosen one back. With the script missing, blocked or broken
- * every row is the ordinary `<select>` it has always been, so nothing the
- * suite drives through `self.client` changes and no behaviour lives only here.
+ * Progressive enhancement: each row's <select> stays in the DOM, hidden, and is
+ * still what the form posts. Without this script the rows are plain selects.
  *
- * No choice is invented. The options, their labels, their order and the
- * `empty_label` that doubles as the row's placeholder all still come from
- * `workorders/forms.py` by way of the rendered `<select>`; the list is read
- * off it again every time it opens, which is also how the hiding job_rows.js
- * does for the no-duplicates rule is respected without the two scripts
- * knowing about each other. Writing the value back dispatches a `change`
- * event, so that hiding still runs when a pick is made here.
- *
- * Rows added by job_rows.js arrive as new children of the section, and a
- * MutationObserver enhances them — deliberately, rather than a call from the
- * other file, so neither script depends on the other being loaded first.
- * <template> contents are a separate document fragment and are not matched by
- * `querySelectorAll`, so the clone source is left as Django rendered it.
+ * Options, labels, order and the placeholder (the empty_label) are re-read from
+ * the <select> every time the list opens, so options job_rows.js hid as taken
+ * stay hidden here too. A pick dispatches `change` so job_rows.js re-hides it
+ * elsewhere. Rows job_rows.js adds are picked up by a MutationObserver, so
+ * neither script depends on the other.
  */
 (function () {
     'use strict';
 
-    // Every row of every section has exactly one <select> — materiál, stroj or
-    // pracovník. The rest of a row is number inputs.
+    // Every row has exactly one <select>; the rest are number inputs.
     var ROW_SELECT = '.item-row select';
 
-    // What the search box takes. It posts nothing, so no server rule backs
-    // this; it only stops a stray paste turning into a search nobody can read.
-    // A chosen label longer than this is still shown whole — `maxLength` limits
-    // typing, not a value set from script.
+    // Client-side only; the box posts nothing. Longer chosen labels still show whole.
     var SEARCH_MAX_LENGTH = 40;
 
-    /* Case- and diacritic-insensitive, because „ster" has to find „Štěrk" on a
-     * keyboard whose owner is in a hurry and „SKODA" has to find „Škoda". */
+    // Case- and diacritic-insensitive: „ster" finds „Štěrk".
     function fold(text) {
         var lower = text.toLowerCase();
         return lower.normalize ? lower.normalize('NFD').replace(/[\u0300-\u036f]/g, '') : lower;
     }
 
-    /* The real choices, in the order forms.py put them.
-     *
-     * The valueless first option is the `empty_label` — it is the row's only
-     * label, not something to pick, so it becomes the placeholder instead.
-     * Options job_rows.js hid because another row took them stay out, except
-     * this row's own, which it always keeps. */
+    // The pickable options: not the empty_label (that is the placeholder), and
+    // not ones hidden as taken by another row, except this row's own.
     function choices(select) {
         return Array.prototype.filter.call(select.options, function (option) {
             return option.value !== '' && (!option.hidden || option.value === select.value);
@@ -79,9 +57,7 @@
         select.parentNode.insertBefore(wrapper, select);
         wrapper.appendChild(select);
 
-        // An id but never a name: a name would post the search text with the
-        // form. The id is only there so the browser does not flag a form field
-        // with neither.
+        // An id (so Chrome doesn't flag the field) but never a name, which would post it.
         input.id = baseId + '-search';
         input.type = 'text';
         input.className = 'combo-input';
@@ -103,9 +79,7 @@
         wrapper.appendChild(input);
         wrapper.appendChild(list);
 
-        // Still submitted — `hidden` is not `disabled`. No author rule sets a
-        // `display` on select, so the UA stylesheet's `[hidden]` rule applies;
-        // app.css says it again anyway, next to the one for buttons that need it.
+        // Still submitted: `hidden` is not `disabled`.
         select.hidden = true;
 
         function setActive(index) {
@@ -123,8 +97,7 @@
             }
         }
 
-        // Presentation only: the <li>s mirror the <select>'s options, which
-        // stay the source of both the labels and the values.
+        // The <li>s only mirror the <select>'s options.
         function render(query) {
             var folded = fold(query);
             shown = choices(select).filter(function (option) {
@@ -221,10 +194,7 @@
                 input.value = labelOf(select);
                 close();
             } else if (event.key === 'Tab' && !list.hidden && active >= 0) {
-                // Half-typed and tabbing on: take the highlighted row, which is
-                // what the list has been showing as the answer all along. An
-                // emptied box means the opposite — the row is being blanked —
-                // and an untouched one has nothing to commit.
+                // Tabbing away from a half-typed box takes the highlighted option.
                 if (input.value.trim() !== '' && input.value !== labelOf(select)) {
                     commit(active);
                 }
@@ -248,8 +218,7 @@
             if (wrapper.contains(event.relatedTarget)) {
                 return;
             }
-            // An emptied box is how a row is blanked again; anything else
-            // half-typed reverts, so the box never disagrees with the select.
+            // An emptied box blanks the row; anything else half-typed reverts.
             if (input.value.trim() === '') {
                 assign('');
             }
@@ -257,8 +226,7 @@
             close();
         });
 
-        // Nothing else writes to the select today, but the box must never be
-        // able to show something the form would not post.
+        // Keep the box in step with whatever the form would post.
         select.addEventListener('change', function () {
             input.value = labelOf(select);
         });
@@ -285,9 +253,7 @@
 
     Array.prototype.forEach.call(document.querySelectorAll('[data-job-section]'), function (section) {
         enhanceAll(section);
-        // job_rows.js inserts a row as a direct child of the section, so there
-        // is no need to watch the subtree — and watching it would mean a record
-        // for every <li> this file renders.
+        // New rows are direct children, so the subtree (and every <li> here) isn't watched.
         new MutationObserver(function (records) {
             records.forEach(function (record) {
                 Array.prototype.forEach.call(record.addedNodes, function (node) {

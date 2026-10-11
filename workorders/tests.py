@@ -686,11 +686,7 @@ class WorkOrderAdminTests(TestCase):
 
 
 class PerformedOnTests(TestCase):
-    """The date a job was actually done, as opposed to when it was typed in.
-
-    The checkbox is what decides: unticked, the form fills in today whatever is
-    sitting in the date box, so a stale value cannot silently back-date a job.
-    """
+    """The day a job was done (`performed_on`), as opposed to when it was typed in."""
 
     def setUp(self):
         self.material_raw = Material.objects.create(sku='RAW', name='Štěrk')
@@ -791,12 +787,7 @@ class PerformedOnTests(TestCase):
 
 
 class RecordingForSomeoneElseTests(TestCase):
-    """A manager or admin can type a job in on a worker's behalf.
-
-    The job is then the *worker's* — their name on it, their hours, their line
-    items — while the manager stays the reviewer. Only the review status follows
-    the person at the keyboard.
-    """
+    """A manager can record a job for a worker: it becomes the worker's job, while approval follows the manager."""
 
     def setUp(self):
         self.material_raw = Material.objects.create(sku='RAW', name='Štěrk')
@@ -907,11 +898,9 @@ class RecordingForSomeoneElseTests(TestCase):
 
 
 class ReportsUsePerformedOnTests(TestCase):
-    """Every report keys off the day the work happened, not the day it was typed.
+    """Every report keys off `performed_on`.
 
-    The two dates are deliberately far apart in these fixtures: a job entered
-    today for work done 40 days ago must land in last month's figures and stay
-    out of this week's, on all three pages.
+    Fixtures date the work 40 days before it was typed in, so it must land in last month's figures, not this week's.
     """
 
     def setUp(self):
@@ -1425,9 +1414,7 @@ class MachineUsageDetailTests(TestCase):
 class MaterialDashboardTests(TestCase):
     """Materiál: per-material tonnage and the line items behind it.
 
-    The jobs are built directly rather than posted through the form, so a row
-    can be back-dated or left unapproved without fighting the mass balance —
-    which the form enforces and which is covered by its own tests.
+    Jobs are built directly, so rows can be back-dated or left pending without fighting the mass balance.
     """
 
     def setUp(self):
@@ -1579,11 +1566,9 @@ class TimeWorkedTests(TestCase):
     def _job(
         self, creator, hours, collaborators=(), machine_hours=None, machine=None, status=WorkOrder.Status.APPROVED
     ):
-        """A job with `hours` of labour by `creator`, plus `(user, hours)` pairs
-        for anyone who worked it alongside them. `machine_hours` is machine
-        runtime, which is a separate figure and must not reach this tab.
-
-        Approved by default: this tab reports signed-off jobs only."""
+        """A job with `hours` of labour by `creator`, plus `(user, hours)` collaborator pairs. `machine_hours` is
+        machine runtime and must not reach Hodiny. Approved by default.
+        """
         work_order = WorkOrder.objects.create(created_by=creator, description='job', status=status)
         if hours is not None:
             WorkerHours.objects.create(work_order=work_order, user=creator, hours=hours)
@@ -1750,14 +1735,8 @@ class TimeWorkedTests(TestCase):
 
 
 class TableExportTests(TestCase):
-    """The „Stáhnout do CSV / Excelu" download under each exported table.
-
-    Three summaries — „Souhrn" on Hodiny, „Stav strojů", „Souhrn materiálů" —
-    and one detail table, Materiál's „Detail položek". Three things to hold:
-    the file opens in Excel on a Czech machine (BOM, semicolons, comma
-    decimals), it carries exactly the table the filter was showing, and it is
-    gated like the page it hangs off — a worker must not be able to fetch a
-    report the page itself would refuse them.
+    """The CSV downloads: Excel-ready under `cs` (BOM, `;`, comma decimals), exactly the filtered table, and gated
+    like their page.
     """
 
     def setUp(self):
@@ -2054,11 +2033,7 @@ class TableExportTests(TestCase):
 
 
 class EmptyLabelTests(TestCase):
-    """Django 6 defaults a `ModelChoiceField`'s blank option to `- Select an
-    option -`, which is not a translatable string and so renders English even
-    under `cs`. Every such field therefore sets `empty_label` by hand, and this
-    fails if a new one forgets.
-    """
+    """Every `ModelChoiceField` sets `empty_label`; Django's default renders in English under `cs`."""
 
     DJANGO_DEFAULT = '- Select an option -'
 
@@ -2302,13 +2277,7 @@ class JobReviewTests(ReviewFixtureMixin, TestCase):
 
 
 class MyJobsTests(ReviewFixtureMixin, TestCase):
-    """The list of their own recent submissions at the top of Hodiny.
-
-    A job is never handed back to its author, and a pending one is filtered out
-    of every report, so this list is the only feedback a worker gets about what
-    became of what they recorded — and Hodiny is the page the hours it is
-    holding back are missing from.
-    """
+    """A worker's recent submissions at the top of Hodiny: their only feedback on review."""
 
     def test_author_sees_their_own_pending_job(self):
         work_order = self.submit_job(self.worker)
@@ -2656,11 +2625,7 @@ class JobDeleteTests(ReviewFixtureMixin, TestCase):
 
 
 class AdminJobDeleteTests(ReviewFixtureMixin, TestCase):
-    """The admin deletes a job with everything on it, like `job_delete` does.
-
-    The line items' FK used to be PROTECT, so the admin refused to delete any
-    job that had materials — every real job — on both of its delete paths.
-    """
+    """The admin deletes a job with all its rows, like `job_delete`, on both of its delete paths."""
 
     def setUp(self):
         super().setUp()
@@ -2697,20 +2662,7 @@ class AdminJobDeleteTests(ReviewFixtureMixin, TestCase):
 class DuplicateRowTests(ReviewFixtureMixin, TestCase):
     """No section of the job form may name the same thing on two rows.
 
-    Two rows naming one material are two halves of a quantity that should have
-    been typed once; two rows naming one machine double it in the Stroje totals;
-    two rows naming one person used to be silently added together, because the
-    unique constraint on (work_order, user) would otherwise have failed the
-    write. In every case the repeated row carries nothing the first one does
-    not, and nobody reading the job back can tell what was meant.
-
-    Two halves are tested here: the rule (`clean()`, on the POST) and the help
-    (an unbound page does not offer what another row already took). The second
-    is presentation, and server-side it can only be as fresh as the last
-    render, which is exactly why the first exists. `job_rows.js` narrows the
-    same lists live as the dropdowns change, but it is enhancement and the
-    suite runs no browser, so everything below is the server's own behaviour —
-    the half that has to be right whether or not the script loads.
+    Covers the rule (`clean()` on POST) and the server-side hiding of taken choices on unbound renders.
     """
 
     def _submit(self, **kwargs):
@@ -2940,18 +2892,9 @@ class DuplicateRowTests(ReviewFixtureMixin, TestCase):
 
 
 class RowButtonTests(ReviewFixtureMixin, TestCase):
-    """„+ další řádek" and „− odebrat řádek" resize one section of the job form.
+    """„+ další řádek" / „− odebrat řádek" resize one section through a server round-trip.
 
-    A formset renders a fixed number of rows, so before these the form was a hard
-    cap on what could be recorded: a job crushing one input into four fractions
-    did not fit, and the mass balance meant it could not be split across two
-    submissions either. Each button posts the form back under `add_<prefix>` or
-    `remove_<prefix>` and the view re-renders it unbound, one row bigger or
-    smaller in that section.
-
-    Unbound is what most of this asserts. Asking for a different number of rows
-    is not submitting the form, so the page has to come back carrying what was
-    typed and complaining about nothing.
+    The rebuilt page is unbound: it keeps what was typed and shows no errors.
     """
 
     def _press(self, button, url=None, consumed=None, produced=None, **overrides):
@@ -3011,13 +2954,7 @@ class RowButtonTests(ReviewFixtureMixin, TestCase):
         self.assertContains(response, f'value="{self.material_raw.pk}" selected')
 
     def test_the_date_comes_back_as_iso_rather_than_czech(self):
-        """`<input type="date">` reads only ISO, and `cs` formats dates `05.09.2026`.
-
-        The rebuilt form is unbound, which is the case
-        `WorkOrderForm.performed_on` carries an explicit `format` for — here the
-        initial is the raw POST string, which passes through untouched. A
-        regression shows up as a silently blank date box, not as an error.
-        """
+        """`<input type="date">` reads only ISO; a regression shows as a silently blank date box."""
         self.client.force_login(self.worker)
         today = timezone.localdate().isoformat()
         response = self._press('add_machines', performed_on=today)
@@ -3045,12 +2982,7 @@ class RowButtonTests(ReviewFixtureMixin, TestCase):
         self.assertEqual(WorkOrder.objects.count(), 0)
 
     def test_the_collaborator_list_follows_zapsat_za(self):
-        """The author decides who may be named, so growing has to resolve it.
-
-        A manager recording for a worker must not get their own name back in the
-        list — and a collaborator already picked would drop off the re-rendered
-        row if the queryset it belongs to changed underneath it.
-        """
+        """The author decides who may be named, so the rebuild must resolve „Zapsat za" first."""
         self.client.force_login(self.manager)
         response = self._press('add_workers', author=str(self.worker.pk))
         choices = response.context['worker_formset'].forms[0].fields['user'].queryset
@@ -3106,10 +3038,7 @@ class RowButtonTests(ReviewFixtureMixin, TestCase):
         self.assertEqual(response.context['order_form'].fields['hours'].label, f'Hodiny – {self.worker.username}')
 
     def test_enter_still_saves_rather_than_adding_a_row(self):
-        """A form is submitted through its *first* submit button when Enter is
-        pressed in a text field. „+ další řádek" comes before the real button,
-        so both pages open their <form> with an off-screen decoy that posts no
-        name — without it, Enter in Popis would add a collaborator row."""
+        """Enter submits through the first submit button, so a decoy must precede „+ další řádek"."""
         self.client.force_login(self.worker)
         body = self.client.get(reverse('transform_create')).content.decode()
         self.assertLess(body.index('visually-hidden'), body.index('name="add_workers"'))
@@ -3144,15 +3073,7 @@ class RowButtonTests(ReviewFixtureMixin, TestCase):
         self.assertEqual(len(response.context['consumed_formset'].forms), MIN_ROWS_PER_SECTION)
 
     def test_the_remove_button_is_hidden_on_a_section_down_to_one_row(self):
-        """Rendered `hidden`, not left out: `job_rows.js` toggles it back when
-        it grows the section, so the element has to be there to toggle.
-
-        With the script off this is the same experience as omitting it — the
-        UA stylesheet hides `[hidden]` and nothing in app.css sets a `display`
-        on `.row-controls button` to override that. The floor itself is
-        `_resized_section`'s, not this attribute's; see
-        `test_the_last_row_is_never_removed`.
-        """
+        """Rendered `hidden`, not omitted, so `job_rows.js` can unhide it. The view enforces the floor itself."""
         self.client.force_login(self.worker)
         # Two machine rows, so that section still has one to spare and its own
         # button stays up — hiding is per section, not per page.
@@ -3203,16 +3124,9 @@ class RowButtonTests(ReviewFixtureMixin, TestCase):
 
 
 class RowTemplateTests(ReviewFixtureMixin, TestCase):
-    """The contract `static/js/job_rows.js` clones a row from.
+    """The contract `static/js/job_rows.js` reads off the page.
 
-    The script itself is not tested and cannot be: the suite drives views
-    through `self.client` and there is no browser runner in this project, which
-    is exactly why the server round-trip above stays and why the script is only
-    ever an enhancement on top of it. What *is* testable is everything the
-    script reads off the page, and that is what breaks silently — a renamed
-    attribute or an `empty_form` that stopped receiving its `form_kwargs` makes
-    „+ další řádek" quietly stop adding rows, or add ones with the wrong
-    dropdown, with nothing failing anywhere.
+    The script itself is untested (there is no browser runner), so a broken contract would fail silently.
     """
 
     def _page(self, user=None):
@@ -3307,26 +3221,15 @@ class RowTemplateTests(ReviewFixtureMixin, TestCase):
             self.assertNotIn('https://', source, name)
 
     def test_the_stylesheet_actually_hides_a_hidden_button(self):
-        """`button, .btn` sets a `display`, and an author rule beats the UA
-        stylesheet's `[hidden] { display: none }` at any specificity — so
-        without an explicit rule the `hidden` on „− odebrat řádek" does
-        nothing and a section down to one row renders a button that cannot
-        lawfully do anything. It was broken exactly that way once; the browser
-        is the only place it shows, so this stands in for looking.
+        """`button, .btn` sets a `display`, which beats the UA `[hidden]` rule, so app.css must hide `button[hidden]`
+        explicitly.
         """
         css = (settings.BASE_DIR / 'static' / 'css' / 'app.css').read_text(encoding='utf-8')
         self.assertRegex(css, r'button\[hidden\][^{]*\{[^}]*display:\s*none')
 
 
 class SearchablePickerTests(ReviewFixtureMixin, TestCase):
-    """The contract `static/js/searchable_select.js` reads off a row.
-
-    Like job_rows.js it is enhancement and, for the same reason, untested in
-    itself: there is no browser runner here. What it reads off the page is
-    testable, and it is what breaks silently — the script hides each row's
-    `<select>` behind a text box, so a row that stopped matching its
-    assumptions loses its picker altogether rather than raising anywhere.
-    """
+    """The contract `static/js/searchable_select.js` reads off a row; the script itself is untested."""
 
     def _page(self):
         self.client.force_login(self.worker)
@@ -3363,10 +3266,7 @@ class SearchablePickerTests(ReviewFixtureMixin, TestCase):
             self.assertContains(response, f'id="id_{prefix}-0-{field}"')
 
     def test_the_stylesheet_carries_the_picker_rules(self):
-        """The list is absolutely positioned against `.combo`; without the
-        stylesheet it renders as a bullet list pushing the rows below it down,
-        and the hidden select reappears under it. The browser is the only place
-        that shows, so this stands in for looking."""
+        """Without these rules the list renders inline, pushing the rows down, and the hidden select reappears."""
         css = (settings.BASE_DIR / 'static' / 'css' / 'app.css').read_text(encoding='utf-8')
         self.assertRegex(css, r'\.combo\s*\{[^}]*position:\s*relative')
         self.assertRegex(css, r'\.combo-list\s*\{[^}]*position:\s*absolute')
@@ -3374,14 +3274,9 @@ class SearchablePickerTests(ReviewFixtureMixin, TestCase):
 
 
 class PhotoPickerTests(ReviewFixtureMixin, TestCase):
-    """The contract `static/js/photo_picker.js` reads off the „Fotky" block.
+    """The contract `static/js/photo_picker.js` reads off the „Fotky" block; the script itself is untested.
 
-    The script hides the camera and gallery inputs behind one button cloned
-    from a <template>, and lists every pick in entries cloned from a second
-    one; like the other two scripts it is untested in itself. What it finds on
-    the page is testable, and a mismatch fails silently — the script returns
-    early and the two inputs stay — or worse, as a menu button that submits
-    the job.
+    A mismatch fails silently, or makes a menu button submit the job.
     """
 
     def _pages(self):
@@ -3439,17 +3334,10 @@ class PhotoPickerTests(ReviewFixtureMixin, TestCase):
 
 
 class NumberBoxWidthTests(TestCase):
-    """Row number boxes are three characters wide; tonnes, motohodiny and hours five.
+    """Row number boxes are three characters wide; `.tons`, `.mth` and `.hours` are five, and the picker's basis one
+    narrower.
 
-    Tonnage runs to five digits, and motohodiny are the machine's hour-meter
-    reading, which is four or five; a collaborator's hours match them so the
-    workers row lines up with the tonnes boxes. The width is CSS keyed off a
-    `tons` / `mth` / `hours` class, so both halves are pinned: the inputs carry
-    their class on every row, `<template>` rows included (`job_edit` renders
-    the same widgets through the same partial), and the stylesheet gives all
-    three five characters —
-    with the picker's basis one character down, so the machines row stays as
-    wide as it was.
+    Pins both the class on every row (templates included) and the CSS rules.
     """
 
     def test_wide_inputs_carry_their_class(self):
@@ -3483,15 +3371,10 @@ class NumberBoxWidthTests(TestCase):
 
 
 class ThemeTokenTests(TestCase):
-    """Dark mode is a second set of values for one set of names.
+    """Every colour token is declared in both the light and dark blocks of app.css, every `var()` names a declared
+    token, and no colour literal appears below them.
 
-    Every colour in `static/css/app.css` is a custom property declared twice:
-    once in `:root` and once in the `prefers-color-scheme: dark` override. The
-    failure mode is silent both ways round. A token declared only in the light
-    block keeps its light value on a dark screen, and a mistyped `var()` name
-    resolves to nothing at all; neither raises, and neither shows up in any
-    test that drives a view, because the stylesheet is an external file that
-    the test client never fetches or parses.
+    These failures are silent in the browser and invisible to view tests.
     """
 
     # The brand green is the same colour in both themes on purpose, and the
@@ -3600,16 +3483,9 @@ class StockMovementWorkOrderTests(StockMovementTestCase):
 
 
 class RetiredCatalogOnEditTests(ReviewFixtureMixin, TestCase):
-    """A job that names a material or machine retired *after* it was recorded
-    stays editable, and editing it does not quietly throw the row away.
+    """A job naming a since-retired material or machine stays editable, and saving it keeps the row.
 
-    The row pickers are scoped to the active catalog so a retired record cannot
-    land on a new job. That scoping used to apply to `job_edit` as well, where
-    the stored pk is not in the queryset: the select rendered with nothing
-    chosen, and saving the form as rendered posted an empty row. A machine usage
-    was deleted outright and the edit still reported success; a consumed row took
-    the whole job into a mass-balance error that no edit could clear, which made
-    the job permanently uneditable.
+    Otherwise the picker renders blank and saving deletes the row, or leaves the job stuck behind a balance error.
     """
 
     def _retire(self, record):
@@ -3738,12 +3614,7 @@ class RowErrorVisibilityTests(ReviewFixtureMixin, TestCase):
 
 
 class ErrorBannerTests(ReviewFixtureMixin, TestCase):
-    """A refused job also says so at the top, in the red `messages` banner.
-
-    The field errors sit beside their fields, often a long scroll down a phone,
-    and a page that simply comes back without the green message was easy to read
-    as „it probably went through".
-    """
+    """A refused job also gets a red banner at the top, since field errors may be far down a phone screen."""
 
     def _payload(self, **overrides):
         payload = job_payload(
@@ -3818,13 +3689,7 @@ class ErrorBannerTests(ReviewFixtureMixin, TestCase):
 
 
 class DescriptionAndNotesTests(ReviewFixtureMixin, TestCase):
-    """„Popis" is required, „Poznámky" is optional and holds a paragraph.
-
-    Both render on the shared partial, so both pages get them at once; the
-    required one has to be refused with a message rather than stored blank. The
-    one submission „Popis" is not asked of is a fuel-only job, which has no work
-    to label — see MachineRefuelTests.
-    """
+    """„Popis" is required (except on a fuel-only job); „Poznámky" is optional."""
 
     def _submit(self, url=None, **overrides):
         payload = job_payload(
@@ -3916,14 +3781,8 @@ class DescriptionAndNotesTests(ReviewFixtureMixin, TestCase):
 
 
 class ValueLimitTests(ReviewFixtureMixin, TestCase):
-    """Every number box on the job form has an upper bound, rendered and enforced.
-
-    `WORKER_HOURS_MAX`, `METER_READING_MAX`, `TONS_MAX` and `LITRES_MAX` in
-    `workorders/forms.py`. Each goes out as the input's `max`, so a phone
-    refuses an extra digit before posting, and the field refuses it again for
-    a browser that did not. All four sit far inside the decimal(12, 2) columns,
-    which is what keeps an oversized value a field error rather than a
-    `numeric field overflow` 500. The admin's inlines repeat them.
+    """Every job-form number box has an upper bound, rendered as `max` and enforced, keeping values inside the
+    decimal(12, 2) columns. The admin inlines repeat them.
     """
 
     def _payload(self, quantity='5', **overrides):
@@ -4019,14 +3878,10 @@ class ValueLimitTests(ReviewFixtureMixin, TestCase):
 
 
 class MachineRefuelTests(ReviewFixtureMixin, TestCase):
-    """Fuel is a fourth record type, in its own table, on the machines section.
+    """Fuel on the machines section.
 
-    Three things to hold. Only the machine is required: motohodiny and tuny are
-    each optional, litres stand alone, and one row can carry all three.
-    A submission that is nothing but fill-ups is a whole valid job, which means
-    it is exempt from the mass balance and from the two job fields every other
-    job must answer. And `job_edit` has to put both halves back on one row per
-    machine, because the section refuses a machine twice.
+    Only the machine is required; a fuel-only submission is a valid job, exempt from the mass balance and the work
+    fields; `job_edit` merges usage and fuel back into one row per machine.
     """
 
     def _submit(self, machine_rows, url=None, **overrides):
@@ -4546,22 +4401,10 @@ class MachineRefuelReportTests(TestCase):
 
 
 class JobPhotoTests(ReviewFixtureMixin, TestCase):
-    """„Fotky": any number of optional uploads per job, stored outside the public tree.
+    """„Fotky": optional photos on a job.
 
-    Five things to hold. The uploads only arrive if both callers of the shared
-    partial are multipart, so the enctype is asserted rather than assumed. A
-    new photo is always *added* — from the camera or the gallery, one or
-    several, on a new job or on `job_edit` — and only a ticked „Odebrat" takes
-    one away; an edit that sends no file keeps them all, because a browser
-    cannot re-send one. The files are never public — they go out through
-    `protected_media`, gated like the job page they appear on. And a file dies
-    with the row it belongs to, which Django does not do on its own — through
-    the post_delete receiver, whichever way the row goes, and `save_formset` in
-    the admin, which can swap a row's file through a widget of its own.
-
-    And what is stored is never the upload itself: every photo, from either
-    form, is decoded and re-encoded as a JPEG of at most `PHOTO_MAX_SIDE`, so
-    the fixture has to be a real picture rather than a few bytes named `.jpg`.
+    Both callers are multipart; photos are only ever added and removed only via „Odebrat"; files are never public and
+    are deleted with their row; every upload is re-encoded, so fixtures are real images.
     """
 
     @classmethod
@@ -5032,11 +4875,8 @@ class JobPhotoTests(ReviewFixtureMixin, TestCase):
 
 
 class LocationTests(ReviewFixtureMixin, TestCase):
-    """Where a job was worked: a catalog managed in the admin, one per job.
-
-    A label, not a stock location — nothing balances per location. Required on
-    every job that records work, and exempt on a fuel-only one exactly like
-    „Popis" and „Moje hodiny". Shown and filtered on Přehled and Materiál.
+    """One location per job: a label, required on work jobs, exempt on fuel-only ones, shown and filtered on Přehled
+    and Materiál.
     """
 
     def setUp(self):

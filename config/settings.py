@@ -61,11 +61,8 @@ MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
-    # 404s /admin/ unless the session is an admin's, so the admin login form is
-    # never served on the public internet. Below SessionMiddleware, which it
-    # reads the user through, and deliberately *above* CommonMiddleware, whose
-    # APPEND_SLASH would otherwise 301 /admin to /admin/ and confirm the admin
-    # is there. It resolves the user itself; see the module docstring.
+    # 404s /admin/ for non-admins. Must sit above CommonMiddleware, whose
+    # APPEND_SLASH would 301 /admin to /admin/ and reveal the admin.
     'accounts.middleware.AdminSessionRequiredMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -189,12 +186,8 @@ STATIC_URL = 'static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
-# Uploaded job photos, and nothing else. Unlike STATIC_ROOT this is *not* served
-# by whitenoise and must not be: a job photo is company data, and everything
-# under /static/ is unauthenticated to the internet. It goes out through
-# `workorders.views.protected_media`, which is what MEDIA_URL routes to, so
-# `JobPhoto.file.url` resolves in the admin and on the job page alike. In production the
-# directory is a Docker volume, or every deploy would take the photos with it.
+# Job photos only. Never served by whitenoise or the proxy: MEDIA_URL routes to
+# `workorders.views.protected_media`. A Docker volume in production.
 MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 

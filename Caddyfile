@@ -1,5 +1,5 @@
 # Reverse proxy and TLS for the production stack. Bind-mounted, so edits need
-# only `up -d proxy`, not a rebuild.
+# `up -d --force-recreate proxy`, not a rebuild.
 #
 # Caddy issues and renews the certificate itself, as long as port 80 stays open
 # and the `caddy_data` volume survives (Let's Encrypt allows 5 certificates per
@@ -18,21 +18,14 @@
 
 	encode zstd gzip
 
-	# The job form takes several photos at once, so a request body is no longer
-	# a few hundred bytes. Above the form's own 20 MB cap on one submission's
-	# photos together (PHOTO_MAX_TOTAL_BYTES, each photo also capped at 10 MB),
-	# so a batch the form refuses comes back as the app's Czech field error
-	# rather than as Caddy's 413; this is only the backstop that keeps a
-	# hostile upload off the disk.
+	# Backstop for photo uploads. Keep it above the form's 20 MB per-submission
+	# cap (PHOTO_MAX_TOTAL_BYTES), so oversize batches get a Czech error, not a 413.
 	request_body {
 		max_size 25MB
 	}
 
-	# OPTIONAL, and a second layer rather than the only one: the app already
-	# 404s /admin/ for anyone not logged in as an admin
-	# (accounts/middleware.py::AdminSessionRequiredMiddleware). This restricts
-	# the prefix to known addresses on top of that — replace the `reverse_proxy`
-	# line above with this block (`route` keeps the order written).
+	# OPTIONAL extra layer: the app already 404s /admin/ for non-admins. To also
+	# restrict it to known addresses, replace `reverse_proxy` above with this.
 	#
 	# route {
 	# 	@admin_denied {

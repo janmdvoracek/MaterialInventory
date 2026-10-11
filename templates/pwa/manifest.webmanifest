@@ -1,13 +1,7 @@
 {% load static %}{% comment %}
-The web app manifest, rendered by workorders/pwa.py::manifest. A template
-rather than a file under static/ so the icon URLs go through {% static %} and
-come out hashed in production like every other asset, and start_url through
-{% url %}.
-
-theme_color is the light-scheme `theme-color` meta in base.html, which is
---chrome-bg in app.css; PwaTests holds the two together. The manifest has one
-theme_color, so the dark-scheme meta in base.html is what a dark phone shows
-once the page has loaded.
+Rendered by workorders/pwa.py::manifest, so icon URLs are hashed via
+{% static %}. theme_color matches the light theme-color meta in base.html
+(--chrome-bg); PwaTests checks it.
 {% endcomment %}{
     "id": "{% url 'transform_create' %}",
     "name": "VyrobaPK",

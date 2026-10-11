@@ -26,10 +26,7 @@ from .reports import _list_page_context
 class JobRows(NamedTuple):
     """Everything one submission records, split the way the tables are.
 
-    `usages` and `refuels` both come off the machines section: a row carrying
-    litres is a `MachineRefuel`, and every other row naming a machine — one
-    with motohodiny or tuny, or with nothing beside the machine at all — is a
-    `MachineUsage`, so one row can be both or either (see `MachineUsageForm`).
+    One machines-section row can yield a usage, a refuel or both (see `MachineUsageForm`).
     """
 
     consumed: list
@@ -63,10 +60,7 @@ def _refuel_only(row):
 def _is_fuel_only(rows):
     """True when the submission records nothing but fill-ups.
 
-    Such a job has no consumed and produced totals to balance, nobody's hours to
-    record and no work to label, so the mass balance and the two otherwise
-    required job fields are not asked of it. It is still an ordinary
-    `WorkOrder`: dated, reviewed and listed like any other.
+    Such a job is exempt from the mass balance and from `WORK_FIELDS`.
     """
     return bool(rows.refuels) and not (rows.consumed or rows.produced or rows.usages or rows.worker_hours)
 
@@ -76,11 +70,7 @@ WORK_FIELDS = ('location', 'description', 'hours')
 
 
 def _require_work_fields(order_form):
-    """Put Django's own "required" complaint on any of `WORK_FIELDS` left empty.
-
-    Reuses each field's own message rather than a hardcoded Czech string, so it
-    comes from the same catalog as every other required field on the page.
-    """
+    """Put each field's own "required" message on any of `WORK_FIELDS` left empty."""
     for name in WORK_FIELDS:
         if order_form.cleaned_data.get(name) in (None, ''):
             # code='required' so `_form_error_summary` counts it with the rest.
@@ -89,19 +79,13 @@ def _require_work_fields(order_form):
             )
 
 
-# The field errors render beside their fields, well down a long form on a phone,
-# where they are easy to miss; without a banner at the top, a page that came back
-# without the green success message still reads as "probably sent".
+# A banner at the top: field errors far down a phone screen are easy to miss.
 REQUIRED_FIELDS_MESSAGE = 'Vyplňte prosím všechna povinná pole.'
 FORM_ERRORS_MESSAGE = 'Formulář obsahuje chyby, opravte prosím vyznačená pole.'
 
 
 def _form_error_summary(order_form, formsets):
-    """The banner for a job page that failed validation.
-
-    A missing required field gets its own wording, since it is the common case;
-    any other field, row or section error gets the general one.
-    """
+    """The banner for a refused job page: the required-field wording if any error is `required`."""
     forms = [order_form, *(form for formset in formsets.values() for form in formset.forms)]
     if any(error.code == 'required' for form in forms for errors in form.errors.as_data().values() for error in errors):
         return REQUIRED_FIELDS_MESSAGE
@@ -124,14 +108,10 @@ def _balance_error(consumed_rows, produced_rows):
 
 
 def _apply_photos(work_order, cleaned_data):
-    """Drop the stored photos ticked „Odebrat", then add every new one.
+    """Delete the stored photos ticked „Odebrat", then add every new one.
 
-    Call inside `transaction.atomic()`. New photos are added, never swapped
-    for a stored one: a pick is one more `JobPhoto`, and nothing but a ticked
-    box takes a photo away — an edit that sends no file, which is every edit,
-    since a browser cannot re-send one, keeps them all. Each removed row's
-    file goes once the write commits, through the post_delete receiver (see
-    `models.discard_photo`).
+    Call inside `transaction.atomic()`. New photos never replace stored ones.
+    Files of removed rows are deleted on commit (`models.discard_photo`).
     """
     for photo in cleaned_data.get('remove_photos') or ():
         photo.delete()
@@ -178,8 +158,7 @@ def _write_job_rows(work_order, author, own_hours, rows):
         for row in rows.usages
     )
 
-    # Its own table, written from the same rows: a machine that was only
-    # refuelled has a fill-up here and nothing above.
+    # A machine that was only refuelled has a row here and none above.
     work_order.machine_refuels.all().delete()
     MachineRefuel.objects.bulk_create(
         MachineRefuel(work_order=work_order, machine=row['machine'], litres=row['litres']) for row in rows.refuels
@@ -336,9 +315,7 @@ def _valid_job_rows(request, order_form, formsets):
 def _job_context(order_form, formsets, **extra):
     """The job page's context: the job form, `sections` in render order, and each formset by name.
 
-    The two row bounds go out as well, so `job_rows.js` reads the floor and the
-    cap off the page instead of restating them, and so does the photo cap the
-    „Fotky" hint quotes.
+    The row bounds are rendered so `job_rows.js` reads them instead of restating them.
     """
     return {
         'order_form': order_form,
@@ -398,26 +375,16 @@ def _trim(value):
 
 @role_required(*REVIEWER_ROLES)
 def protected_media(request, path):
-    """Hand back an uploaded file, to the people who may see the job it belongs to.
+    """Serve an uploaded job photo (MEDIA_URL) behind `job_detail`'s gate.
 
-    MEDIA_ROOT is deliberately not served by the proxy or by whitenoise: a job
-    photo is company data, where everything under /static/ is unauthenticated to
-    the internet. Gunicorn serving the bytes costs a worker for the length of
-    one photo, which at depot volume is nothing next to publishing them.
-
-    The gate is `job_detail`'s, because job photos are the only thing under
-    MEDIA_ROOT — park anything with a different audience there and this needs
-    revisiting. It is also what MEDIA_URL points at, so `JobPhoto.file.url` resolves the
-    same on the job page and in the admin.
-
-    Traversal is the storage's business: `FileSystemStorage` joins through
-    `safe_join` and raises `SuspiciousFileOperation` on a path that climbs out.
+    MEDIA_ROOT is never served by the proxy or whitenoise, which would make the
+    photos public. The gate assumes job photos are all that live there.
+    `FileSystemStorage` rejects path traversal itself (`safe_join`).
     """
     try:
         stored = default_storage.open(path)
     except OSError:
-        # Missing, or a directory — a 404 either way, and one syscall rather
-        # than an exists() the file could be deleted out from under.
+        # Missing, or a directory.
         raise Http404 from None
     # Inline, and typed off the name, so the job page's link opens it in the browser.
     return FileResponse(stored, filename=path.rsplit('/', 1)[-1])
@@ -522,13 +489,10 @@ def job_edit(request, pk):
 
 
 def _machine_section_rows(usages, refuels):
-    """The machines section as the form takes it: one row per machine, runtime and fuel merged.
+    """The machines section as the form takes it: one row per machine, usage and fuel merged.
 
-    The two live in separate tables and either can be there without the other —
-    a fuel-only job has fill-ups and no usage — while the section refuses a
-    machine twice, so they are zipped back into one row each. Fill-ups are
-    summed for the same reason the duplicate message says to: only an admin edit
-    can put one machine on two of them, and one row is all there is to render.
+    Either table may hold a machine the other doesn't. Fill-ups are summed,
+    since only an admin edit can give one machine two of them.
     """
     rows = {}
     for usage in usages:

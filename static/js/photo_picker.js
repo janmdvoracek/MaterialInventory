@@ -1,32 +1,14 @@
 /*
- * One „Přidat fotku" button on the job form in place of two inputs, adding
- * every pick to a list instead of replacing the last one.
+ * One „Přidat fotku" button in place of the two photo inputs (camera and
+ * gallery), keeping every pick instead of replacing the last.
  *
- * The form takes its photos through two file inputs: `camera_photo`, which
- * carries `capture` and opens the camera, and `photo`, which opens the gallery
- * — Chrome and Opera on Android offer no camera from a bare `accept="image/*"`
- * input, and `capture` takes the gallery away (see WorkOrderForm in
- * workorders/forms.py). This file hides both behind one button whose menu
- * opens either.
+ * A file input holds one pick, so after each pick the filled input moves,
+ * hidden, into a list entry, and an empty clone takes its place. Moved inputs
+ * keep their names and are all posted. „Odebrat" removes an entry with its input.
  *
- * A file input holds one pick: open it again and the new pick replaces the
- * old. So after every pick the filled input is moved into the list under the
- * button and an empty copy of it takes its place, and the next shot lands in
- * the copy. The moved inputs keep their names, and the form reads every file
- * posted under a name, so each pick is posted. „Odebrat" beside a pick removes
- * its input, and with it the pick.
- *
- * Progressive enhancement, on the same terms as job_rows.js and
- * searchable_select.js. Every input stays in the form under its own name and
- * is what the browser posts — a hidden file input still submits its files, and
- * `click()` on it still opens the picker. With the script missing, blocked or
- * broken the page is the two labelled inputs it always was, and no view or
- * form knows this file exists.
- *
- * It builds no markup. The button, its menu, the list and a list entry are the
- * <template data-photo-picker> and <template data-photo-entry> in
- * _job_form_fields.html, so the Czech copy stays in the template with the rest
- * of the page's; the empty input is a copy of the server's own.
+ * Progressive enhancement: without this file the page shows the two inputs.
+ * The button, menu and entry markup come from the <template data-photo-picker>
+ * and <template data-photo-entry> in _job_form_fields.html.
  */
 (function () {
     'use strict';

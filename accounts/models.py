@@ -18,15 +18,7 @@ class User(AbstractUser):
 
     @property
     def has_admin_access(self):
-        """May this user open /admin/ at all?
-
-        Read by `accounts.middleware.AdminSessionRequiredMiddleware`, which 404s
-        the admin for everyone else, *and* by the header link in `base.html`, so
-        a visible „Administrace“ can never lead to a 404. `is_staff` is what
-        Django itself requires; the rest is this app's rule that only ADMIN-role
-        accounts administer it — superusers again excepted, since
-        `createsuperuser` never sets a role.
-        """
+        """May this user open /admin/? Read by `AdminSessionRequiredMiddleware` and the header link."""
         return self.is_active and self.is_staff and (self.is_superuser or self.role == self.Role.ADMIN)
 
     def __str__(self):

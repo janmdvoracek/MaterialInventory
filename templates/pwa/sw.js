@@ -1,13 +1,7 @@
 {% comment %}
-The service worker, rendered by workorders/pwa.py::service_worker and served
-at the site root so its scope covers every page. `version` changes whenever
-anything it caches does; see that view.
-
-It does one thing: when a page load fails for want of a network, it answers
-with the offline page instead of the browser's own error. Everything else goes
-to the network exactly as it would without it — no page is ever cached, no
-POST is ever intercepted, nothing is queued for later. A submission made
-offline fails the way it always did, and the browser's Back still has the form.
+Rendered by workorders/pwa.py::service_worker. It does one thing: answer a
+failed page load with the offline page. No other page is cached, no POST is
+intercepted, nothing is queued.
 {% endcomment %}'use strict';
 
 const CACHE = 'vyrobapk-offline-{{ version }}';
@@ -44,9 +38,7 @@ self.addEventListener('fetch', (event) => {
         );
         return;
     }
-    // The offline page's own stylesheet and logo, and only those, fall back to
-    // the cache — network first, so the cached copy is never what an online
-    // page gets.
+    // Only the offline page's own assets fall back to the cache, network first.
     const url = new URL(request.url);
     if (url.origin === self.location.origin && ASSETS.includes(url.pathname)) {
         event.respondWith(

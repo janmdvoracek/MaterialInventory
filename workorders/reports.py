@@ -45,11 +45,7 @@ DATE_PRESETS = (
 
 @role_required(*REVIEWER_ROLES)
 def machine_dashboard(request):
-    """Stroje: the filter, per-machine totals, the usage rows, and the fill-ups.
-
-    Two paginated tables, so each carries its own page parameter — see
-    `_paginated`. Both halves answer to the one filter card at the top.
-    """
+    """Stroje: one filter over per-machine totals, usage rows and fill-ups (two paginators)."""
     form, usages = _filtered_machine_usages(request)
     _, refuels = _filtered_machine_refuels(request)
     return render(
@@ -59,8 +55,7 @@ def machine_dashboard(request):
             'form': form,
             'machines': _machine_summary(usages, form),
             'refuel_machines': _refuel_summary(refuels, form),
-            # Sum returns None on an empty (or invalidly filtered) set; a fuel
-            # report totalling nothing has genuinely had nothing put in it.
+            # No fill-ups is a real zero.
             'refuel_total_litres': refuels.aggregate(total=Sum('litres'))['total'] or Decimal('0'),
             'fuel_page': _paginated(request, refuels, FUEL_PAGE_PARAM),
             **_list_page_context(request, usages),
@@ -71,15 +66,9 @@ def machine_dashboard(request):
 def _machine_costs(machine):
     """Set the three cost columns on one summary row, and return it.
 
-    An unset rate means unpriced (None), not free; zero hours with a rate is a
-    real 0. „Celkem" sums the priced sides and is None if any of them is
-    unknown, rather than understating the bill.
-
-    `filtered_hours` is hours *run* in range (see `_run_hours_by_machine`), not
-    the meter reading. It arrives as None both when the machine had no usage in
-    range — a real 0 h, set here — and when no usage it had has a known run
-    time (motohodiny left blank, or only the machine's first reading), which
-    stays None: unknown, like the tonnage.
+    An unset rate means unpriced (None), not free. „Celkem" sums the priced
+    sides and is None if any is unknown. `filtered_hours` (hours run) arriving
+    as None is a real 0 when the machine had no rows, and unknown otherwise.
     """
     if machine.filtered_hours is None and not machine.filtered_usages:
         machine.filtered_hours = Decimal('0')
@@ -89,8 +78,7 @@ def _machine_costs(machine):
     tons_cost = None
     if machine.rate_per_ton is not None and machine.filtered_tons is not None:
         tons_cost = machine.filtered_tons * machine.rate_per_ton
-    # Keyed off the rates: an unset rate drops its side, while a rate with
-    # unknown hours or tonnage keeps the side and makes the total unknown.
+    # An unset rate drops its side; a set rate with an unknown quantity makes the total unknown.
     priced_sides = [
         cost
         for rate, cost in ((machine.hourly_rate, hours_cost), (machine.rate_per_ton, tons_cost))
@@ -105,12 +93,9 @@ def _machine_costs(machine):
 def _machine_summary(usages, form):
     """Meter reading, hours run, tonnage and cost per machine over `usages`, as a list.
 
-    Every active machine is listed (0 h is an answer), or just the filtered one.
-    Motohodiny are the machine's hour-meter reading, so `filtered_reading` is
-    the highest one in range — a reading, not a sum, and None with no rows —
-    while `filtered_hours` is the hours run that the cost is priced on.
-    Hours or tons summing to None over rows that exist means unknown, not zero;
-    `filtered_usages` is what tells that apart from no rows (see `_machine_costs`).
+    Every active machine is listed, or just the filtered one. `filtered_reading`
+    is the highest reading (never a sum); `filtered_hours` is hours run, which
+    the cost prices.
     """
     if form.is_bound and not form.is_valid():
         return []
@@ -142,17 +127,12 @@ def _run_hours_by_machine(usages):
 
 
 def _with_run_hours(usages):
-    """Annotate each usage with `run_hours`, the time the machine ran on that job.
+    """Annotate each usage with `run_hours`: its reading minus the machine's previous approved reading.
 
-    Motohodiny are the machine's hour-meter reading, so a job's run time is its
-    reading minus the machine's previous approved reading. „Previous" is by
-    value, not by date: the meter only counts up, so the next lower reading is
-    the one before it however late a job was submitted or approved — and since
-    it is computed on every render, a back-dated job recalculates its
-    neighbours. Equal readings tie-break on pk, so a repeat counts once. The
-    previous reading is looked up across every approved job, not just the
-    filtered ones, or the first row in a date range would lose its baseline.
-    A blank reading, or a machine's first, has no run time (None).
+    "Previous" is the next lower reading (tie-broken on pk), not the previous
+    date, because the meter only counts up and jobs arrive late. The baseline
+    is every approved row, not just the filtered ones. A blank or first
+    reading has no run time (None).
     """
     previous = (
         MachineUsage.objects.filter(
@@ -179,13 +159,7 @@ def _filtered_machine_usages(request):
 
 
 def _filtered_machine_refuels(request):
-    """Stroje's fill-up rows: the same filter and the same approved-only rule.
-
-    `MachineFilterForm` applies unchanged — its three lookups (`machine`,
-    `work_order__created_by`, `work_order__performed_on`) all read the same on
-    this table, so the fuel card and the usage card cannot disagree about what
-    the filter means.
-    """
+    """Stroje's fill-up rows, approved only. `MachineFilterForm`'s lookups apply unchanged."""
     form = MachineFilterForm(request.GET or None)
     refuels = (
         MachineRefuel.objects.filter(work_order__status=WorkOrder.Status.APPROVED)
@@ -198,11 +172,7 @@ def _filtered_machine_refuels(request):
 def _refuel_summary(refuels, form):
     """Litres and fill-up count per active machine over `refuels`.
 
-    Every active machine is listed and narrowed by the `machine` filter, exactly
-    like `_machine_summary` — a machine that ran last week and was never
-    refuelled is an answer, not an omission. Unlike the tonnage there, the zeros
-    are real zeros: `MachineRefuel.litres` is not nullable, so a `Sum` of None
-    only ever means "no fill-ups in range".
+    Listed like `_machine_summary`, but zeros are real (`litres` is not nullable).
     """
     if form.is_bound and not form.is_valid():
         return Machine.objects.none()
@@ -264,20 +234,14 @@ def _filtered_material_movements(request):
     return form, form.filter(movements)
 
 
-# One page parameter per paginated table: Stroje holds two, and paging one must
-# leave the other where it was. `_date_preset_links` drops both, since a new
-# range starts at page one in either table.
+# One page parameter per paginated table: Stroje has two, which page independently.
 PAGE_PARAM = 'page'
 FUEL_PAGE_PARAM = 'fuel_page'
 PAGE_PARAMS = (PAGE_PARAM, FUEL_PAGE_PARAM)
 
 
 def _paginated(request, rows, param=PAGE_PARAM):
-    """One table's `page_obj`, the `querystring` its page links carry, and its `page_param`.
-
-    The querystring keeps every other parameter — the filters, and the other
-    table's page — and drops only this table's own.
-    """
+    """One table's `page_obj`, its links' `querystring` (all but its own page param), and `page_param`."""
     querystring = request.GET.copy()
     querystring.pop(param, None)
     return {
@@ -320,11 +284,9 @@ def _date_preset_links(request):
 
 
 def _list_page_context(request, rows):
-    """A filtered list page's three keys: the paginated rows, their querystring and the date presets.
+    """A filtered list page's context: `page_obj`, `querystring`, `page_param` and `date_presets`.
 
-    `_paginated` supplies the first two (plus `page_param`, which
-    `_pagination.html` reads); taking only part of this is the failure that is
-    hard to spot, since the filter then vanishes on page two.
+    Take all of it; without `querystring` the filter vanishes on page two.
     """
     return {
         **_paginated(request, rows),
@@ -408,22 +370,16 @@ def machine_refuel_export(request):
 
 @role_required(*REVIEWER_ROLES)
 def machine_refuel_detail_export(request):
-    """„Detail tankování" as a CSV — the fill-ups one per line.
-
-    Like `material_detail_export` it is the whole filtered set, not the page of
-    `fuel_page` that was on screen, and for the same reason.
-    """
+    """„Detail tankování" as a CSV: every filtered fill-up, not just the page on screen."""
     _, refuels = _filtered_machine_refuels(request)
     return _csv_response(
         'detail-tankovani',
         ['Provedeno', 'Stroj', 'Natankováno (l)', 'Zakázka', 'Kým'],
         [
             [
-                # ISO, like the page's „Provedeno" column.
                 refuel.work_order.performed_on.isoformat(),
                 refuel.machine.name,
                 _csv_number(refuel.litres, 2),
-                # Blank rather than the page's „—", as on the Materiál detail file.
                 refuel.work_order.description,
                 refuel.work_order.created_by.username,
             ]
@@ -453,37 +409,20 @@ def material_dashboard_export(request):
 
 @role_required(*REVIEWER_ROLES)
 def material_detail_export(request):
-    """„Detail položek" as a CSV — the one row-level download.
-
-    Every other export is a summary table; this one is the line items behind
-    Materiál's, because they are the only rows in the app that name what a job
-    consumed and produced and a manager reconciling a month needs them one per
-    line rather than totalled.
-
-    It is the whole filtered set, not the page that happened to be on screen:
-    `page_obj` paginates at `HISTORY_PAGE_SIZE`, and a file holding rows 1–50
-    of 300 under a heading that says otherwise is worse than no file. The
-    filter is what the download follows, exactly as it does above.
-    """
+    """„Detail položek" as a CSV: every filtered line item, not just the page on screen."""
     _, movements = _filtered_material_movements(request)
     return _csv_response(
         'detail-polozek',
         ['Provedeno', 'Lokace', 'Materiál', 'Druh', 'Množství (t)', 'Zakázka', 'Kým'],
         [
             [
-                # ISO, like the „Provedeno" column on the page, which writes
-                # its format explicitly rather than taking the locale's (see
-                # localization.md). Excel reads an ISO date under `cs` too.
                 movement.work_order.performed_on.isoformat(),
-                # Blank for a job with none, for the same reason as the description below.
+                # Missing values are blank cells, not the page's „—".
                 movement.work_order.location.name if movement.work_order.location else '',
                 movement.material.name,
                 movement.get_movement_type_display(),
-                # Positive, like the page: the form asked for a positive
-                # number even though a consumed row is stored negative.
+                # Positive, as typed; consumed rows are stored negative.
                 _csv_number(movement.typed_quantity, 2),
-                # The page prints „—" for a job with no description; a blank
-                # cell is the same thing without the text in a data column.
                 movement.work_order.description,
                 movement.work_order.created_by.username,
             ]

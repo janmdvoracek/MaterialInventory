@@ -1,625 +1,234 @@
 # Uživatelská příručka
 
-Evidence zpracování materiálu — návod pro obsluhu.
+Evidence zpracování materiálu. Aplikace je určená hlavně pro mobilní telefon: otevřete ji v prohlížeči na adrese od správce a přihlaste se.
 
-Aplikace je určená především pro mobilní telefon. Otevřete ji v prohlížeči na
-adrese, kterou vám dal správce, a přihlaste se uživatelským jménem a heslem.
-
-> **Změna oproti dřívější verzi:** aplikace už **nevede stav skladu**. Příjem,
-> Výdej, Ruční úprava, přehled Sklad i Historie pohybů byly odstraněny.
-> Zapisují se zakázky — co se zpracovalo, kdo na tom dělal a jak dlouho běžely
-> stroje. Aplikace nehlídá, jestli je materiálu dost; zapíše, co zadáte.
-
----
+> Aplikace **nevede stav skladu**. Zapisují se zakázky: co se zpracovalo, kdo na tom dělal a jak běžely stroje. Jestli je materiálu dost, aplikace nehlídá.
 
 ## Obsah
 
-- [Přihlášení a změna hesla](#přihlášení-a-změna-hesla)
+- [Přihlášení a heslo](#přihlášení-a-heslo)
 - [Aplikace v telefonu](#aplikace-v-telefonu)
 - [Spodní menu](#spodní-menu)
 - [Zpracování](#zpracování)
 - [Schvalování](#schvalování)
-- [Přehled zpracování (pro vedoucí)](#přehled-zpracování-pro-vedoucí)
+- [Přehled (pro vedoucí)](#přehled-pro-vedoucí)
 - [Stroje](#stroje)
 - [Materiál](#materiál)
 - [Hodiny](#hodiny)
 - [Stažení do Excelu](#stažení-do-excelu)
 - [Časté potíže](#časté-potíže)
 
----
+## Přihlášení a heslo
 
-## Přihlášení a změna hesla
+Heslo od správce je dočasné, **po prvním přihlášení si ho změňte**: vpravo nahoře **Změnit heslo**. Odhlásíte se tamtéž odkazem **Odhlásit se**.
 
-Nové heslo dostanete od správce. Je dočasné — **hned po prvním přihlášení si ho
-změňte**: nahoře vpravo klepněte na **Změnit heslo**, zadejte současné heslo
-a dvakrát nové.
-
-Odhlásíte se odkazem **Odhlásit se** vpravo nahoře.
+Po pěti špatných pokusech se účet na 30 minut zablokuje. Zapomenuté heslo vám nastaví správce, obnova přes e-mail není.
 
 ## Aplikace v telefonu
 
-Stránku si můžete přidat na plochu telefonu jako aplikaci **VyrobaPK**. Pak ji
-otevřete jednou ikonou, bez hledání adresy, a běží přes celou obrazovku bez
-lišty prohlížeče. Je to pořád stejná aplikace se stejným přihlášením — nic se
-nestahuje z obchodu.
+Aplikaci si můžete dát na plochu jako **VyrobaPK**. Otevře se jednou ikonou přes celou obrazovku. Je to stále stejný web se stejným přihlášením.
 
-- **Android (Chrome):** otevřete adresu aplikace, klepněte na nabídku **⋮**
-  vpravo nahoře a zvolte **Nainstalovat aplikaci** (nebo **Přidat na plochu**).
-  Chrome to někdy nabídne sám dole na obrazovce.
-- **iPhone (Safari):** otevřete adresu v Safari, klepněte na tlačítko
-  **Sdílet** (čtvereček se šipkou) a zvolte **Přidat na plochu**.
+- **Android (Chrome):** nabídka **⋮** → **Nainstalovat aplikaci** (nebo **Přidat na plochu**).
+- **iPhone (Safari):** tlačítko **Sdílet** → **Přidat na plochu**. Při prvním spuštění z plochy se přihlaste znovu.
 
-Na iPhonu se aplikace z plochy přihlašuje zvlášť — poprvé se v ní přihlaste
-znovu, i když jste přihlášeni v Safari.
-
-Když telefon nemá signál, aplikace ukáže stránku **Bez připojení** místo chyby
-prohlížeče. Zápis se bez připojení odeslat nedá — počkejte na signál a klepněte
-na **Zkusit znovu**.
+Bez signálu ukáže aplikace stránku **Bez připojení**. Zakázku bez připojení odeslat nejde: počkejte na signál a klepněte na **Zkusit znovu**.
 
 ## Spodní menu
 
-Ve spodní části obrazovky je menu, ze kterého se dostanete všude:
-
-| Tlačítko | K čemu slouží |
-|---|---|
-| **Zpracování** | Z jednoho materiálu vznikl jiný — hlavní formulář |
-| **Hodiny** | Odpracované hodiny lidí |
-| **Přehled** | Všechna zapsaná zpracování ke schválení — vidí jen vedoucí |
-| **Stroje** | Motohodiny, tuny, sazby, cena a tankování strojů — vidí jen vedoucí |
-| **Materiál** | Kolik tun se kterého materiálu spotřebovalo a vyrobilo — vidí jen vedoucí |
-
-Po přihlášení se rovnou otevře **Zpracování**. Stejně tak se tam vrátíte
-klepnutím na logo vlevo nahoře.
+| Tlačítko | K čemu | Kdo vidí |
+|---|---|---|
+| **Zpracování** | zápis zakázky (otevře se po přihlášení i po klepnutí na logo) | všichni |
+| **Hodiny** | odpracované hodiny | všichni |
+| **Přehled** | všechny zakázky, schvalování | vedoucí |
+| **Stroje** | motohodiny, tuny, ceny, tankování | vedoucí |
+| **Materiál** | spotřeba a výroba po materiálech | vedoucí |
 
 ## Zpracování
 
-Použijte, když se **z jednoho materiálu stane jiný** — drcení, třídění, řezání.
+Použijte, když se **z jednoho materiálu stane jiný** (drcení, třídění, řezání), nebo když jste jen tankovali.
 
-Formulář má pět částí:
+### Základní údaje
 
-**1. Lokace, popis a vaše hodiny**
+- **Lokace**: kde se pracovalo. Povinné. Chybí-li vaše místo v seznamu, řekněte vedoucímu.
+- **Popis**: krátce, o jakou práci šlo, nejvýš 40 znaků (např. *Drcení na frakci 8/16*). Povinné, podle popisu se zakázka pozná ve všech přehledech.
+- **Poznámky**: nepovinné, libovolně dlouhé. Vidět jsou jen v detailu zakázky.
+- **Moje hodiny**: kolik hodin jste odpracovali **vy**. Povinné.
+- **Datum provedení**: předvyplněný je dnešek. Když zapisujete zpětně, přepište ho. Nesmí být v budoucnosti. Podle tohoto data se zakázka počítá ve všech přehledech.
 
-- **Lokace** — kde se práce dělala. Vyberte ze seznamu; toto pole je
-  **povinné** (kromě zakázky, která je jen tankování). Seznam lokací spravuje
-  správce v **Administraci**; když v něm vaše místo chybí, řekněte vedoucímu.
-- **Popis** — krátce, o jakou práci šlo, nejvýš 40 znaků. Například *Drcení kameniva na frakci 8/16*.
-  Toto pole je **povinné**: podle popisu se zakázka pozná ve všech přehledech
-  i ve stažených souborech, takže jedna věta stačí, ale nechat ho prázdné nejde.
-- **Poznámky** — nepovinné a delší. Sem patří všechno, co se na jeden řádek
-  popisu nevejde: co se cestou pokazilo, proč se práce protáhla, na koho se
-  doptat. Můžete psát na více řádků; zalomení zůstanou zachovaná. Poznámka se
-  ukazuje jen v **detailu zakázky** — v tabulkách ani ve stažených souborech
-  není.
-- **Moje hodiny** — kolik hodin jste na zakázce odpracovali **vy**. Toto pole je
-  **povinné**.
-- Hodiny se zapisují **po půlhodinách** — `0.5`, `1`, `1.5`, `2` a tak dále.
-  Nejmenší zapsatelná hodnota je půl hodiny. Totéž platí pro hodiny
-  spolupracovníků i pro motohodiny strojů.
+Hodiny se píšou **po půlhodinách** (`0.5`, `1`, `1.5`…), nejvýš 24. Desetinná místa pište **s tečkou**.
 
-**2. Spolupracovníci**
+### Spolupracovníci
 
-Do každého řádku vyberte **Pracovníka** a zapište **Hodiny**, které odpracoval
-on. Kdo je tu uvedený, uvidí zakázku ve své historii a hodiny se mu započítají.
+V každém řádku vyberte **Pracovníka** a zapište jeho **Hodiny**. Sebe sem nepište. Kdo tu je, tomu se hodiny po schválení započítají. Každého uveďte **jen jednou**: kdo je vybraný v jednom řádku, v dalším se nenabídne.
 
-- Sebe zde neuvádíte — vaše hodiny jsou už v poli *Moje hodiny*.
-- Když nikdo další nedělal, nechte řádky prázdné.
-- **Každého člověka uveďte jen jednou.** Kdo už je vybraný v jiném řádku, ten
-  se v nabídce dalšího řádku neobjeví, a zakázku se stejným člověkem na dvou
-  řádcích aplikace neuloží. Odpracoval-li práci na dvakrát, sečtěte hodiny do
-  jednoho řádku.
-- Nestačí-li vám připravené řádky, klepněte pod nimi na **„+ další řádek"**.
-  Stránka se načte znovu s jedním řádkem navíc a **všechno, co jste už vyplnili,
-  v ní zůstane**. Nic se tím neukládá a nic se nekontroluje — přidat řádek můžete
-  i do rozdělaného formuláře.
-- Řádek navíc odeberete tlačítkem **„− odebrat řádek"** vedle něj. Odebere se
-  vždy **poslední** řádek té části — i kdyby byl vyplněný, takže se nejdřív
-  podívejte, co v něm je. Poslední zbývající řádek odebrat nejde a tlačítko se
-  u něj proto vůbec nezobrazí.
+### Spotřeba a výroba
 
-**2a. Zapsat za někoho jiného** *(jen vedoucí a správci)*
+- Do **Spotřebováno** zapište, co se zpracovalo, do **Vyrobeno**, co vzniklo. **Vše v tunách.**
+- Řádek vyplňte celý (materiál i množství), nebo ho nechte prázdný. Prázdné řádky se přeskočí.
+- V jedné části uveďte každý materiál **jen jednou**. Ve spotřebě i výrobě zároveň být může.
+- Musí být **aspoň jeden řádek spotřeby a aspoň jeden řádek výroby**.
+- **Součet spotřeby se musí přesně rovnat součtu výroby.** Sčítá se dohromady: 20 t kamene → 14 t frakce 8/16 + 6 t frakce 4/8 sedí. Když nesedí, aplikace nic neuloží (ani hodiny, ani stroje) a napíše oba součty.
 
-Vedoucí má nad polem s hodinami výběr **Zapsat za**. Ve výchozím stavu je
-nastavený na **Za sebe**. Když vyberete pracovníka, zakázka bude **jeho** —
-jeho jméno u ní, jeho hodiny i jeho položky spotřeby a výroby, a uvidí ji
-v **Hodinách** mezi svými posledními zápisy. Zakázka je rovnou **schválená**,
-protože ji zapisoval vedoucí; jako posuzovatel jste u ní vedený vy.
+### Stroje
 
-Do spolupracovníků pak nevybíráte toho, za koho zapisujete (sám se sebou
-spolupracovat nelze) — zato tam můžete uvést i sebe, pokud jste na zakázce
-dělal také.
+Řádek má čtyři pole: **Stroj**, **Stav motohodin** (mth), **Natankováno** (l) a **Tuny** (t).
 
-Běžný pracovník tento výběr nemá a zapisuje vždy sám za sebe.
+- Do motohodin pište **stav počítadla** stroje (např. 12345), ne kolik hodin běžel. To si aplikace spočítá sama.
+- **Povinný je jen stroj.** Motohodiny i tuny vyplňte, pokud je znáte. Napsaná **0** znamená totéž co prázdné pole.
+- **Stroj + litry** (bez motohodin a tun) = jen se tankovalo. Stroj s motohodinami nebo tunami a litry = běžel i se tankoval.
+- Číslo bez vybraného stroje aplikace odmítne.
+- Každý stroj uveďte **jen jednou**. Běžel-li víckrát, sečtěte tuny i litry a u motohodin napište poslední stav.
+- Tuny u strojů se do kontroly součtů **nepočítají**: když materiál projde třemi stroji, projde každým stejné množství.
 
-**2b. Datum provedení**
+### Jen tankování
 
-V poli **Datum provedení** je předvyplněný **dnešek**. Když zapisujete práci
-zpětně, přepište ho na den, kdy se práce skutečně dělala.
+Když jste jen tankovali, stačí řádky *Stroj + Natankováno*. Spotřebu, výrobu, Lokaci, Popis ani Moje hodiny vyplňovat nemusíte. Hodiny se u takové zakázky nezapíšou. Jakmile přidáte stroj bez litrů nebo materiál, je to běžná zakázka a povinná pole se vrátí.
 
-- Datum musí být vyplněné — prázdné pole aplikace odmítne, stejně jako datum
-  v budoucnosti.
-- Zadává se jen **den**, ne čas.
-- Opravit datum může později vedoucí v úpravě zakázky.
+### Řádky navíc
 
-> Podle data provedení se řídí **všechny přehledy** — **Hodiny**, **Stroje**,
-> **Materiál** i **Přehled**, jejich filtry, sloupce *Provedeno* i řazení.
-> Zakázka zapsaná dnes za práci z minulého měsíce se tedy započítá do minulého
-> měsíce.
-> V detailu zakázky najdete obě data: *Datum provedení* i *Zaznamenáno*.
+Pod každou částí je **„+ další řádek"** a **„− odebrat řádek"**. Vyplněné údaje zůstanou a nic se tím neukládá. Odebírá se vždy **poslední** řádek té části, i když je vyplněný. Poslední zbývající řádek odebrat nejde.
 
-**3. Spotřeba a výroba**
+### Fotky
 
-- Do **spotřeby** zapište, co se spotřebovalo (materiál a množství).
-- **Množství se všude zadává v tunách** — jiná jednotka v aplikaci není.
-- Do **výroby** zapište, co vzniklo.
-- Řádků je připraveno několik. Nepoužité nechte prázdné.
-- Když jich potřebujete víc — třeba když z jednoho materiálu vzniknou čtyři
-  frakce — klepněte pod tou částí na **„+ další řádek"**. Přidá se jeden prázdný
-  řádek a vyplněné údaje zůstanou. Tlačítko má každá část formuláře zvlášť.
-- **„− odebrat řádek"** vedle něj odebere poslední řádek té části. Prázdné řádky
-  ale odebírat nemusíte — aplikace je při ukládání jednoduše přeskočí.
-- Vyplnit musíte buď celý řádek, nebo žádný — samotné množství bez materiálu
-  aplikace odmítne.
-- **Stejný materiál uveďte v jedné části jen jednou.** Materiál vybraný v jiném
-  řádku se v nabídce dalšího řádku neobjeví a dva řádky se stejným materiálem
-  aplikace odmítne — sečtěte množství do jednoho řádku. Ve **spotřebě** i ve
-  **výrobě** zároveň týž materiál být může; to jsou dvě různá sdělení o něm.
-- Vyplněná musí být **alespoň jedna položka spotřeby a alespoň jedna položka
-  výroby**. Samotná spotřeba bez výroby (ani naopak) se uložit nedá.
-- **Celkové množství spotřeby se musí rovnat celkovému množství výroby.**
-  Sčítají se všechny řádky dohromady, ne řádek proti řádku — když z 20 t
-  kameniva vznikne 14 t frakce 8/16 a 6 t frakce 4/8, souhlasí to.
-- Musí to sedět přesně. Když se součty liší, aplikace zakázku neuloží a nahoře
-  napíše, kolik jí na které straně vyšlo — například *„Celkové množství spotřeby
-  a výroby se musí rovnat (spotřeba 20, výroba 19)."* Dopište chybějící řádek
-  nebo opravte množství.
-- Neuloží se přitom **nic** — ani hodiny, ani stroje. Po opravě součtů se odešle
-  celá zakázka najednou.
+Nepovinné. Klepněte na **Přidat fotku** a zvolte **Vyfotit** (fotoaparát) nebo **Vybrat z galerie** (i více najednou). Každá další fotka se **přidá** do seznamu, nic nenahradí. **Odebrat** ji ze seznamu vyřadí.
 
-**4. Stroje**
+- Nejvýš **10 fotek** na zakázku, jedna nejvýš **10 MB**, všechny najednou nejvýš **20 MB**.
+- Formáty `jpg`, `png`, `webp`, `heic`.
+- Aplikace fotky zmenší a uloží jako `jpg`. Dodací list zůstane čitelný.
+- **Pole si fotky nepamatuje.** Když formulář něco vytkne, nebo přidáte řádek bez skriptu, vyberte fotky znovu.
+- Fotky vidí jen vedoucí v detailu zakázky. Vy se k nim zpátky nedostanete, takže je z telefonu nemažte, dokud je potřebujete.
 
-Řádek stroje má čtyři pole: **Stroj**, **Stav motohodin**, **Natankováno (l)**
-a **Tuny**, které stroj zpracoval. Do motohodin pište **stav počítadla
-motohodin stroje** (např. 12345), ne kolik hodin stroj na zakázce běžel —
-kolik běžel, si aplikace dopočítá z předchozího stavu. Číselná pole jsou úzká a místo názvu v nich
-je jen jednotka: **mth** (motohodiny), **t** (tuny) a **l** (litry). V řádcích
-spotřeby a výroby je u množství **t**, u spolupracovníků u hodin **h**. Pokud šel materiál přes více strojů za
-sebou, použijte více řádků. **Každý stroj uveďte jen jednou** — vybraný stroj se
-v nabídce dalšího řádku neobjeví a dva řádky se stejným strojem aplikace odmítne;
-běžel-li na zakázce víckrát, sečtěte tuny i litry do jednoho řádku a u motohodin
-uveďte poslední stav počítadla.
-Na další řádky se dostanete tlačítkem **„+ další řádek"** pod nimi a přebytečný
-odeberete tlačítkem **„− odebrat řádek"**. Stroje jsou nepovinné — pokud se žádný
-nepoužil, nechte řádky prázdné.
+Vidíte-li místo tlačítka dvě pole (**Vyfoťte fotku** a **Vyberte fotky**), prohlížeč nespustil skript stránky. Funguje to podobně, jen každé pole drží jediný výběr.
 
-**Povinný je jen stroj.** Motohodiny i tuny jsou nepovinné — vyplňte je,
-pokud je znáte, jinak je nechte prázdné (napsaná **0** znamená totéž co prázdné
-pole). Řádek tedy může vypadat takto:
+### Zapsat za někoho jiného (vedoucí)
 
-- **Jen stroj**, případně **stroj + hodiny** a/nebo **tuny** — stroj na zakázce
-  běžel; co nevyplníte, zůstane nezjištěné. Litry nechte prázdné (nebo napište
-  0), pokud se netankovalo.
-- **Stroj + litry** (bez hodin i tun) — jen se tankovalo.
-- **Stroj + hodiny a/nebo tuny + litry** — běžel i se tankoval, oboje na jednom
-  řádku.
+Vedoucí má pole **Zapsat za**. Když vyberete pracovníka, zakázka bude **jeho**: jeho jméno, jeho hodiny, objeví se mu v Hodinách. Je rovnou schválená, posuzovatelem jste vy. Mezi spolupracovníky pak můžete uvést i sebe.
 
-Co aplikace odmítne: hodiny, tuny nebo litry bez vybraného stroje.
-
-> Tuny u stroje se **nezapočítávají** do kontroly součtů spotřeby a výroby.
-> Když materiál projde třemi stroji za sebou, projde každý z nich stejné
-> množství — proto se tato čísla nesčítají do celkové výroby. Litry se
-> nezapočítávají nikam a z motohodin se nepočítají.
-
-**4b. Jen tankování, bez zpracování**
-
-**Když jste jen tankovali, stačí zapsat stroje a litry — a nic jiného.** Takový
-zápis je platná zakázka: nemusíte vyplňovat spotřebu ani výrobu (kontrola součtů
-se na něj nevztahuje, protože není co srovnávat), nemusíte vyplnit **Lokaci**,
-**Popis** ani **Moje hodiny**. Stačí **Datum provedení**, které je předvyplněné na dnešek, a
-libovolný počet řádků *Stroj + Natankováno (l)*.
-
-- Žádné odpracované hodiny se u takové zakázky nezapíšou.
-- **Popis** můžete vyplnit, i když se nevyžaduje — v přehledech se pak zobrazí
-  místo pomlčky, takže se lépe hledá.
-- Schvaluje se úplně stejně jako každá jiná zakázka a objeví se i v **Přehledu**.
-- Jakmile na takový zápis přidáte stroj bez litrů (s motohodinami, s tunami
-  nebo i bez nich) nebo položku materiálu, přestává
-  to být „jen tankování" — **Lokace**, **Popis**, **Moje hodiny** i kontrola
-  součtů se vrátí.
-
-**5. Fotky**
-
-Úplně dole ve formuláři je sekce **Fotky**. Je **nepovinná** a u žádné zakázky
-se nevyžaduje. Klepněte na **Přidat fotku** a vyberte:
-
-- **Vyfotit** — otevře rovnou fotoaparát a práci vyfotíte na místě.
-- **Vybrat z galerie** — otevře galerii nebo soubory, když už fotky máte.
-  Vybrat jich můžete i několik najednou.
-
-Každá vyfocená nebo vybraná fotka se přidá do seznamu pod tlačítkem — **další
-fotka tu předchozí nenahradí**, přidá se k ní. Chcete-li jich víc, klepněte na
-**Přidat fotku** znovu. Tlačítkem **Odebrat** vedle fotky ji ze seznamu
-vyřadíte, než zakázku odešlete.
-
-Pokud místo jednoho tlačítka vidíte dvě pole, **Vyfoťte fotku** a **Vyberte
-fotky**, prohlížeč nespustil skript stránky. Formulář funguje skoro stejně:
-první pole otevře fotoaparát, druhé galerii, a odeslat můžete obě najednou.
-Jen každé pole drží jediný výběr — vyfotíte-li podruhé, nahradí to první
-snímek. Víc fotek z fotoaparátu tak pošlete jen přes galerii: vyfoťte je
-nejdřív běžně telefonem a pak je ve **Vyberte fotky** označte všechny.
-
-Co dalšího platí:
-
-- Na jednu zakázku nejvýš **10 fotek**. Víc aplikace odmítne a napíše to pod
-  polem.
-- Přijímají se běžné formáty z telefonu — `jpg`, `png`, `webp`, `heic`.
-  Dokument (třeba `pdf`) aplikace odmítne a napíše to pod polem.
-- Jedna fotka může mít nejvýš **10 MB** a všechny fotky odeslané najednou
-  dohromady nejvýš **20 MB**. Větší aplikace odmítne, opět s hláškou u pole.
-- Aplikace každou fotku po odeslání **zmenší** (na 1600 bodů po delší straně) a
-  uloží jako `jpg`. Na displeji telefonu ani na počítači to nepoznáte a dodací
-  list na ní zůstane čitelný; originál v plném rozlišení se ale neukládá.
-- **Pole si fotky nepamatuje.** Pokud formulář po odeslání něco vytkne — nesedí
-  součty, chybí popis — nebo přidáte řádek, je potřeba fotky vyfotit nebo
-  vybrat **znovu**.
-  Prohlížeče to jinak neumí a je to jediné pole formuláře, které se takto chová;
-  proto je až úplně dole.
-- Fotky se ukazují v **detailu zakázky**, tedy v Přehledu, kam vidí jen vedoucí
-  a správci. Vedoucí tam při úpravě může přidat další, nebo kteroukoli
-  odstranit zaškrtnutím políčka **Odebrat**.
-- Fotky jsou **neveřejné** — otevřít je může jen přihlášený vedoucí nebo
-  správce, stejně jako samotnou zakázku. Jako pracovník se ke svým odeslaným
-  fotkám zpátky nedostanete, takže je nemažte z telefonu, dokud je potřebujete.
-
-> Celá zakázka se ukládá najednou — položky, hodiny lidí, hodiny strojů,
-> tankování i fotky. Po uložení se formulář vyprázdní a můžete zapsat další
-> zakázku.
+Celá zakázka se ukládá najednou. Po uložení se ukáže zelená zpráva a formulář se vyprázdní.
 
 ## Schvalování
 
-**Zakázku, kterou zapíše pracovník, musí schválit vedoucí.** Po odeslání se
-uloží a aplikace napíše, že *čeká na schválení*. Do té doby se **nezapočítává**
-do přehledu **Hodiny** ani do **Strojů** — proto tam své hodiny hned po odeslání
-neuvidíte. Jakmile ji vedoucí schválí, objeví se všude.
+**Zakázku pracovníka musí schválit vedoucí.** Do té doby se nepočítá do Hodin, Strojů ani Materiálu, proto tam své hodiny hned neuvidíte. Zakázka vedoucího je schválená rovnou.
 
-Zakázka zapsaná vedoucím je schválená rovnou.
+Chybu opraví vedoucí přímo v zakázce, nebo zakázku smaže. Vy ji opravit nemůžete a zpátky se neposílá. Víte-li o chybě, řekněte vedoucímu, jak to bylo. Stav svých zakázek uvidíte v [Hodinách](#hodiny).
 
-Když je něco špatně, opravu provede vedoucí přímo v zakázce — vy ji opravit
-nemůžete. Zakázku, která je celá špatně, vedoucí smaže. Zpátky k přepracování se
-zakázka neposílá, takže pokud víte o chybě, dejte vedoucímu vědět, jak to bylo
-správně.
+## Přehled (pro vedoucí)
 
-Jak na tom vaše zakázky jsou, uvidíte v záložce **Hodiny** v tabulce *Moje
-poslední zápisy* — viz [Hodiny](#hodiny).
+Seznam všech zakázek: datum, autor, lokace, popis, hodiny a stav. Čekající jsou **žluté** a nahoře je jejich počet. Filtrovat lze podle autora, lokace, stavu a data.
 
-## Přehled zpracování (pro vedoucí)
-
-Tuto sekci mají v menu pouze vedoucí a správci. Je v ní **seznam všech
-zapsaných zpracování** — datum, kdo je zapsal, lokace, popis, hodiny celkem
-a stav. Zakázky, které čekají na schválení, jsou **žlutě** zvýrazněné; nahoře
-je počet čekajících. Filtrovat lze podle stavu, pracovníka, lokace a data.
-
-Klepnutím na **Detail** otevřete celou zakázku se vším, co bylo ve formuláři
-vyplněno — hodiny všech lidí, spotřeba, výroba, stroje s motohodinami a tunami,
-**tankování** a **fotky**, pokud je pracovník přiložil. Fotky jsou dostupné
-jen tady, a to jako odkazy **Fotka 1**, **Fotka 2**, … — klepnutím se fotka
-otevře v plné velikosti. Dole jsou akce:
+**Detail** ukáže vše z formuláře včetně tankování a fotek (odkazy **Fotka 1**, **Fotka 2**…). Akce:
 
 | Akce | Co udělá |
 |---|---|
-| **Schválit** | Zakázka se započítá do Hodin i Strojů. |
-| **Upravit** | Otevře stejný formulář jako Zpracování, předvyplněný. Uložením se řádky přepíšou. **Schválení tím nevzniká** — po opravě je ještě potřeba schválit. |
-| **Smazat** | Nevratně smaže celou zakázku i její řádky. Její hodiny, tuny i natankované litry tím ze Strojů a Hodin zmizí. |
-
-Při úpravě platí stejná pravidla jako při zápisu — hlavně že se **součty
-spotřeby a výroby musí rovnat**; u zakázky, která je jen tankování, se
-nekontrolují, stejně jako při zápisu. Pole *hodiny* patří tomu, kdo zakázku
-zapsal, ne vám.
-
-Uložené fotky jsou v úpravě vypsané nad tlačítkem **Přidat fotku**, každá jako
-odkaz s políčkem **Odebrat**. Necháte-li je být, zůstanou všechny. Nově
-vyfocené nebo vybrané fotky se k nim **přidají**, nic nenahradí. Fotku
-odstraníte zaškrtnutím **Odebrat** a uložením; odstraněnou fotku už nelze
-vrátit.
+| **Schválit** | Zakázka se začne počítat do přehledů. |
+| **Upravit** | Stejný formulář, předvyplněný. Platí stejná pravidla (součty). **Úprava neschvaluje**, po opravě je třeba schválit. Pole s hodinami patří autorovi zakázky. Nové fotky se přidají. Uloženou fotku odstraníte zaškrtnutím **Odebrat**, a to nevratně. |
+| **Smazat** | Nevratně smaže zakázku se vším, co k ní patří. |
 
 ## Stroje
 
-Přehled strojů, jejich **motohodin** a **celkového počtu zpracovaných tun**.
-Čísla se mění pokaždé, když někdo ve **Zpracování** vyplní motohodiny a tuny
-stroje a vedoucí zakázku **schválí** — neschválené zakázky se do nich
-nepočítají.
+Tabulky pod jedním filtrem (stroj, autor, datum), počítají se jen **schválené** zakázky:
 
-U motohodin se zapisuje **stav počítadla**, proto jsou v přehledu dvě čísla:
+- **Stav strojů**: souhrn po strojích.
+- **Tankování** a **Detail tankování**: litry a jednotlivá tankování.
+- **Detail používání strojů**: jednotlivé záznamy.
 
-- **Stav motohodin** — nejvyšší zapsaný stav ve zvoleném období, tedy kde
-  počítadlo stálo na jeho konci.
-- **Hodin za období** — kolik stroj v období odběhl: součet hodin na
-  jednotlivých zakázkách.
+Bez filtru jsou vidět všechny stroje. Stroj s **0 h** v daném období neběžel.
 
-V **Detailu používání strojů** je u každé zakázky sloupec **Hodin na zakázce**:
-zapsaný stav minus předchozí stav téhož stroje. Předchozí stav se hledá podle
-hodnoty, ne podle data, takže nevadí, když se zakázky zapíší nebo schválí
-v jiném pořadí — čísla se pokaždé přepočítají. U úplně prvního zapsaného stavu
-stroje (a u zakázky bez motohodin) je pomlčka (—), protože není s čím
-porovnat.
+**Motohodiny jsou stav počítadla**, proto jsou dvě čísla:
 
-Motohodiny i tuny jsou ve **Zpracování** nepovinné, a u starších záznamů, které
-vznikly ještě předtím, než se tuny zapisovaly, tonáž známá není. Stroj, u kterého
-v daném období nikdo motohodiny (nebo tuny) nevyplnil, má v tom sloupci pomlčku (—) —
-neplést s nulou: **0 h** znamená, že stroj v daném období vůbec neběžel, a **0 t**,
-že nic nezpracoval. Kde jsou u některých záznamů čísla vyplněná a u jiných ne,
-sečtou se jen ta vyplněná.
+- **Stav motohodin**: nejvyšší stav v období, tj. kde počítadlo stálo na konci.
+- **Hodin za období**: kolik stroj v období odběhl. V detailu je u každé zakázky **Hodin na zakázce**: stav minus předchozí stav téhož stroje. Předchozí stav se hledá podle hodnoty, ne data, takže na pořadí zápisu nezáleží. U prvního stavu stroje je pomlčka.
 
-Vedle motohodin se zobrazují dvě sazby stroje: **Sazba (Kč/hod)** a
-**Cena (Kč/t)** za tunu zpracovaného materiálu. V aplikaci se nezadávají,
-nastavuje je správce; nevyplněná sazba se zobrazí jako pomlčka (—).
+**Pomlčka (—) znamená „nevíme", ne nulu.** Nikdo nevyplnil motohodiny nebo tuny, nebo chybí sazba. **0** je skutečná nula.
 
-Z těchto sazeb se počítají tři sloupce s penězi — vždy **za období, které máte
-nastavené filtrem**:
+**Sazby** (Kč/hod a Kč/t) nastavuje správce. Z nich jsou tři sloupce za filtrované období:
 
-| Sloupec | Jak vzniká |
+| Sloupec | Výpočet |
 |---|---|
-| **Cena za hodiny (Kč)** | **Hodin za období** × **Sazba (Kč/hod)** |
-| **Cena za tuny (Kč)** | zpracované tuny × **Cena (Kč/t)** |
-| **Celkem (Kč)** | součet toho, čím je stroj naceněný |
+| **Cena za hodiny** | Hodin za období × Kč/hod |
+| **Cena za tuny** | tuny × Kč/t |
+| **Celkem** | součet toho, čím je stroj naceněný |
 
-**Nevyplněná sazba neznamená zadarmo, ale „takhle se stroj neúčtuje".** Proto
-je v takovém sloupci pomlčka (—) a do **Celkem** se nezapočítává: stroj
-naceněný jen po hodinách má v **Celkem** právě cenu za hodiny.
+Nevyplněná sazba znamená „takhle se stroj neúčtuje", ne „zdarma". **Celkem** je pomlčka, když se cena spočítat nedá: stroj nemá sazbu, nebo je naceněný po tunách a tuny chybí. Naceněný stroj, který neběžel, má **0,00**.
 
-Pomlčka je i v **Celkem**, a to ve dvou případech: stroj nemá vyplněnou žádnou
-sazbu, nebo je naceněný po tunách, ale u jeho starších záznamů se tonáž
-nezapisovala. Cenu tehdy opravdu nelze spočítat a číslo, které by z ní ukázalo
-jen polovinu, by bylo horší než pomlčka.
-
-Naopak **0,00** je odpověď: naceněný stroj, který v daném období neběžel, nic
-nestál.
-
-Stránka má stejnou stavbu jako **Hodiny**: nahoře **filtr**, pod ním tabulka
-**Stav strojů**, potom **Tankování** a **Detail tankování** a úplně dole
-**Detail používání strojů** — jednotlivé záznamy (datum, stroj, hodiny, tuny,
-zakázka a kdo ji zapsal), ze kterých se čísla nahoře skládají. Filtr platí pro
-všechny tabulky najednou, takže si můžete číslo přečíst a hned pod ním vidět,
-z čeho vzniklo.
-
-**Tankování** je samostatná tabulka: u každého stroje **počet tankování** a
-**natankované litry** za zvolené období, dole celkový součet za všechny stroje.
-Pod ní je **Detail tankování** — jednotlivá tankování s datem, strojem, počtem
-litrů, zakázkou a tím, kdo ji zapsal.
-
-- Litry se **nepočítají** z motohodin ani z tun; berou se jen z toho, co někdo
-  ve **Zpracování** vyplnil do pole *Natankováno (l)*.
-- Stejně jako u ostatních čísel se počítají jen **schválené** zakázky.
-- **0,00 l** je odpověď: ten stroj se v daném období netankoval. Pomlčka tady
-  nikdy není, litry se buď zapsaly, nebo se netankovalo.
-- **Detail tankování** a **Detail používání strojů** se stránkují každý zvlášť —
-  přechod na další stránku jedné tabulky s druhou nehýbe.
-
-Obě souhrnné tabulky — **Stav strojů** i **Tankování** — a také **Detail
-tankování** mají vlastní tlačítko **Stáhnout do CSV / Excelu**; stáhne se
-přesně to, co máte nastavené filtrem.
-
-Filtrovat lze podle stroje, data a podle toho, kdo zakázku zapsal
-(**Vytvořil**); filtr se vztahuje i na tabulky s tankováním.
-**Bez filtru vidíte všechny stroje.** Když vyberete konkrétní
-stroj, zůstane v tabulce jen on; když omezíte datum, stroje zůstanou všechny
-a čísla se přepočítají za dané období — stroj s **0 h** tedy znamená, že v tom
-období neběžel.
-
-Vidíte vždy záznamy celého provozu, ne jen své vlastní — na tuto stránku se
-běžný pracovník nedostane.
-
-> **Rychlé období.** Nad každým filtrem v aplikaci jsou čtyři tlačítka —
-> **Vše**, **Posledních 7 dní**, **Posledních 30 dní** a **Minulý měsíc**.
-> Klepnutím se datumy vyplní samy, zeleně svítí období, které je právě
-> nastavené, a **Vše** filtrování podle data zase zruší. Ostatní filtry
-> (pracovník, stroj, materiál, stav) zůstanou zachované.
-
-Tato sekce je jen pro vedoucí — běžný pracovník ji nemá v menu a stránka se mu
-neotevře, ani když si její adresu zadá ručně.
+**Tankování** se bere jen z pole *Natankováno*. Tady pomlčka není, **0,00 l** znamená, že se netankovalo. Obě detailní tabulky se stránkují zvlášť.
 
 ## Materiál
 
-Odpověď na otázku **„kolik jsme toho vyrobili?"** — po materiálech a za zvolené
-období. Čísla se skládají z řádků, které se vyplňují ve **Zpracování**, takže
-nic navíc zapisovat nemusíte.
+Odpověď na „kolik jsme toho vyrobili". Počítá se z řádků ve Zpracování, jen ze **schválených** zakázek.
 
-Stránka má stejnou stavbu jako **Stroje**: nahoře **filtr**, pod ním tabulka
-**Souhrn materiálů** a dole **Detail položek** — jednotlivé řádky (datum,
-lokace, materiál, druh, množství, zakázka a kdo ji zapsal), ze kterých se čísla nahoře
-skládají. Filtr platí pro obě tabulky najednou.
-
-V souhrnu jsou u každého materiálu tři čísla:
-
-| Sloupec | Co znamená |
+| Sloupec | Význam |
 |---|---|
-| **Spotřebováno** | Kolik tun toho materiálu se za dané období zpracovalo (vstup) |
-| **Vyrobeno** | Kolik tun toho materiálu za dané období vzniklo (výstup) |
-| **Rozdíl** | Vyrobeno mínus spotřebováno |
+| **Spotřebováno** | tun zpracovaných (vstup) |
+| **Vyrobeno** | tun vzniklých (výstup) |
+| **Rozdíl** | vyrobeno minus spotřebováno; záporný = víc se zpracovalo, než vyrobilo |
 
-**Rozdíl** má smysl hlavně u materiálu, který je jednou vstupem a podruhé
-výstupem: může vyjít i záporný, a to znamená, že se ho víc zpracovalo, než
-vyrobilo.
+Filtr: materiál, lokace, datum. Nabízí i vyřazené materiály, kvůli jejich historii. Pod souhrnem je **Detail položek**, jednotlivé řádky zakázek.
 
-Filtrovat lze podle materiálu, lokace a data. **Bez filtru vidíte všechny
-materiály.** Filtr **Lokace** oddělí čísla jednoho místa od ostatních — souhrn
-i detail se pak počítají jen ze zakázek zapsaných na tuto lokaci.
-Když vyberete konkrétní materiál, zůstane v tabulce jen on; když omezíte datum,
-materiály zůstanou všechny a čísla se přepočítají za dané období — materiál
-s **0,00 t** tedy znamená, že se v tom období nezpracovával. Nabídka filtru
-obsahuje i vyřazené materiály, aby se dalo dohledat, co se s nimi dělo dřív;
-v souhrnu se vyřazené materiály samy o sobě nezobrazují.
-
-Typický postup pro otázku „kolik jsme vyrobili frakce 8/16 minulý měsíc":
-klepněte na **Minulý měsíc**, vyberte materiál a přečtěte sloupec **Vyrobeno**.
-
-> Do čísel se počítají **jen schválené zakázky**, stejně jako v Hodinách
-> a Strojích. Zakázka, která čeká na schválení, se tu neobjeví.
-
-Tato sekce je jen pro vedoucí — běžný pracovník ji nemá v menu a stránka se mu
-neotevře, ani když si její adresu zadá ručně.
+Příklad: „kolik frakce 8/16 minulý měsíc?" → **Minulý měsíc**, vyberte materiál, čtěte **Vyrobeno**.
 
 ## Hodiny
 
-Přehled odpracovaných hodin lidí — nahoře souhrn po pracovnících, dole seznam
-jednotlivých zakázek.
-
-Můžete filtrovat podle data (**Datum od**, **Datum do**) nebo použít tlačítka
-rychlého období nad filtrem.
-
-> Každému se počítají **hodiny, které si sám zapsal** — vy své v poli *Moje
-> hodiny*, spolupracovníci ty své ve svých řádcích. Nejsou to hodiny strojů:
-> motohodiny se sledují zvlášť v sekci **Stroje** a s hodinami lidí nijak
-> nesouvisí.
-
-Běžný pracovník vidí pouze své vlastní hodiny. Vedoucí vidí všechny a může
-filtrovat podle pracovníka.
+Souhrn odpracovaných hodin po lidech a seznam zakázek. Počítají se **hodiny, které si každý zapsal sám** (ne motohodiny). Pracovník vidí jen své, vedoucí všechny a může filtrovat podle pracovníka.
 
 ### Moje poslední zápisy
 
-Nahoře v záložce **Hodiny** je tabulka **posledních pěti zakázek, které jste
-zapsali** — datum provedení, popis, vaše hodiny a stav. Řadí se podle toho, kdy
-jste je zapsali (nejnovější nahoře), ne podle data provedení — zpětně zapsaná
-zakázka se tak neztratí někde dole, když si chcete zkontrolovat, jestli už ji
-vedoucí schválil. Žlutě zvýrazněné a označené *Čeká
-na schválení* jsou ty, které vedoucí ještě neposoudil; *Schváleno* znamená, že
-se už započítávají do Hodin, Strojů i Materiálu. Je to tedy vysvětlení, proč
-vám hodiny v souhrnu pod tabulkou zatím chybí. Zakázka, kterou vedoucí smazal, ze seznamu
-zmizí.
+Nahoře je pět zakázek, které jste naposledy **zapsali vy**, seřazené podle času zápisu. Ukazují stav: žluté *Čeká na schválení*, nebo *Schváleno*. Tady zjistíte, proč vám hodiny v souhrnu zatím chybí. Smazaná zakázka zmizí. Zakázky, kde jste jen spolupracovník, tu nejsou, objeví se vám po schválení v souhrnu. Filtry tuto tabulku neovlivňují. Vedoucí ji nemá.
 
-Jsou v ní jen zakázky, které jste zapsali vy — ne ty, na kterých vás někdo jen
-uvedl jako spolupracovníka; ty se vám po schválení objeví přímo v souhrnu
-hodin. Filtry nad souhrnem se této tabulky netýkají, vždy ukazuje vašich pět
-posledních zápisů.
-
-Vedoucí tuto tabulku nemá — jeho zakázky jsou schválené rovnou a všechny
-ostatní vidí v **Přehledu**.
+> **Rychlé období:** nad každým filtrem jsou tlačítka **Vše**, **Posledních 7 dní**, **Posledních 30 dní** a **Minulý měsíc**. Ostatní filtry zůstanou. **Vše** filtr data zruší.
 
 ## Stažení do Excelu
 
-Pod souhrnnou tabulkou v **Hodinách**, **Strojích** i **Materiálu** je tlačítko
-**Stáhnout do CSV / Excelu**. Stáhne se soubor s tou tabulkou, která je právě
-na obrazovce — **i s nastaveným filtrem**. Postup je tedy vždy stejný: nejdřív
-si stránku nafiltrujte (třeba **Minulý měsíc**), zkontrolujte čísla a teprve
-pak klepněte na tlačítko.
+Pod tabulkami je tlačítko **Stáhnout do CSV / Excelu**. Stáhne se tabulka **s nastaveným filtrem**: nejdřív nafiltrujte, zkontrolujte, pak stáhněte.
 
-| Stránka | Co se stáhne |
+| Stránka | Tabulka |
 |---|---|
-| **Hodiny** | Tabulka **Souhrn** — pracovník, hodiny, počet zakázek |
-| **Stroje** | Tabulka **Stav strojů** — stroj, hodiny, tuny, obě sazby a tři sloupce s cenou |
-| **Stroje** | Tabulka **Tankování** — stroj, počet tankování, natankované litry |
-| **Stroje** | Tabulka **Detail tankování** — datum, stroj, litry, zakázka, kdo ji zapsal |
-| **Materiál** | Tabulka **Souhrn materiálů** — spotřebováno, vyrobeno, rozdíl |
-| **Materiál** | Tabulka **Detail položek** — datum, lokace, materiál, druh, množství, zakázka, kdo ji zapsal |
+| Hodiny | Souhrn |
+| Stroje | Stav strojů, Tankování, Detail tankování |
+| Materiál | Souhrn materiálů, Detail položek |
 
-Na **Materiálu** jsou tedy tlačítka dvě, každé pod svou tabulkou. To druhé,
-pod **Detailem položek**, stáhne jednotlivé řádky — co která zakázka
-spotřebovala a co vyrobila, řádek po řádku. Hodí se, když si měsíc potřebujete
-odsouhlasit s dodacími listy; souhrn na to nestačí, protože v něm je z každého
-materiálu jen jedno číslo.
-
-Stejně funguje tlačítko pod **Detailem tankování** na **Strojích** — stáhne
-jednotlivá tankování, řádek po řádku, třeba na kontrolu proti dokladům za naftu.
-
-Do těchto dvou souborů se stáhnou **všechny řádky, které filtr pustí** — ne jenom ta
-stránka, kterou máte zrovna otevřenou. Pod tabulkou se čísluje po padesáti
-řádcích, v souboru je jich tolik, kolik jich filtru odpovídá.
-
-Na ostatních stránkách se stahuje **souhrn**, ne dlouhý seznam jednotlivých
-záznamů pod ním.
-
-Soubor se jmenuje například `souhrn-hodin-2026-09-06.csv` — datum ke konci je
-den, kdy jste ho stáhli, aby se dva soubory ve stažených nepřepsaly. Otevřete
-ho poklepáním; Excel ho rozdělí do sloupců sám a čísla v něm umí sečíst.
-Prázdná buňka ve sloupci **Tun**, u sazby nebo v některém ze sloupců s cenou
-znamená **není známo** (na stránce je na jejím místě pomlčka) — nulu tam
-schválně nepíšeme, aby vám nepokazila součet. V detailu položek je ze stejného
-důvodu prázdný i sloupec **Zakázka** u starších zakázek, u kterých nikdo
-nevyplnil popis — dnes už je popis povinný, takže nové zakázky ho mají vždy.
-
-Do souboru se dostane přesně to, co je na stránce: **jen schválené zakázky**,
-a pracovník si stáhne jenom své vlastní hodiny. Když je filtr špatně vyplněný
-(stránka to hlásí červeně), stáhne se soubor jen se záhlavím a bez řádků —
-stejně jako je tabulka na stránce prázdná.
+- **Detailní tabulky** (Detail položek, Detail tankování) se stáhnou **celé**, ne jen otevřená stránka. Hodí se k porovnání s dodacími listy a doklady za naftu.
+- Soubor otevřete poklepáním. Excel ho rozdělí do sloupců a čísla umí sečíst.
+- **Prázdná buňka znamená „nevíme"** (na stránce pomlčka). Nula se tam schválně nepíše, aby nepokazila součet.
+- Jsou v něm jen schválené zakázky a pracovník stáhne jen své hodiny. Při chybném filtru je soubor bez řádků.
 
 ## Časté potíže
 
-**Nahoře svítí červeně „Vyplňte prosím všechna povinná pole."**
-Zakázka se **neuložila**. Sjeďte níž — u prázdného povinného pole je napsáno,
-že je potřeba ho vyplnit. Když je nahoře místo toho *„Formulář obsahuje chyby,
-opravte prosím vyznačená pole."*, je některá hodnota vyplněná špatně; co přesně,
-je opět napsáno přímo u ní. Uloženou zakázku poznáte podle zelené zprávy.
+**Nahoře červeně „Vyplňte prosím všechna povinná pole."** nebo **„Formulář obsahuje chyby…"**
+Zakázka se **neuložila**. Sjeďte níž, u pole je napsáno, co chybí nebo co je špatně. Uloženou zakázku poznáte podle zelené zprávy.
 
 **„Zadejte číslo."**
-Použili jste čárku. Desetinná místa pište s tečkou — `12.5`.
+Použili jste čárku. Pište s tečkou: `12.5`.
 
-**„Zajistěte, aby tato hodnota byla 0.5 násobkem velikosti kroku…"**
-U hodin jste zapsali jinou hodnotu než celou nebo půlhodinu — třeba `1.25`.
-Zaokrouhlete na nejbližší půlhodinu.
-
-**„Toto pole je vyžadováno."**
-Některé povinné pole zůstalo prázdné — nejčastěji *Moje hodiny*.
+**„Zajistěte, aby tato hodnota byla 0.5 násobkem…"**
+Hodiny jen po půlhodinách. Zaokrouhlete.
 
 **„Vyplňte materiál i množství, nebo řádek nechte prázdný."**
-Ve **Zpracování** je rozepsaný řádek. Buď ho doplňte celý, nebo vymažte. Stejně
-to platí pro řádky spolupracovníků a strojů.
+Rozepsaný řádek. Doplňte ho, nebo vymažte. Totéž u spolupracovníků.
 
-**„Přidejte alespoň jednu položku spotřeby a jednu položku výroby."**
-Zakázka musí mít obě strany — co se spotřebovalo i co vzniklo. Jednostranný
-záznam aplikace neuloží.
+**„Přidejte alespoň jednu položku spotřeby a jednu položku výroby."** / **„Celkové množství spotřeby a výroby se musí rovnat."**
+Viz [Spotřeba a výroba](#spotřeba-a-výroba). V závorce hlášky jsou oba součty.
 
-**„Celkové množství spotřeby a výroby se musí rovnat."**
-Součet množství na straně spotřeby nesedí se součtem na straně výroby; v závorce
-hlášky jsou obě čísla. Sčítají se všechny řádky dohromady, takže chybí buď
-řádek, nebo je někde překlep v množství. Dokud to nesedí, neuloží se ani hodiny
-a stroje.
+**Zakázku nevidím v Hodinách.**
+Čeká na schválení.
 
-**Nevidím v menu Stroje, Materiál ani Přehled.**
-Jsou jen pro vedoucí. Pokud je potřebujete, řekněte si správci o změnu role.
+**Nevidím Přehled, Stroje ani Materiál** / **nevidím záznamy kolegů.**
+Jsou jen pro vedoucí. Požádejte správce o změnu role.
 
-**Zapsal jsem zakázku, ale v Hodinách ji nevidím.**
-Čeká na schválení vedoucím. Po schválení se objeví v Hodinách, ve Strojích
-i v Materiálu.
+**V nabídce chybí materiál, stroj nebo lokace.**
+Byl vyřazen. Správce ho může znovu aktivovat.
 
-**Nevidím záznamy kolegů.**
-Běžný pracovník vidí své záznamy a zakázky, kde je uvedený jako spolupracovník.
-Je to záměr. Kdo potřebuje vidět vše, potřebuje roli vedoucího.
+**Odeslané fotky tam nejsou.**
+Formulář něco vytkl a fotky se ztratily. Vyberte je znovu.
 
-**V nabídce chybí materiál nebo stroj.**
-Nejspíš byl vyřazen. Požádejte správce, aby ho v administraci znovu označil jako
-aktivní.
+**„Přípona souboru … není povolena."** / **„… Soubor se nepodařilo otevřít jako fotku."**
+Soubor není fotka, nebo je poškozený. Použijte `jpg`, `png`, `webp` nebo `heic`.
 
-**Odeslal jsem formulář s fotkami a fotky tam nejsou.**
-Formulář nejspíš něco vytkl a vrátil se zpět — prohlížeč fotky v poli neudrží.
-Vyberte je znovu a odešlete zakázku ještě jednou. Totéž platí po přidání řádku.
+**„… Fotka je příliš velká"** / **„Fotky jsou dohromady příliš velké"** / **„Zakázka může mít nejvýše 10 fotek"**
+Pošlete menší nebo méně fotek. Při úpravě případně nejdřív odeberte uloženou.
 
-**„Přípona souboru … není povolena."**
-Vybraný soubor není fotka. Přijímají se `jpg`, `png`, `webp` a `heic`.
-
-**„… Fotka je příliš velká (maximálně 10 MB)."**
-Fotka s uvedeným názvem je nad povolenou velikostí. Vyfoťte ji znovu v nižším
-rozlišení, nebo použijte jinou.
-
-**„Fotky jsou dohromady příliš velké (najednou nejvýše 20 MB)."**
-Každá fotka zvlášť je v pořádku, ale všechny dohromady jsou moc velké na jedno
-odeslání. Pošlete jich méně.
-
-**„Zakázka může mít nejvýše 10 fotek …"**
-Vybrali jste víc fotek, než se k jedné zakázce vejde; v závorce je, kolik jste
-vybrali a kolik jich zakázka už má uložených. Vyberte méně, nebo (při úpravě)
-nejdřív některou uloženou odeberte.
-
-**Klepnu na „Vybrat z galerie" a fotoaparát se nenabídne.**
-Některé prohlížeče (Chrome, Opera) tam ukážou jen soubory. Pro fotoaparát
-zvolte **Vyfotit**.
-
-**„… Soubor se nepodařilo otevřít jako fotku."**
-Soubor s uvedeným názvem má sice příponu fotky, ale aplikace ho nedokáže
-přečíst — bývá poškozený, nebo je to jiný soubor jen přejmenovaný. Vyfoťte
-práci znovu, nebo vyberte jinou fotku.
-
-**Zapomenuté heslo.**
-Aplikace neumí obnovu hesla přes e-mail. Požádejte správce o nastavení nového.
+**„Vybrat z galerie" nenabízí fotoaparát.**
+Zvolte **Vyfotit**.
 
 **Špatně zadaná zakázka.**
-Jako pracovník ji opravit nemůžete. Řekněte vedoucímu — ten ji v **Přehledu**
-opraví, nebo vám ji vrátí s poznámkou, případně smaže.
+Řekněte vedoucímu. Opraví ji v Přehledu, nebo ji smaže.

@@ -2,222 +2,104 @@
 
 [![CI](https://github.com/janmdvoracek/MaterialInventory/actions/workflows/ci.yml/badge.svg)](https://github.com/janmdvoracek/MaterialInventory/actions/workflows/ci.yml)
 
-Job tracking for a materials depot: what each processing job consumed and
-produced, who worked it and for how long, and how many machine hours it took.
+Job tracking for a materials depot: what each processing job consumed and produced, who worked on it and for how long, which machines ran and what fuel went into them. Workers record jobs from their phones. The interface is **Czech**; the code and docs are English.
 
-Depot workers write up each job from their phones on a mobile-first web form.
-The app's interface is entirely in **Czech**; this repository's documentation
-and code are in English.
-
-> **Note:** despite the name, this app does **not** track stock levels. Receipts,
-> shipments, adjustments, the stock dashboard and the movement history were all
-> removed; there are no balances and no sufficiency checks. It records what was
-> processed, not what is on hand.
-
----
+> Despite the name, this app does **not** track stock levels. It records what was processed, not what is on hand.
 
 ## What it does
 
-| | |
+| Page | |
 |---|---|
-| **Transform** (*Zpracování*) | The main form, and the landing page. Each job names the **location** it was worked at, from an admin-maintained list. One job consumes some materials and produces others — crushing, sorting, cutting — logs the submitter's own hours, names collaborators with their hours, and records the machines that ran — with their motohodiny and the tonnage each processed, both optional — and the litres of fuel put into them. Optional **photos**, up to ten, can be attached from the phone's camera or gallery — each new one is added, never swapped for the last. A submission that is **nothing but fill-ups** is a valid job on its own: no materials, no hours, no balance to keep. |
-| **Review** (*Přehled*) | Every recorded job with everything that was typed into the form, filterable (location included), with the ones awaiting a decision highlighted. A manager approves, corrects or deletes from here. Manager/Admin only. |
-| **Machines** (*Stroje*) | One filter over hours and tonnage per machine, its two rates (Kč/hod, Kč/t), what those come to in money — per hours, per tonnes, and in total — and the individual usage rows behind it all. Plus a *Tankování* card over the same filter: litres and fill-up count per machine, and the individual fill-ups. Manager/Admin nav entry. |
-| **Materials** (*Materiál*) | Tonnage consumed, produced and net per material over a date range, and the individual line items behind those totals — "how much 8/16 did we make last month?" — optionally for one location. Manager/Admin only. |
-| **Hours** (*Hodiny*) | Hours worked per person, for payroll and job costing. For a worker, also their own last few jobs with the review status of each. |
-| **Install** (*VyrobaPK*) | The site installs on a phone's home screen as an app — Chrome's „Nainstalovat aplikaci" on Android, Safari's „Přidat na plochu" on an iPhone — and opens full-screen from its own icon. Same server, same login; with no signal it shows an offline page instead of the browser's error. No app store involved. |
+| **Zpracování** (record a job) | The landing page. The worker enters location, materials consumed and produced, their own and collaborators' hours, the machines used (motohodiny, tonnage, fuel) and up to ten photos. The consumed and produced totals must match. A job that is only refuelling is valid on its own. |
+| **Přehled** (review) | Every job, with pending ones highlighted. A manager approves, corrects or deletes. Manager only. |
+| **Stroje** (machines) | Per machine: meter reading, hours run, tonnage, rates, cost, and fuel, plus the rows behind each figure. Manager only. |
+| **Materiál** (materials) | Tonnes consumed, produced and net per material, plus the line items. Manager only. |
+| **Hodiny** (hours) | Hours per person. A worker also sees their last five submissions and their review status. |
 
-Each summary table on those last three downloads as a CSV that opens straight
-into Excel — semicolon-delimited, UTF-8 BOM, comma decimals — over whatever
-filter the page is showing; Machines has two, one per summary card. Two detail
-tables download too — Materials' line items and Machines' fill-ups — each as every
-row the filter allows, not the page on screen.
+A few more things:
 
-Photos attached to a job are linked from its Review page and nowhere else, and
-a manager can remove any of them when correcting the job. Each is shrunk on
-upload to a JPEG of at most 1600 px (a few hundred KB, HEIC from an iPhone
-included), stored outside the public asset tree and served by Django behind the
-same gate as that page — no uploaded file is reachable without logging in.
-
-A job is written as a single transaction: its material line items, every
-participant's hours, any machine usage and any fill-ups all land together or not
-at all. Labour hours, machine motohodiny, tonnage and litres are four
-deliberately separate numbers — none is derived from another. See [docs/architecture.md](docs/architecture.md).
-
-**A job a worker submits does not count until a manager approves it.** It is
-recorded straight away and shows up highlighted on the Review page, but the
-Hours and Machines pages report approved jobs only. A manager's
-own submission is approved as it is written — there is nobody above them to sign
-it off.
+- **Approval.** A worker's job counts in reports only once a manager approves it; a manager's own job is approved immediately.
+- **Exports.** Every summary table, and the material and fuel detail tables, download as an Excel-friendly CSV of whatever the filter shows.
+- **Photos.** They are shrunk on upload and are never publicly reachable.
+- **Phone app.** The site installs to a phone's home screen as **VyrobaPK**.
 
 ## Tech stack
 
-Django 6.1, PostgreSQL 16, server-rendered Django templates. **No build step, no
-framework, no CDN tag** — every page is a plain form POST, so the app depends on
-nothing it does not serve itself and stays quick on a phone over patchy mobile
-data. There are exactly **three scripts**, all on the entry form and all pure
-enhancement. `static/js/job_rows.js` resizes a section in place instead of
-round-tripping — the *„+ další řádek"* / *„− odebrat řádek"* buttons under it
-are still ordinary submits answered by the server.
-`static/js/searchable_select.js` lets you type to narrow the material, machine
-and worker dropdowns, writing the pick back to a `<select>` that is still what
-the form posts. `static/js/photo_picker.js` puts the camera and gallery inputs
-behind one „Přidat fotku" button that keeps every pick. With any of them blocked or broken the form works
-unchanged. A fourth, `static/js/pwa.js`, is on every page and only registers the
-service worker that makes the site installable; see
-[architecture.md](docs/architecture.md#installing-the-app-vyrobapk).
-WhiteNoise serves static files; Gunicorn runs the app in production. Ruff
-handles linting and formatting.
-
-Python 3.14 — the Docker image and CI run the same version; see
-[configuration.md](docs/configuration.md#python-version).
+Django 6, PostgreSQL 16, server-rendered templates, gunicorn and WhiteNoise in production, Caddy in front. There is no build step, no JS framework and no CDN. Three small scripts on the job form are pure enhancement: without them every page is still a plain form POST. Python 3.14.
 
 ## Quick start
 
-### With Docker (recommended)
+With Docker:
 
 ```bash
 cp .env.example .env
 docker compose up --build
-```
-
-Then, in a second terminal:
-
-```bash
-docker compose exec web python manage.py migrate
+docker compose exec web python manage.py migrate          # in a second terminal
 docker compose exec web python manage.py createsuperuser
 ```
 
-The app is at <http://localhost:8000>.
+Then open <http://localhost:8000>. Without Docker, see [docs/development.md](docs/development.md).
 
-### Without Docker
+`createsuperuser` leaves the role at `WORKER`. Superusers bypass role checks anyway, but if you edit the account in the admin, set its role to **Admin**.
 
-Requires a running PostgreSQL instance.
-
-```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env   # then set DB_HOST=localhost
-python manage.py migrate
-python manage.py createsuperuser
-python manage.py runserver
-```
-
-> **Note:** `createsuperuser` does not set a `role`, so the account defaults to
-> `WORKER`. It still gets full access — superusers bypass every role check — but
-> if you later edit it in the Django admin, set its role to **Admin** or you
-> will strip its own access. See [docs/architecture.md](docs/architecture.md#roles-and-permissions).
-
-### Load real data
-
-The catalog, machines, and staff accounts are seeded from CSV:
-
-```bash
-cp seed_data/materials.example.csv seed_data/materials.csv
-cp seed_data/machines.example.csv seed_data/machines.csv
-cp seed_data/locations.example.csv seed_data/locations.csv
-cp seed_data/users.example.csv seed_data/users.csv
-# edit those four with real data, then:
-python manage.py seed_data
-```
-
-Re-running is safe — it updates in place rather than duplicating, and never
-overwrites a value someone set by hand in the admin. New accounts get a random
-temporary password printed to the console; share it securely.
-Full column reference: [docs/development.md](docs/development.md#seeding-data).
+To load the catalog, machines, locations and staff accounts, copy the four `seed_data/*.example.csv` files to `*.csv`, edit them and run `python manage.py seed_data`. It is safe to re-run. See [docs/development.md](docs/development.md#seeding-data).
 
 ## Common commands
 
 ```bash
-python manage.py test                  # full suite (512 tests, needs Postgres)
-python manage.py test workorders       # one app
-coverage run manage.py test && coverage html   # coverage report in htmlcov/
-ruff check . && ruff format .          # lint and format
-docker compose up --build              # full stack
+python manage.py test                          # needs Postgres
+coverage run manage.py test && coverage html   # report in htmlcov/
+ruff check . && ruff format .
 ```
-
-More, including single-test invocation and the CI pipeline:
-[docs/development.md](docs/development.md).
 
 ## Roles
 
 | Role | Can do |
 |---|---|
-| `WORKER` | Transform and Hours. Sees only their own hours, plus jobs they were named a collaborator on. Their submissions wait for approval, and their last five are listed with a status badge at the top of Hours; they cannot edit them. |
-| `MANAGER` | Everything a Worker can, plus the Review page (approve / edit / delete any job), the Machines page, and an unrestricted view of everyone's hours and machine usage. Their own submissions are approved on the spot. **No** Django admin access. |
-| `ADMIN` | Everything, plus the Django admin back office for editing the catalog and accounts. |
+| `WORKER` | Record jobs; see their own hours. Submissions wait for approval. |
+| `MANAGER` | Everything a worker can, plus Přehled, Stroje, Materiál and everyone's hours. No Django admin. |
+| `ADMIN` | Everything, plus the Django admin (catalog and accounts). |
 
-Workers' scoping is enforced in the database query, not by hiding form fields —
-editing the URL does not widen what they can see. The Review pages and the
-Machines page are gated in the view with `role_required`, so a worker who types
-one of those URLs gets a 403 rather than a scoped-down page.
-
-**`/admin/` answers 404 unless you are already logged in as an Admin.** The
-deployment is public, so Django's own admin login form — the superuser one, at
-the URL every scanner tries first — is not served at all: log in to the app
-first, then open the admin (the header link appears for Admins). Details in
-[docs/architecture.md](docs/architecture.md#the-admin-is-a-404-unless-you-are-already-an-admin).
+Scoping is enforced in the queries and views, not by hiding links. **`/admin/` answers 404 unless you are already logged in as an Admin**: log in to the app first, then use the header link.
 
 ## Project layout
 
 ```
-config/       Django project — settings, root URLconf, WSGI/ASGI
-accounts/     Custom User model, roles, role_required decorator, the /admin/ gate, Czech auth forms
-materials/    Material catalog + the seed_data command (materials, machines, users)
-machines/     Machine catalog with its hourly and per-tonne rates
-workorders/   Jobs and their StockMovement line items; Transform form, review dashboard, machine and material pages, time-worked reporting, all URLs (views.py: jobs; reports.py: reports)
-templates/    All HTML; base.html holds the site CSS and bottom nav
-static/       Source static assets (tracked; NOT the collectstatic output)
-seed_data/    CSV templates — real data files are gitignored
-locale/       Czech overrides for Django's own untranslated strings (.po + .mo)
-docs/         Documentation (see below)
+config/       settings and root URLconf
+accounts/     User model, roles, role_required, the /admin/ gate
+materials/    Material catalog and the seed_data command
+machines/     Machine catalog and rates
+locations/    Location catalog
+workorders/   jobs, every page and URL (views.py: jobs; reports.py: reports; pwa.py)
+templates/    all HTML
+static/       source assets (tracked)
+seed_data/    CSV templates; real files are gitignored
+locale/       Czech strings Django doesn't ship
+docs/         documentation
 ```
 
 ## Documentation
 
 | Document | For |
 |---|---|
-| [docs/architecture.md](docs/architecture.md) | How work orders, line items, hours and roles fit together. |
-| [docs/development.md](docs/development.md) | Environment setup, testing, linting, seeding, CI. |
-| [docs/configuration.md](docs/configuration.md) | Every environment variable and the settings that need explaining. |
-| [docs/localization.md](docs/localization.md) | The Czech locale's consequences for numbers, dates and forms. Non-obvious; read it before touching either. |
-| [docs/user-guide.cs.md](docs/user-guide.cs.md) | End-user manual, in Czech, for depot staff. |
-| [DEPLOYMENT.md](docs/deployment/DEPLOYMENT.md) | Runbook for the public VPS deployment — the steps you run on the server. |
-| [DEPLOYMENT_PLAN_PUBLIC.md](docs/deployment/DEPLOYMENT_PLAN_PUBLIC.md) | Why that deployment is shaped the way it is: TLS, the proxy, the HTTPS settings, the security gaps the LAN used to cover. |
-| [DEPLOYMENT_PLAN.md](docs/deployment/DEPLOYMENT_PLAN.md) | The superseded LAN plan. Still the authority on the image, static files, seeding, collation and backups, none of which changed. |
-| [CLAUDE.md](CLAUDE.md) | Working notes for AI coding assistants. Overlaps the docs above but is written as instructions, not explanation. |
+| [docs/architecture.md](docs/architecture.md) | How jobs, rows, approval, reports and roles fit together |
+| [docs/development.md](docs/development.md) | Setup, tests, linting, seeding, CI |
+| [docs/configuration.md](docs/configuration.md) | Environment variables and the settings that need explaining |
+| [docs/localization.md](docs/localization.md) | What the Czech locale does to numbers, dates and forms |
+| [docs/user-guide.cs.md](docs/user-guide.cs.md) | End-user manual, in Czech |
+| [docs/deployment/DEPLOYMENT.md](docs/deployment/DEPLOYMENT.md) | Server runbook |
+| [CLAUDE.md](CLAUDE.md) | Rules for AI coding assistants |
 
 ## Deployment
 
-Not yet deployed, but everything needed to deploy is in the repo. The target is
-a **public VPS behind the company domain, over HTTPS**.
+The target is a public VPS behind the company domain, over HTTPS. Production is `docker-compose.prod.yml`, with three services:
 
-`docker-compose.yml` is **development only** — `runserver`, `DEBUG=True`, the
-database port published to the host — and must never be brought up on the
-server, where a published port means a published-to-the-internet port. The
-production stack is `docker-compose.prod.yml`, three services: `db` and `web`
-(gunicorn from the built image, hashed assets served by WhiteNoise) both
-unpublished, and `proxy` (Caddy) owning 80/443 and obtaining its own Let's
-Encrypt certificate.
+- `db`
+- `web` (gunicorn)
+- `proxy` (Caddy, which gets its own Let's Encrypt certificate)
 
-```bash
-cp .env.production.example .env.production   # then fill it in
-```
-
-```bash
-docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
-```
-
-Follow [DEPLOYMENT.md](docs/deployment/DEPLOYMENT.md) on the server rather than those two lines.
-Ordering matters in several places — the DNS record has to exist before the
-first `up` or there is no certificate, and the database collation has to be
-checked before any data exists. That runbook also opens with two security
-gaps the old LAN deployment closed with the network rather than with code; read
-them before pointing DNS at anything.
-[DEPLOYMENT_PLAN_PUBLIC.md](docs/deployment/DEPLOYMENT_PLAN_PUBLIC.md) records why the setup
-looks the way it does.
+`docker-compose.yml` is for development only and must never run on the server, because it publishes Postgres. Follow [DEPLOYMENT.md](docs/deployment/DEPLOYMENT.md); ordering matters (DNS before the first start, collation before any data).
 
 ## License
 
-No `LICENSE` file is present; treat this as private and internal. Add one before
-distributing the code.
+No `LICENSE` file; treat as private and internal.

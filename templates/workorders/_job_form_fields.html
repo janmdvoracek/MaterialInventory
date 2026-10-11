@@ -1,84 +1,21 @@
 {% load static %}{% comment %}
-The body of the Zpracování form: the job's own fields, then one block per
-`JOB_SECTIONS` entry (`sections` in the context, from `_job_context`). Shared by
-transform_form.html (recording a job) and job_edit.html (a manager correcting
-one), so a field added to a row cannot land on one page and be forgotten on the
-other.
+The Zpracování form body, shared by transform_form.html and job_edit.html: the
+job's fields, then one block per JOB_SECTIONS entry. The caller supplies the
+<form> tag (with enctype="multipart/form-data", or photos never arrive), the
+CSRF token, a leading decoy submit and the real submit button.
 
-Rendered inside the caller's own <form>, so there is no <form> tag, no
-{% csrf_token %} and no primary submit button here — those differ per page and
-stay with the caller. Because the browser submits a form via its *first* submit
-button when Enter is pressed, and the row buttons below come before the
-caller's real one, each caller opens its <form> with an off-screen decoy submit
-so Enter still saves.
+The row buttons are real submits (add_<prefix> / remove_<prefix>) and need
+`formnovalidate`. „− odebrat řádek" is rendered `hidden` at the floor rather
+than omitted, so job_rows.js can unhide it.
 
-Each section's two row buttons are plain submits posting the form back under
-`add_<prefix>` or `remove_<prefix>`; the view rebuilds the page unbound one row
-bigger or smaller (`_job_forms`). Both carry `formnovalidate`, or the browser
-would refuse to submit a half-filled form and the buttons would silently do
-nothing. „− odebrat řádek" is rendered `hidden` once a section is down to one
-row rather than left out, because job_rows.js toggles it back; the view holds
-the same floor regardless, so this is presentation, not the rule.
+The three scripts (job_rows.js, searchable_select.js, photo_picker.js) are
+loaded here and are pure enhancement; they clone the <template>s below.
 
-**job_rows.js resizes a section in the DOM instead, and is pure enhancement** —
-it intercepts those two clicks, and with the script missing the submits above
-still work. It is loaded from this partial rather than from base.html or the
-two callers for the same reason the fields live here: the pages cannot drift,
-and the other four do not load it. The JS builds no markup of its own; it
-clones the per-section <template> below, which is Django's own `empty_form`
-with `__prefix__` in place of the row index, so the widgets and option lists
-still come from workorders/forms.py. `data-min-rows` / `data-max-rows` carry
-MIN_ROWS_PER_SECTION / MAX_ROWS_PER_SECTION, so the two implementations cannot
-disagree about the floor or the cap. A row and its errors are wrapped together
-in `.row-block`, so removing the last row takes its messages with it.
+„Fotky" comes last because file inputs lose their picks whenever the form is
+re-rendered.
 
-**static/js/searchable_select.js is the second enhancement and works the same
-way**: it hides each row's <select> behind a text box that narrows its options
-as you type, writing the pick back to the select — which keeps its name, its
-value and its place in the POST. With that script off the rows are plain
-dropdowns. It is loaded here for the same reason as the other, finds rows added
-by job_rows.js through a MutationObserver rather than a call, and reads its
-choices off the rendered <select>, so the option lists still come only from
-workorders/forms.py.
-
-„Lokace" is a plain <select>, not one of the searchable row pickers: it sits
-outside the four sections, which is all searchable_select.js enhances.
-
-„Zapsat za" is guarded because it is manager-only: `job_edit` builds
-`WorkOrderForm` without a `user`, so the field is not there. The hours label
-comes from the form, because each page means something different by it.
-
-**„Fotky" is last, and both callers must open their <form> with
-`enctype="multipart/form-data"`** — the one thing this partial cannot do for
-them, and without it the browser posts the file name instead of the file. It
-sits after the sections rather than with the other job fields because a file
-input is the one control a page cannot be re-rendered carrying: whenever this
-form comes back — a row button on a browser running no JavaScript, or any
-validation error — the picks are gone and have to be made again. Last is where
-that costs the least, and the hint under it says so rather than letting a
-worker believe the photos went up with the job. There are two inputs:
-„Vyfoťte" carries `capture` and opens the camera, „Vyberte" does not and opens
-the gallery — Chrome on Android offers no camera from the second at all — and
-takes several files at once. `WorkOrderForm.clean()` adds the first's to the
-second's. Every photo is added to the job; on `job_edit` the stored ones are
-listed above the inputs, each with an „Odebrat" box, and nothing else removes
-one.
-
-**static/js/photo_picker.js is the third enhancement**: it hides both inputs
-behind one „Přidat fotku" button whose menu opens one or the other, and after
-every pick moves the filled input into the list under the button and puts an
-empty copy of it back — so a second shot is added to the first rather than
-replacing it, which is all a bare file input can do. Every moved input keeps
-its name, so each pick is still posted by the browser, under the name the form
-reads; „Odebrat" beside a pick removes its input. The button, its menu and a
-list entry are the two <template>s below, so the copy lives here and not in
-the script.
-
-**Every error this page can produce is rendered, and that is a rule rather than
-a nicety.** Nothing is written unless all five forms validate, so an error with
-nowhere to appear is a submission that vanishes: the page comes back carrying
-what was typed, with no message anywhere, looking as if the button had not been
-pressed.
+Every error must render here: nothing is saved unless all forms validate, so
+an unrendered error looks like a button that did nothing.
 {% endcomment %}
 {% for error in order_form.non_field_errors %}<p class="messages error">{{ error }}</p>{% endfor %}
 
@@ -123,15 +60,7 @@ pressed.
             {% include "workorders/_row_errors.html" %}
         </div>
     {% endfor %}
-    {% comment %}
-    The clone source for „+ další řádek". <template> content is inert: it is
-    not submitted, and its widgets are not focusable until a copy is inserted.
-    `empty_form` is built with the formset's own `form_kwargs`, so the workers
-    row gets the right `collaborator_queryset(user, viewer)` pair and the
-    catalog rows get `keep`. It is deliberately *not* narrowed by
-    `_hide_taken_choices`, which only touches `formset.forms` — the template
-    carries the whole catalog and the script hides from it live.
-    {% endcomment %}
+    {# Clone source for „+ další řádek": built with form_kwargs, not narrowed by _hide_taken_choices. #}
     <template data-row-template>
         <div class="row-block">
             <div class="item-row">
@@ -148,11 +77,7 @@ pressed.
 
 <h2>Fotky</h2>
 <div class="photo-field" data-photo-field>
-    {% comment %}
-    `job_edit` only: the job's stored photos, each a link and an „Odebrat" box.
-    `remove_photos` exists only when the view passed the job's photos, and its
-    length is the number of boxes, so a job without photos skips the list too.
-    {% endcomment %}
+    {# job_edit only: each stored photo as a link with an „Odebrat" box. #}
     {% if order_form.remove_photos %}
         <ul class="stored-photos">
             {% for choice in order_form.remove_photos %}
@@ -177,14 +102,7 @@ pressed.
     </div>
     {% for error in order_form.photo.errors %}<p class="messages error">{{ error }}</p>{% endfor %}
 
-    {% comment %}
-    What photo_picker.js puts in place of the two inputs above: one button
-    opening a choice between them, and a list of what has been picked. Inert
-    until the script clones it, so with the script off the page is the two
-    labelled inputs. Every button in both templates is type="button" — the job
-    form's buttons are submits by default, and one of these posting the form
-    would read as the job being sent.
-    {% endcomment %}
+    {# What photo_picker.js shows instead of the two inputs. Buttons are type="button", or they would submit. #}
     <template data-photo-picker>
         <div class="photo-picker">
             <button class="btn secondary" type="button" data-photo-toggle aria-expanded="false">Přidat fotku</button>

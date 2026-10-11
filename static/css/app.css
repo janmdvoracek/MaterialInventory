@@ -1,8 +1,6 @@
-/* Colours live in the two blocks below and nowhere else. The light values sit
-   in :root, the dark ones override the same names under prefers-color-scheme.
-   A colour literal written into a rule further down is a bug: it will be
-   correct in one theme and wrong in the other. Reach for a token, or add one
-   to both blocks. */
+/* Colours live only in the two blocks below (light in :root, dark under
+   prefers-color-scheme). A colour literal further down is a bug: use a token,
+   or add one to both blocks. */
 :root {
     color-scheme: light;
 
@@ -60,8 +58,7 @@
         --link: #a3d160;
         --border: #333941;
 
-        /* Chrome sits above the page here, as it does in light: the page is
-           near black and the header and nav are a step lighter. */
+        /* Header and nav a step lighter than the near-black page. */
         --chrome-bg: #22262c;
         --chrome-text: #e8eaed;
         --chrome-link: #c3c8d0;
@@ -151,8 +148,7 @@ input:not([type="checkbox"]):not([type="radio"]), select, textarea {
     border: 1px solid var(--input-border);
     border-radius: 6px;
 }
-/* A textarea inherits the browser's monospace default otherwise, and its own
-   width attribute would beat the 100% above. */
+/* Otherwise a textarea keeps the browser's monospace font and its own width. */
 textarea { font-family: inherit; resize: vertical; box-sizing: border-box; }
 input:focus, select:focus, textarea:focus {
     outline: none;
@@ -176,11 +172,8 @@ button, .btn {
     text-decoration: none;
 }
 button:hover, .btn:hover { background: var(--brand-green-dark); }
-/* The `display` above is an author rule, so it beats the UA stylesheet's
-   `[hidden] { display: none }` however specific that is — without this, a
-   button carrying `hidden` still renders. „− odebrat řádek" is the one that
-   does, on a section down to one row (see `_job_form_fields.html`), and with
-   job_rows.js off there is nothing else to hide it. */
+/* Load-bearing: the `display` above beats the UA `[hidden]` rule, so without
+   this a hidden „− odebrat řádek" still renders. */
 button[hidden], .btn[hidden] { display: none; }
 .messages { list-style: none; padding: 0; }
 .messages li { padding: 0.75rem; border-radius: 6px; margin-bottom: 0.5rem; }
@@ -212,20 +205,12 @@ nav.bottom a {
     overflow-wrap: break-word;
 }
 nav.bottom a:hover, nav.bottom a:active { color: var(--brand-green); }
-/* A row wraps rather than crushing its boxes. The picker's names are long and
-   the numbers beside it are two or three digits, so a row's number boxes are
-   sized to three characters and the picker takes the rest: even the four-field
-   machines row (stroj, motohodiny, litry, tuny) fits a phone on one line, and
-   wraps only when the picker would fall below its basis. Placeholders are
-   bare units (t, mth, l, h) to fit — see the row forms in workorders/forms.py.
-   The spin buttons go too, because a desktop browser draws them inside the box,
-   where they would eat two of the three characters. Tonnes and motohodiny are
-   the exceptions, at five characters: a job's tonnage runs to five digits
-   (12345, 123.4), and motohodiny are the machine's hour-meter reading, which
-   is four or five. The picker's basis gives up one character of that so the
-   machines row is no wider than it was with three-character motohodiny and
-   six-character tonnes. A collaborator's hours (.hours) are five characters
-   too, only so the workers row lines up with the tonnes boxes beneath it. */
+/* A row wraps rather than crushing its boxes. Number boxes are three
+   characters wide (placeholders are bare units) and the picker takes the rest,
+   so even the four-field machines row fits a phone. .tons, .mth and .hours are
+   five characters (five-digit values; .hours only to line up with the tonnes
+   boxes), and the picker's basis is one character narrower to compensate.
+   Spin buttons are removed: they would eat the box. */
 .item-row { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: flex-end; margin-bottom: 0.5rem; }
 .date-override { margin-top: 1rem; }
 .item-row > div { flex: 1 1 calc(7rem - 1ch); }
@@ -240,8 +225,7 @@ nav.bottom a:hover, nav.bottom a:active { color: var(--brand-green); }
 .item-row input[type="number"]:is(.tons, .mth, .hours) { width: calc(5ch + 1rem + 2px); }
 .item-row input[type="number"]::-webkit-inner-spin-button,
 .item-row input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-/* Jobs still waiting for a manager are the whole point of the Prehled page,
-   so they have to stand out from the rest of the table. */
+/* Pending jobs must stand out on Přehled. */
 tr.row-pending > td { background: var(--row-pending-bg); }
 .status-badge {
     display: inline-block;
@@ -255,10 +239,9 @@ tr.row-pending > td { background: var(--row-pending-bg); }
 }
 .status-badge.pending { background: var(--pending-bg); color: var(--pending-text); }
 .status-badge.approved { background: var(--success-bg); color: var(--success-text); }
-/* A grid of equal columns, not flex: `flex: 1` shares out space after padding,
-   so the padded links came out wider than the unpadded <form> around
-   „Schválit". `minmax(0, …)` stops the longest label widening its own column
-   on a phone, and the slimmer side padding keeps that label inside it. */
+/* Equal grid columns rather than flex, which made the padded links wider than
+   the <form> around „Schválit". `minmax(0, …)` stops a long label widening
+   its column. */
 .job-actions { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 0.5rem; }
 .quick-filters { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 .quick-filters .btn {
@@ -268,8 +251,7 @@ tr.row-pending > td { background: var(--row-pending-bg); }
     padding: 0.6rem 0.75rem;
     font-size: 0.95rem;
 }
-/* The form around „Schválit" is the grid item, so it is made a grid too: its
-   button then stretches to the row height like the two bare links. */
+/* The form is the grid item, so make it a grid too and let its button stretch. */
 .job-actions form { display: grid; grid-template-columns: minmax(0, 1fr); }
 .job-actions form, .job-actions button, .job-actions .btn { margin: 0; }
 .job-actions button, .job-actions .btn { padding-left: 0.5rem; padding-right: 0.5rem; }
@@ -278,10 +260,7 @@ tr.row-pending > td { background: var(--row-pending-bg); }
 .btn.danger { background: var(--btn-danger-bg); color: var(--btn-danger-text); }
 .btn.danger:hover { background: var(--btn-danger-hover); }
 .muted { color: var(--text-muted); }
-/* „+ další řádek" / „− odebrat řádek", one pair under each section of the job
-   form. Sized down and un-stretched from the full-width default, since they sit
-   among the rows they resize rather than ending the form. Colours come from
-   .btn.secondary. */
+/* The row buttons under each job-form section: smaller and not full width. */
 .row-controls { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; }
 .row-controls button {
     width: auto;
@@ -289,8 +268,7 @@ tr.row-pending > td { background: var(--row-pending-bg); }
     padding: 0.5rem 0.9rem;
     font-size: 0.9rem;
 }
-/* Off-screen but still submittable: the decoy submit button that keeps Enter
-   saving the job form instead of adding a row. See transform_form.html. */
+/* Off-screen but submittable: the decoy that makes Enter save the job form. */
 .visually-hidden {
     position: absolute;
     width: 1px;
@@ -301,13 +279,9 @@ tr.row-pending > td { background: var(--row-pending-bg); }
     clip-path: inset(50%);
     white-space: nowrap;
 }
-/* The searchable pickers on the job form (static/js/searchable_select.js). A
-   row's <select> is hidden and a text box filters its options in front of it;
-   with the script off, none of this is in the page and the plain <select>
-   renders as it always did. The `select[hidden]` rule is belt and braces — no
-   author rule above sets a `display` on select, so the UA stylesheet would
-   already hide it, but the sibling rule for buttons exists precisely because
-   that assumption is easy to break by accident. */
+/* Searchable pickers (static/js/searchable_select.js). Without .combo
+   relative and .combo-list absolute, the list renders inline and pushes the
+   rows down. `select[hidden]` is a safeguard. */
 .combo select[hidden] { display: none; }
 .combo { position: relative; }
 .combo-list {
@@ -331,17 +305,10 @@ tr.row-pending > td { background: var(--row-pending-bg); }
 .combo-option { cursor: pointer; }
 .combo-option.active { background: var(--btn-secondary-bg); }
 .combo-empty { color: var(--text-muted); }
-/* „Fotky" on the job form (static/js/photo_picker.js): one button opening a
-   choice between the camera and the gallery input, which the script hides,
-   and a list of the picks so far, each holding its own hidden input.
-   The `[hidden]` rule is load-bearing, not belt and braces: `label` and
-   `input` both set a `display` above, and so does `.photo-menu` below, and an
-   author rule beats the UA stylesheet's `[hidden]` — without it the hidden
-   inputs and the closed menu all render. With the script off none of this is
-   in the page except the wrapper, and the two inputs render as they did.
-   The `input[hidden]` half is there because the input rule above, with its
-   two `:not()`s, is more specific than `.photo-field [hidden]` alone; this
-   one ties it and wins by coming later. */
+/* „Fotky" (static/js/photo_picker.js). The `[hidden]` rule is load-bearing:
+   `label`, `input` and `.photo-menu` all set a `display` that beats the UA
+   rule. The `input[hidden]` half matches the specificity of the input rule's
+   `:not()`s. */
 .photo-picker { margin-bottom: 1rem; }
 .photo-menu { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem; }
 .photo-menu button { flex: 1; width: auto; margin: 0; }
@@ -350,8 +317,7 @@ tr.row-pending > td { background: var(--row-pending-bg); }
 .photo-chosen > span { flex: 1; overflow-wrap: anywhere; }
 .photo-chosen button { width: auto; margin: 0; padding: 0.5rem 0.9rem; font-size: 0.9rem; }
 .photo-field [hidden], .photo-field input[hidden] { display: none; }
-/* A job's stored photos: on job_detail a list of links, on job_edit each with
-   an „Odebrat" box beside it, whose label must not take `label`'s block line. */
+/* Stored photos: links on job_detail, links with „Odebrat" boxes on job_edit. */
 .stored-photos { list-style: none; margin: 0 0 1rem; padding: 0; }
 .stored-photos li { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.35rem 0; }
 .stored-photos label { display: inline-flex; align-items: center; gap: 0.4rem; margin: 0; font-weight: normal; }

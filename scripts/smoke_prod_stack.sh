@@ -103,9 +103,8 @@ css=$(grep -o '/static/css/app\.[0-9a-f]\{12\}\.css' "$page" | head -n 1) || tru
 [ "$(http_status "$BASE$css")" = 200 ] || fail "$css is linked but not served"
 ok "hashed static files are served ($css)"
 
-# The installable app (workorders/pwa.py). The manifest is a template so its
-# icons go through {% static %}; an unhashed or missing icon here is a phone
-# that will not offer the install. The worker must be JavaScript at the root.
+# The PWA: the manifest must name a hashed, served icon (or phones won't offer
+# the install), and the worker must be JavaScript at the root.
 manifest="$WORK/manifest.json"
 [ "$(curl -k -s -o "$manifest" -w '%{http_code}' "$BASE/manifest.webmanifest")" = 200 ] \
     || fail "/manifest.webmanifest is not served without a login"
@@ -136,10 +135,8 @@ read -r status location < <(curl -k -s -c "$jar" -b "$jar" -o /dev/null -w '%{ht
 [ "$(http_status -b "$jar" "$BASE/")" = 200 ] || fail "logged in, but the session did not authenticate the next request"
 ok "login POST through the proxy works"
 
-# The gate is middleware, so the image carries it; this checks it survived the
-# route through Caddy. The smoke user is a plain worker, hence the second call.
-# The slashless /admin must 404 too: a 301 means the gate was moved below
-# CommonMiddleware, whose APPEND_SLASH then confirms the admin is there.
+# The admin gate, through Caddy, for anonymous and worker requests. A 301 on
+# the slashless /admin means the middleware moved below CommonMiddleware.
 for url in "$BASE/admin/" "$BASE/admin" "$BASE/admin/login/"; do
     [ "$(http_status "$url")" = 404 ] \
         || fail "$url is reachable without a session — AdminSessionRequiredMiddleware is not in MIDDLEWARE"
@@ -148,10 +145,8 @@ done
     || fail "/admin/ answered a logged-in non-admin — the gate must read has_admin_access, not is_authenticated"
 ok "/admin/ is 404 for anonymous and non-admin requests"
 
-# Uploaded job photos go out through Django behind the job pages' own gate. A
-# 200 here would mean MEDIA_ROOT was published the way /static/ is — by a proxy
-# route, or by landing in STATICFILES_DIRS. The path need not exist: the gate
-# runs before anything is looked for on disk.
+# Job photos must never be public; a 200 means MEDIA_ROOT got published. The
+# path need not exist, since the gate runs first.
 media_url="$BASE/media/job_photos/smoke.jpg"
 [ "$(http_status "$media_url")" = 302 ] \
     || fail "$media_url did not send an anonymous request to the login page — uploaded photos must never be public"

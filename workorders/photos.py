@@ -1,10 +1,8 @@
 """Shrinking an uploaded job photo before it is stored.
 
-The server has a small disk and a phone photo is 2-6 MB, so every upload is
-re-encoded here — whichever form it came through — to a JPEG no longer than
-`PHOTO_MAX_SIDE` on its long side, which lands around 200-400 KB. The original
-is not kept. Re-encoding also drops the EXIF block, GPS position included,
-which nothing in the app reads and a photo of a depot need not carry.
+The disk is small and phone photos are 2-6 MB, so every upload is re-encoded
+to a JPEG of at most `PHOTO_MAX_SIDE` px (around 200-400 KB). This also drops
+EXIF, including GPS. The original is not kept.
 """
 
 from io import BytesIO
@@ -26,13 +24,11 @@ class UnreadablePhoto(Exception):
 
 
 def shrink_photo(upload):
-    """Return `upload` re-encoded as a small JPEG, as a fresh upload.
+    """Return `upload` re-encoded as a small JPEG, as a new `UploadedFile`.
 
-    An `UploadedFile` and not a `ContentFile`, because that is what everything
-    downstream tells a new photo by (`views._apply_photo`). Raises
-    `UnreadablePhoto` for anything Pillow cannot decode — a renamed PDF, a
-    truncated file, or a picture past Pillow's decompression-bomb limit, which
-    would otherwise be hundreds of MB of RAM on the server.
+    An `UploadedFile`, because `clean_photo_upload` tells new uploads apart by
+    that type. Raises `UnreadablePhoto` for anything Pillow can't decode,
+    including images past its decompression-bomb limit.
     """
     try:
         with Image.open(upload) as image:

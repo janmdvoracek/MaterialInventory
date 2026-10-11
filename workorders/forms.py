@@ -15,67 +15,39 @@ from materials.models import Material
 from .models import WorkOrder
 from .photos import UnreadablePhoto, shrink_photo
 
-# Upper bounds for the job form's number boxes. Each is rendered as the box's
-# `max`, so a phone refuses an extra digit before posting, and checked again by
-# the field. Whole numbers on purpose: Django's „menší nebo rovna %(limit_value)s"
-# prints the limit unlocalised, and 99999 reads the same under `cs` as anywhere.
-# All four sit far inside their decimal(12, 2) columns, which is also what keeps
-# an oversized value a field error rather than a `numeric field overflow` 500.
-# `WorkOrderAdminForm`'s inlines repeat them, or a value saved in the admin would
-# be refused the next time the job is opened on `job_edit`.
-#
-# A person's hours on one job: a job is one day (`performed_on`).
-WORKER_HOURS_MAX = Decimal('24')
-# A machine's hour-meter reading: five digits, the width of the `.mth` box.
-METER_READING_MAX = Decimal('99999')
-# Tonnes on a material row or a machine row: five digits, the `.tons` box.
+# Upper bounds for the job form's number boxes, rendered as each input's `max`.
+# They keep values far inside the decimal(12, 2) columns, so an oversized value
+# is a field error, not a `numeric field overflow` 500. Whole numbers because
+# Django prints the limit unlocalised. The admin inlines repeat them.
+WORKER_HOURS_MAX = Decimal('24')  # a job is one day
+METER_READING_MAX = Decimal('99999')  # five-digit hour meter
 TONS_MAX = Decimal('99999')
-# One machine's fill-up. Above the tank of anything a depot runs, low enough
-# that a slipped extra zero on an ordinary fill is refused.
-LITRES_MAX = Decimal('2000')
+LITRES_MAX = Decimal('2000')  # above any tank; refuses a slipped extra zero
 
-# „Popis" is the job's label and the „Zakázka" column on four reports, so a
-# one-liner. The column is varchar(255); this cap is the form's alone (tighter
-# than the model, no migration), and `WorkOrderAdminForm` repeats it so a job
-# written in the admin stays saveable on `job_edit`.
+# Form-only caps (tighter than the columns, so no migration).
+# `WorkOrderAdminForm` repeats the description cap, so admin-saved jobs stay editable.
 DESCRIPTION_MAX_LENGTH = 40
-
-# `notes` is a TextField, so this cap is the form's alone; see `WorkOrderForm.notes`.
 NOTES_MAX_LENGTH = 2000
 
-# What „Fotky" accepts; `clean_photo_upload` then decodes and shrinks it. HEIC
-# and HEIF are here because that is what an iPhone shoots by default — they are
-# stored as JPEG like everything else (see `photos.shrink_photo`).
+# HEIC/HEIF is what an iPhone shoots; everything is stored as JPEG (`photos.shrink_photo`).
 PHOTO_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif']
 
-# The size of the *upload*, not of what is stored, which is shrunk to a few
-# hundred KB. A phone photo is 2-6 MB; 10 leaves room for a long-exposure one
-# without letting an accidental video through, or making the server decode one.
-# Above Django's FILE_UPLOAD_MAX_MEMORY_SIZE, so a photo this size is spooled to
-# a temp file rather than held in memory.
+# Per upload, checked before decoding; stored files are shrunk to a few hundred KB.
 PHOTO_MAX_BYTES = 10 * 1024 * 1024
 
-# How many photos one job holds, the stored ones and the new ones together. A
-# job's photos are evidence of the work, not an album, and each new one is
-# decoded during the request that carries it.
+# Per job, stored and new together.
 PHOTO_MAX_COUNT = 10
 
-# Every upload of one submission together, checked before any of them is
-# decoded. Kept below the `Caddyfile`'s `request_body max_size` (25 MB), so a
-# batch the form refuses comes back as this Czech error and not as Caddy's 413;
-# only a batch past Caddy's cap as well gets the 413.
+# Per submission, checked before decoding. Keep below the Caddyfile's
+# `request_body max_size` (25 MB), so a refused batch gets a Czech error, not a 413.
 PHOTO_MAX_TOTAL_BYTES = 20 * 1024 * 1024
 
 
 def clean_photo_upload(photo):
     """Refuse an oversized or undecodable upload, and shrink the rest.
 
-    Shared by `WorkOrderForm` and the admin's photo inline, so a photo is stored
-    small whichever way it came in. Only an upload is touched: a FieldFile is a
-    stored photo coming back unchanged through the admin — asking that one for
-    its size would stat the file on every save, and raise if it went missing.
-    The size is checked ahead of decoding so that an oversized file is never
-    decoded at all.
+    Shared by `WorkOrderForm` and the admin's photo inline. A FieldFile (a
+    stored photo passing back through the admin) is returned untouched.
     """
     if not isinstance(photo, UploadedFile):
         return photo
@@ -88,13 +60,7 @@ def clean_photo_upload(photo):
 
 
 class MultipleFileInput(forms.FileInput):
-    """A file input that posts any number of files under one name.
-
-    `allow_multiple_selected` is what makes the widget read every file posted
-    under its name rather than the last, and render `multiple`, so a gallery
-    pick can be several photos at once. `photo_picker.js` also posts each
-    earlier pick through an input of its own under the same name.
-    """
+    """A file input that reads every file posted under its name and renders `multiple`."""
 
     allow_multiple_selected = True
 
@@ -102,9 +68,8 @@ class MultipleFileInput(forms.FileInput):
 class CameraInput(MultipleFileInput):
     """Reads every shot posted under its name, but renders without `multiple`.
 
-    A camera returns one shot per opening anyway, and what a phone's browser
-    does with `multiple` beside `capture` is not worth finding out per model.
-    Several shots arrive as several inputs, which `photo_picker.js` keeps.
+    `multiple` beside `capture` behaves unpredictably on phones. `photo_picker.js`
+    posts several shots as several inputs.
     """
 
     def get_context(self, name, value, attrs):
@@ -160,20 +125,14 @@ def collaborator_queryset(user, viewer=None):
 
 
 class WorkOrderForm(forms.Form):
-    """The job's own fields. „Lokace", „Popis" and „Moje hodiny" are required in practice.
+    """The job's own fields.
 
-    All three carry `required=False` here and are re-imposed by
-    `_require_work_fields` once the rows are known, because a job that is
-    nothing but fill-ups is not asked for them: there is no work to label or
-    place and nobody's hours to record (`hours` cannot even be answered — its
-    minimum is half an hour). The form alone cannot tell the two cases apart, so
-    the view decides; the errors still land on these fields, where the shared
-    partial already renders them.
+    „Lokace", „Popis" and „Moje hodiny" carry `required=False` and are
+    re-imposed by `_require_work_fields`, because a fuel-only job is exempt and
+    only the view can tell.
     """
 
-    # Active locations only, plus whatever `keep_location` names on `job_edit`
-    # (see `_offer_recorded`). The empty option is a prompt rather than „all":
-    # the field has a visible label, and blank is not an answer on a work job.
+    # Active locations, plus `keep_location` on `job_edit` (see `_offer_recorded`).
     location = forms.ModelChoiceField(
         queryset=Location.objects.filter(is_active=True),
         required=False,
@@ -187,9 +146,6 @@ class WorkOrderForm(forms.Form):
         label='Popis',
         widget=forms.TextInput(attrs={'placeholder': 'Popis provedené práce'}),
     )
-    # Optional and roomy, where `description` is a required one-liner. The cap is
-    # the form's own — `WorkOrder.notes` is a TextField — so an accidental paste
-    # is a field error rather than an unbounded row.
     notes = forms.CharField(
         required=False,
         max_length=NOTES_MAX_LENGTH,
@@ -199,24 +155,17 @@ class WorkOrderForm(forms.Form):
     hours = _hours_field(
         required=False, label='Moje hodiny', widget=forms.NumberInput(attrs={'placeholder': 'Odpracované hodiny'})
     )
-    # Optional on every job, including a fuel-only one: a photo is evidence, not
-    # a record, and nothing reads it back. Any number of files up to
-    # PHOTO_MAX_COUNT; each one becomes a `JobPhoto`, added beside whatever the
-    # job already has — a new pick never replaces a stored photo, only
-    # `remove_photos` takes one away. `accept` is what makes Firefox on a phone
-    # offer the camera alongside the gallery; no `capture`, which takes the
-    # gallery away.
+    # Gallery picks. Each file becomes a new `JobPhoto`; none replaces a stored one.
+    # No `capture` here: it would hide the gallery.
     photo = MultipleFileField(
         required=False,
         label='Fotky',
         widget=MultipleFileInput(attrs={'accept': 'image/*'}),
         validators=[FileExtensionValidator(PHOTO_EXTENSIONS)],
     )
-    # Photos from the camera. Chrome and Opera on Android open `photo` straight
-    # into the file picker with no camera on offer, and `capture` is the only
-    # way to ask for one — at the price of the gallery, hence a second input
-    # rather than an attribute on the first. Never stored under its own name:
-    # `clean()` adds its shots to `photo`, so the views see one list.
+    # Camera shots. Chrome and Opera on Android offer no camera from `photo`, and
+    # `capture` would hide the gallery, hence a second input. `clean()` merges it
+    # into `photo`.
     camera_photo = MultipleFileField(
         required=False,
         label='Vyfotit',
@@ -235,8 +184,6 @@ class WorkOrderForm(forms.Form):
         super().__init__(*args, **kwargs)
         _offer_recorded(self.fields['location'], keep_location)
         # `job_edit` passes the job's stored photos; each gets an „Odebrat" box.
-        # A new job has none, so no field — and `{% if order_form.remove_photos %}`
-        # is false for a job without photos as well, the boxes being its length.
         self.stored_photos = photos
         if photos is not None:
             self.fields['remove_photos'] = forms.ModelMultipleChoiceField(
@@ -257,12 +204,10 @@ class WorkOrderForm(forms.Form):
         self.fields['hours'].label = 'Odpracované hodiny'
 
     def _clean_photos(self, cleaned_data):
-        """Put every new photo, from both inputs, on `photo` — shrunk, ready to store.
+        """Put every new photo from both inputs on `photo`, shrunk and ready to store.
 
-        Here rather than in `clean_photo`, because the count and the total size
-        are over both inputs at once, and over the photos the job keeps. Both
-        are checked before anything is decoded. An undecodable or oversized
-        file is named in its message, since it may be one of several.
+        The count (including kept photos) and the total size span both inputs,
+        and are checked before anything is decoded.
         """
         if 'photo' in self.errors or 'camera_photo' in self.errors:
             # The extension validator refused one; nothing is worth decoding.
@@ -401,12 +346,7 @@ class RowForm(forms.Form):
         return cleaned_data
 
     def check_row(self, cleaned_data):
-        """The row's own rule: blank, or filled in completely.
-
-        A hook rather than inline, because `MachineUsageForm` requires only
-        its machine and so cannot use this rule. The early return above
-        stays in one place either way.
-        """
+        """The row's own rule: blank, or filled in completely. `MachineUsageForm` overrides it."""
         filled = [cleaned_data.get(name) for name in self.fields]
         if any(filled) and not all(filled):
             raise forms.ValidationError(self.incomplete_error)
@@ -428,26 +368,18 @@ class MovementItemForm(RowForm):
         decimal_places=2,
         required=False,
         label='Množství (t)',
-        # Row placeholders are bare units because app.css sizes a row's number
-        # boxes to three characters (`.tons`, `.mth` and `.hours` ones to five); `title`
-        # carries the full name, and is also what a screen reader announces,
-        # since the row has no <label>.
+        # Row boxes are narrow, so the placeholder is a bare unit and `title`
+        # carries the full name (also the accessible name; rows have no <label>).
         widget=forms.NumberInput(attrs={'placeholder': 't', 'title': 'Množství (t)', 'class': 'tons'}),
     )
 
 
 class MachineUsageForm(RowForm):
-    """One machine on a job: what it ran, and/or the fuel put into it.
+    """One machine on a job: its usage and/or the fuel put into it.
 
-    Only the machine is required, which is why this row does not follow
-    `RowForm`'s all-or-nothing rule. Machines are priced outside the app for
-    now, so motohodiny and tuny are optional and a 0 in either is the blank box
-    (see `_zero_is_blank`): asking for them only had workers typing numbers
-    nobody read. A machine named on its own is a usage row with both unknown —
-    it still says the machine ran on the job. Litres stand alone, so „stroj +
-    litry" with motohodiny and tuny blank writes a `MachineRefuel` and no
-    `MachineUsage`. That is what lets a whole job be nothing but fill-ups; see
-    `_is_fuel_only`.
+    Only the machine is required; a typed 0 counts as blank. A machine alone is
+    a usage row with unknown numbers. „Stroj + litry" with nothing else is a
+    `MachineRefuel` only, which is what makes fuel-only jobs possible.
     """
 
     catalog_field = 'machine'
@@ -459,9 +391,7 @@ class MachineUsageForm(RowForm):
         label='Stroj',
         empty_label='Stroj',
     )
-    # Both optional, and both accept 0, which `_zero_is_blank` stores as unknown.
-    # Motohodiny are the machine's hour-meter reading, not the time it ran on
-    # this job: Stroje works the run time out from consecutive readings.
+    # The hour-meter reading, not time run; Stroje derives run time from readings.
     hours = _hours_field(
         min_value=Decimal('0'),
         max_value=METER_READING_MAX,
@@ -469,10 +399,6 @@ class MachineUsageForm(RowForm):
         label='Stav motohodin',
         widget=forms.NumberInput(attrs={'placeholder': 'mth', 'title': 'Stav motohodin', 'class': 'mth'}),
     )
-    # Litres, and no unit field to read — like every quantity in the app, the
-    # unit is hardcoded in the prompt. Capped at `LITRES_MAX`. Zero is accepted
-    # and means „netankovalo se", exactly like leaving the box blank — see
-    # `clean_litres`.
     litres = forms.DecimalField(
         min_value=Decimal('0'),
         max_value=LITRES_MAX,
@@ -481,7 +407,6 @@ class MachineUsageForm(RowForm):
         label='Natankováno (l)',
         widget=forms.NumberInput(attrs={'placeholder': 'l', 'title': 'Natankováno (l)'}),
     )
-    # Last in the row, after the litres, the way the tonnes box ends a material row.
     # Not part of the mass balance: chained machines each process the same material.
     tons = forms.DecimalField(
         min_value=Decimal('0'),
@@ -493,26 +418,17 @@ class MachineUsageForm(RowForm):
     )
 
     def _zero_is_blank(self, name):
-        """A typed 0 is the blank box: every rule below sees what an empty box gives."""
+        """A typed 0 means "not recorded": stored as unknown, never as a zero or an empty fill-up."""
         value = self.cleaned_data.get(name)
         return None if value == 0 else value
 
     def clean_hours(self):
-        """0 motohodiny is „not recorded", stored as unknown rather than as a real zero."""
         return self._zero_is_blank('hours')
 
     def clean_tons(self):
-        """0 tuny is „not recorded", stored as unknown rather than as a real zero."""
         return self._zero_is_blank('tons')
 
     def clean_litres(self):
-        """A typed 0 is the blank box, not a fill-up of nothing.
-
-        Refusing it sent a worker who wrote „0" for „didn't refuel" off to type
-        at least 0,01 — the opposite of what they meant. Stored, it would be a
-        `MachineRefuel` of zero litres, and on a row with no motohodiny it would
-        turn „stroj + 0" into a fuel-only job that recorded nothing.
-        """
         return self._zero_is_blank('litres')
 
     def check_row(self, cleaned_data):

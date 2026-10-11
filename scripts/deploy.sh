@@ -74,9 +74,8 @@ log "restarting"
 # shellcheck disable=SC2086
 $COMPOSE up -d
 
-# Each build leaves the previous image dangling, and the disk is small. After
-# `up -d`, so the old container no longer holds it; never fatal, since the new
-# version is already serving and a failure here is nothing to roll back over.
+# Each build leaves the previous image dangling on a small disk. Non-fatal: the
+# new version is already serving.
 log "pruning dangling images"
 docker image prune -f > /dev/null || log "WARNING: docker image prune failed — run it by hand"
 
