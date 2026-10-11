@@ -265,7 +265,7 @@ def _date_preset_links(request):
         for param in PAGE_PARAMS:
             params.pop(param, None)
         value = []
-        for field, day in zip(('date_from', 'date_to'), span(today)):
+        for field, day in zip(('date_from', 'date_to'), span(today), strict=True):
             if day is None:
                 params.pop(field, None)
                 value.append('')

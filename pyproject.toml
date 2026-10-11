@@ -1,3 +1,39 @@
+# Dependencies are locked in uv.lock (with hashes); see "Dependencies" in docs/development.md.
+# Direct dependencies only, pinned exactly so Dependabot bumps them one PR at a time.
+[project]
+name = "materialinventory"
+version = "0"
+# Keep in step with the Dockerfile and CI by hand.
+requires-python = "==3.14.*"
+dependencies = [
+    "Django==6.1.1",
+    "django-axes==8.3.1",
+    "gunicorn==26.2.0",
+    "pillow==12.3.0",
+    "pillow-heif==1.8.0",
+    "psycopg2-binary==2.9.13",
+    "python-decouple==3.8",
+    "whitenoise==6.12.0",
+]
+
+[dependency-groups]
+# Installed by a plain `uv sync`; left out of the image with `--no-dev`.
+dev = [
+    "coverage==7.16.2",
+    "pre-commit==4.6.2",
+    "ruff==0.16.9",
+]
+# Only for the `audit` job in .github/workflows/security.yml.
+audit = [
+    "pip-audit==2.10.1",
+]
+
+[tool.uv]
+# An application, not a library: install its dependencies, never the project itself.
+package = false
+# Older uv may rewrite uv.lock in a different shape. Keep in step with the Dockerfile and CI.
+required-version = ">=0.12.20"
+
 [tool.ruff]
 line-length = 120
 # Deliberately behind the 3.14 that CI and the image run. This is the syntax
@@ -10,21 +46,31 @@ extend-exclude = ["*/migrations/*"]
 quote-style = "single"
 
 [tool.ruff.lint]
-extend-select = ["I"]
+extend-select = [
+    "I", # isort
+    "B", # flake8-bugbear
+    "DJ", # flake8-django
+    "UP", # pyupgrade, up to target-version
+    "SIM", # flake8-simplify
+]
 ignore = [
     "RUF012", # Django's `class Meta: ordering = [...]`, form `error_messages = {...}`, etc. are idiomatic, not bugs.
     "FURB157", # This codebase deliberately quotes all Decimal() literals for consistency, e.g. `Decimal('0')`.
     "DTZ011", # Only used in tests to build relative-date query params, never to persist or compare timezone-aware data.
 ]
 
-# `coverage run manage.py test`, then `coverage report` or `coverage html`.
-# See "Coverage" in docs/development.md.
+# `coverage run manage.py test --parallel`, `coverage combine`, then `coverage report`
+# or `coverage html`. See "Coverage" in docs/development.md.
 [tool.coverage.run]
 branch = true
+# Each test worker process writes its own .coverage.* file; `coverage combine` merges them.
+concurrency = ["multiprocessing"]
+parallel = true
 source = ["."]
 omit = [
     "*/migrations/*",
     "*/tests.py",
+    "*/tests/*",
     "manage.py",
     "config/asgi.py",
     "config/wsgi.py",

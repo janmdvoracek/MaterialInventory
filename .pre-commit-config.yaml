@@ -2,9 +2,9 @@
 # few guards CI cannot give. Opt-in per clone (`pre-commit install`), so CI
 # stays the enforcement; see docs/development.md.
 repos:
-  # Keep `rev` in step with the ruff pin in requirements-dev.txt by hand.
+  # Keep `rev` in step with the ruff pin in pyproject.toml by hand.
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.8
+    rev: v0.16.9
     hooks:
       - id: ruff-check
       - id: ruff-format

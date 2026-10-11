@@ -89,7 +89,9 @@ class JobPhotoInline(admin.TabularInline):
 class WorkOrderAdminForm(forms.ModelForm):
     class Meta:
         model = WorkOrder
-        fields = '__all__'
+        # Every field on purpose: this form only adds the description cap, and
+        # WorkOrderAdmin declares no `fields`, so the admin shows whatever the model has.
+        fields = '__all__'  # noqa: DJ007
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

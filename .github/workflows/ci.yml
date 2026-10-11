@@ -17,14 +17,16 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Keep in step with the Dockerfile by hand; Dependabot bumps only that.
-      - uses: actions/setup-python@v7
+      # Python and uv: keep in step with the Dockerfile by hand; Dependabot bumps only that.
+      - uses: astral-sh/setup-uv@v10
         with:
+          version: "0.12.20"
           python-version: "3.14"
-          cache: "pip"
+          activate-environment: true
+          enable-cache: true
 
-      # Ruff's version is pinned there.
-      - run: pip install -r requirements-dev.txt
+      # Just the dev group, where Ruff's version is pinned.
+      - run: uv sync --locked --only-dev
 
       - name: Ruff check
         run: ruff check .
@@ -75,13 +77,15 @@ jobs:
       - uses: actions/checkout@v7
 
       # Match the Dockerfile, like the lint job.
-      - uses: actions/setup-python@v7
+      - uses: astral-sh/setup-uv@v10
         with:
+          version: "0.12.20"
           python-version: "3.14"
-          cache: "pip"
+          activate-environment: true
+          enable-cache: true
 
-      # requirements-dev.txt for coverage, pinned there.
-      - run: pip install -r requirements.txt -r requirements-dev.txt
+      # The app plus the dev group, for coverage. --locked fails on a stale uv.lock.
+      - run: uv sync --locked
 
       - name: Django system checks
         run: python manage.py check
@@ -89,9 +93,12 @@ jobs:
       - name: Check for missing migrations
         run: python manage.py makemigrations --check --dry-run
 
-      # Measured per pyproject.toml's [tool.coverage] sections.
+      # Measured per pyproject.toml's [tool.coverage] sections. One database per
+      # worker process; each writes its own .coverage.* file, merged by `combine`.
       - name: Run tests
-        run: coverage run manage.py test
+        run: |
+          coverage run manage.py test --parallel
+          coverage combine
 
       # The table lands on the run's summary page, no log-digging needed.
       - name: Coverage summary

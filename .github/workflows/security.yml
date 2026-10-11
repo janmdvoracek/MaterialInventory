@@ -1,0 +1,66 @@
+name: Security
+
+# Known vulnerabilities in the locked dependencies and in the production image.
+# Separate from CI on purpose: deploy.yml gates on ci.yml only, so a CVE
+# published upstream turns this red without freezing deploys, including the
+# deploy of the fix. The weekly run catches CVEs published while nothing changed.
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+  schedule:
+    - cron: '30 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # Keep in step with ci.yml.
+      - uses: astral-sh/setup-uv@v10
+        with:
+          version: "0.12.20"
+          python-version: "3.14"
+          activate-environment: true
+          enable-cache: true
+
+      # pip-audit from its own locked group, not the app's environment.
+      - run: uv sync --locked --only-group audit
+
+      # What the image installs (`--no-dev`), pinned and hashed, so pip-audit
+      # checks the exact versions without resolving anything itself.
+      - name: Audit the production dependencies
+        run: |
+          uv export --locked --no-dev --no-emit-project --format requirements-txt -o "$RUNNER_TEMP/requirements.txt"
+          pip-audit --strict --disable-pip --require-hashes -r "$RUNNER_TEMP/requirements.txt"
+
+  image:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build the production image
+        run: docker build -t materialinventory:scan .
+
+      # Pinned to a commit, not a tag: this action's tags were force-pushed to
+      # malware in March 2026. Fails only on HIGH/CRITICAL with a fix available;
+      # an unfixed CVE in the Debian base is nothing we can act on.
+      - name: Scan the image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: materialinventory:scan
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'

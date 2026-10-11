@@ -288,7 +288,7 @@ class UniqueChoiceFormSet(forms.BaseFormSet):
         taken = {value for value in chosen if value}
         if not taken:
             return
-        for form, own in zip(self.forms, chosen):
+        for form, own in zip(self.forms, chosen, strict=True):
             # A row keeps its own choice, or it would render blank.
             drop = taken - {own}
             if drop:

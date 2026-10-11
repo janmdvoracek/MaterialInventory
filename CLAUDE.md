@@ -26,11 +26,13 @@ Docs and code are English; only the user guide and the app's UI are Czech.
 ## Commands
 
 ```bash
+uv sync                                                 # .venv from uv.lock, dev tools included
 python manage.py runserver
 python manage.py makemigrations && python manage.py migrate
-python manage.py test                                   # needs Postgres
+python manage.py test --parallel                        # needs Postgres
+python manage.py test workorders.tests.test_review.JobEditTests
 python manage.py test materials.tests.MaterialModelTests.test_material_str
-coverage run manage.py test && coverage report -m
+coverage run manage.py test --parallel && coverage combine && coverage report -m
 ruff check . && ruff format .
 python manage.py seed_data                              # from seed_data/*.csv
 python manage.py compilemessages -l cs --ignore=.venv
@@ -39,6 +41,8 @@ docker compose up --build                               # dev stack only
 
 - **Commit a migration with every `models.py` change**, including label-only changes (`verbose_name` produces an `AlterField`). CI runs `makemigrations --check`.
 - **CI runs `ruff format --check`**, so run `ruff format .` before pushing.
+- **Dependencies are uv.** Direct ones are pinned exactly in `pyproject.toml`, everything else in `uv.lock` with hashes. Change them with `uv add` / `uv lock` and **commit `uv.lock` alongside**: the `Dockerfile` and CI run `uv sync --locked`, which fails on a stale lock. There is no `requirements.txt`.
+- **`security.yml`** (pip-audit on the locked production dependencies, Trivy on the image, also weekly) is deliberately separate from `ci.yml`, so a new upstream CVE never blocks `deploy.yml`. Its Trivy action stays pinned to a commit SHA.
 - A commit touching only `*.md` runs **no CI at all**, so a green check proves nothing about the code.
 - Don't quote a test count in docs; it drifts.
 
@@ -286,11 +290,12 @@ UI copy is **hardcoded Czech**, not `gettext`. Don't introduce `{% trans %}`. `L
 
 ## Tests
 
-One `tests.py` per app, plain `TestCase`, no pytest, no mocking. Tests drive views through `self.client` and assert on context and on database rows. `workorders/tests.py` holds almost everything.
+One `tests.py` per app, except `workorders/tests/`, which holds almost everything and is a package split by topic (`test_submission`, `test_job_form`, `test_review`, `test_reports`, …). Shared fixtures (`job_payload`, `default_location`, `ReviewFixtureMixin`) live in `workorders/tests/helpers.py`; new modules must be named `test_*.py`. Plain `TestCase`, no pytest, no mocking. Tests drive views through `self.client` and assert on context and on database rows.
 
 - Postgres is required, and there is no test settings module, so `settings.py` changes affect the suite.
 - Use `force_login`, **never `Client.login()`**. The axes backend rejects `authenticate()` without a request. `AxesStandaloneBackend` defines no `get_user`, which is what keeps `force_login` working.
 - There are no concurrent writes, so no `TransactionTestCase`. Add a read-modify-write and you'll need one.
+- CI runs `--parallel`: one cloned database per process. Nothing may share state outside the database (`JobPhotoTests` uses its own temporary `MEDIA_ROOT`). Coverage writes per-process files, so always `coverage combine` before `report`.
 
 ## Deployment
 

@@ -172,7 +172,7 @@ Both compose files pass `POSTGRES_INITDB_ARGS: "--locale-provider=icu --icu-loca
 
 ## Python version
 
-The `Dockerfile` and CI both use Python 3.14. Dependabot bumps only the `Dockerfile`, so copy a new minor version into `ci.yml` by hand.
+The `Dockerfile`, both workflows and `requires-python` in `pyproject.toml` use Python 3.14. Dependabot bumps only the `Dockerfile`, so copy a new minor version into `ci.yml`, `security.yml` and `pyproject.toml` by hand, then run `uv lock`.
 
 Ruff's `target-version` stays at `py312` on purpose. It controls the syntax Ruff *writes*: at `py314`, the formatter rewrites `except (A, B):` into the unparenthesised PEP 758 form.
 
