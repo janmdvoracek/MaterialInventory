@@ -192,7 +192,7 @@ On Windows Git Bash, prefix it with `MSYS2_ARG_CONV_EXCL=/etc/caddy`. Don't use 
 - **It never blocks a deploy.** `deploy.yml` checks `ci.yml` only, so a CVE published upstream can't stop you deploying its fix. A red run is still a to-do: bump the package (`uv lock --upgrade-package …`) or rebuild on a newer base image.
 - **The weekly run** is what catches a CVE published while nothing in the repo changed.
 - **Unfixed CVEs are ignored**, because there is nothing to upgrade to. Dev tools are not audited; they never reach the server.
-- **The Trivy action is pinned to a commit**, not a tag: its tags were hijacked in March 2026. Dependabot moves the commit and its version comment together.
+- **Two actions are pinned to a commit**, not a tag. Trivy's tags were hijacked in March 2026, and `setup-uv` publishes no floating major tag, so `@v10` doesn't resolve. Dependabot moves the commit and its version comment together.
 
 ### Deploys and Dependabot
 
