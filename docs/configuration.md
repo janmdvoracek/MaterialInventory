@@ -386,7 +386,7 @@ docker rm -f mi-verify
 
 ## Uploaded files (`MEDIA_ROOT`)
 
-The job form takes one optional photo per job (`WorkOrder.photo`), and uploaded
+The job form takes optional photos, up to ten per job (`JobPhoto`), and uploaded
 files are the mirror image of static ones: same kind of directory, opposite
 rules.
 
@@ -407,7 +407,7 @@ photo appears on. Pointing Caddy at the directory, or adding it to
 published; that is the one change to avoid here.
 
 `MEDIA_URL` exists (rather than being left empty) because `FieldFile.url` raises
-without it, and the admin's file widget calls it whenever a job has a photo.
+without it, and the job page and the admin's file widget call it for every photo.
 
 Three practical consequences:
 
@@ -416,8 +416,8 @@ Three practical consequences:
   `docker-compose.prod.yml` mounts `media_data:/app/media`, and `down -v` now
   destroys photos as well as the database and the certificate.
 - **`scripts/backup_db.sh` does not cover them.** It is `pg_dump`; the photos
-  sit in a volume beside it. A job whose photo is gone still renders — the
-  template guards on `work_order.photo` — but the file is not coming back.
+  sit in a volume beside it. A job whose photo file is gone still renders —
+  its link answers 404 — but the file is not coming back.
 - **`media/` is gitignored and in `.dockerignore`**, for the same reason
   `backups/` is: real company data, and generated rather than source.
 
@@ -426,12 +426,14 @@ a `media/` URL must send an anonymous request to the login page and answer a
 logged-in worker with 403. A 200 there is the symptom of the directory having
 been published.
 
-The form's own limits — `PHOTO_EXTENSIONS` and `PHOTO_MAX_BYTES` (10 MB) in
-`workorders/forms.py` — bound the *upload*; what is stored is shrunk to a JPEG
-of a few hundred KB (`workorders/photos.py`), so the volume grows far slower
-than the cap suggests. The `Caddyfile` sets `request_body max_size 12MB` above them as a
-backstop, so an oversized photo comes back as the app's Czech field error while
-a hostile upload never reaches the disk.
+The form's own limits — `PHOTO_EXTENSIONS`, `PHOTO_MAX_BYTES` (10 MB per
+photo), `PHOTO_MAX_COUNT` (10 per job) and `PHOTO_MAX_TOTAL_BYTES` (20 MB per
+submission) in `workorders/forms.py` — bound the *upload*; what is stored is
+shrunk to a JPEG of a few hundred KB (`workorders/photos.py`), so the volume
+grows far slower than the caps suggest. The `Caddyfile` sets
+`request_body max_size 25MB` above them as a backstop, so a photo or a batch
+the form refuses comes back as the app's Czech field error while a hostile
+upload never reaches the disk.
 
 ## `.dockerignore`
 

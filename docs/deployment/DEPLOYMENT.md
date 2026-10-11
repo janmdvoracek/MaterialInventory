@@ -614,8 +614,8 @@ cluster re-reads `POSTGRES_INITDB_ARGS`, so step 8's check applies again.
 | `db` exits with "set DB_NAME in .env.production" | The `--env-file` flag was left off. |
 | `port is already allocated` on 80 or 443 | Something else on the VPS is already serving. Nothing else should be. |
 | `500` on every page, `Missing staticfiles manifest entry` | The image was built without the `collectstatic` step. Rebuild with `dcp up -d --build`. |
-| „Zobrazit fotku" on a job answers `404` where it used to open the photo | The `media_data:/app/media` mount is missing from the `web` service, so the file was written into a container that has since been replaced. The rows survive; the files do not. |
-| `413` when submitting a job with a photo | The photo is over the `request_body max_size` in the `Caddyfile`. Anything under it that is still too large comes back as the app's own Czech field error instead. |
+| „Fotka 1" (or any photo link) on a job answers `404` where it used to open the photo | The `media_data:/app/media` mount is missing from the `web` service, so the file was written into a container that has since been replaced. The rows survive; the files do not. |
+| `413` when submitting a job with photos | The photos together are over the `request_body max_size` (25 MB) in the `Caddyfile`. Anything under it that is still too large — one photo over 10 MB, or a batch over 20 MB — comes back as the app's own Czech field error instead. |
 | `seed_data` reports "not found, skipping." | The `./seed_data:/app/seed_data:ro` mount is missing, or the real `.csv` files were never created on the server. |
 | Czech names sort after Z | The cluster was initialised without the ICU locale. See step 8. |
 | `db` in a restart loop after an image update | Postgres major version change. See [Upgrading Postgres](#upgrading-postgres). |

@@ -6,11 +6,12 @@ from .forms import (
     DESCRIPTION_MAX_LENGTH,
     LITRES_MAX,
     METER_READING_MAX,
+    PHOTO_MAX_COUNT,
     TONS_MAX,
     WORKER_HOURS_MAX,
     clean_photo_upload,
 )
-from .models import MachineRefuel, MachineUsage, StockMovement, WorkerHours, WorkOrder, discard_photo
+from .models import JobPhoto, MachineRefuel, MachineUsage, StockMovement, WorkerHours, WorkOrder, discard_photo
 
 
 class CappedInline(admin.TabularInline):
@@ -71,6 +72,27 @@ class WorkerHoursInline(CappedInline):
     caps = {'hours': WORKER_HOURS_MAX}
 
 
+class JobPhotoForm(forms.ModelForm):
+    class Meta:
+        model = JobPhoto
+        fields = ('file',)
+
+    def clean_file(self):
+        # Shrunk like one sent through the job form, or an upload here would
+        # be the one full-size photo on a disk sized for small ones.
+        return clean_photo_upload(self.cleaned_data.get('file'))
+
+
+# Like every other row of a job, edited here and never registered top-level.
+class JobPhotoInline(admin.TabularInline):
+    model = JobPhoto
+    form = JobPhotoForm
+    extra = 1
+    # The job form's own cap, or a job saved here would be refused the next
+    # time a photo is added to it on `job_edit`.
+    max_num = PHOTO_MAX_COUNT
+
+
 class WorkOrderAdminForm(forms.ModelForm):
     class Meta:
         model = WorkOrder
@@ -84,11 +106,6 @@ class WorkOrderAdminForm(forms.ModelForm):
         description.max_length = DESCRIPTION_MAX_LENGTH
         description.validators.append(MaxLengthValidator(DESCRIPTION_MAX_LENGTH))
         description.widget.attrs['maxlength'] = str(DESCRIPTION_MAX_LENGTH)
-
-    def clean_photo(self):
-        # Shrunk like one sent through the job form, or an upload here would
-        # be the one full-size photo on a disk sized for small ones.
-        return clean_photo_upload(self.cleaned_data.get('photo'))
 
 
 @admin.register(WorkOrder)
@@ -109,20 +126,21 @@ class WorkOrderAdmin(admin.ModelAdmin):
     # Review fields are written by `job_approve`.
     readonly_fields = ('created_by', 'reviewed_at', 'reviewed_by')
     # No `filter_horizontal` for collaborators: its JavaScript labels aren't translated to Czech.
-    inlines = [MovementInline, MachineUsageInline, MachineRefuelInline, WorkerHoursInline]
+    inlines = [MovementInline, MachineUsageInline, MachineRefuelInline, WorkerHoursInline, JobPhotoInline]
 
     def save_model(self, request, obj, form, change):
         if not obj.pk and not obj.created_by_id:
             obj.created_by = request.user
-        if change and 'photo' in form.changed_data:
-            # The admin writes `photo` straight through its own widget, so
-            # `views._apply_photo` is not in play; without this, replacing or
-            # clearing a photo here would leave the old file on disk. A job
-            # deleted from the admin is covered by the post_delete receiver.
-            discard_photo(WorkOrder.objects.get(pk=obj.pk).photo)
         super().save_model(request, obj, form, change)
 
     def save_formset(self, request, form, formset, change):
+        # A file swapped on a stored photo row: the admin's widget writes the
+        # column directly, so the old file would stay on disk. A row deleted
+        # here, or with its job, is covered by the post_delete receiver.
+        if formset.model is JobPhoto:
+            for photo_form in formset.forms:
+                if photo_form.instance.pk and 'file' in photo_form.changed_data:
+                    discard_photo(JobPhoto.objects.get(pk=photo_form.instance.pk).file)
         instances = formset.save(commit=False)
         for instance in instances:
             if isinstance(instance, StockMovement) and not instance.created_by_id:

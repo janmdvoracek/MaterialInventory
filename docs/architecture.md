@@ -233,13 +233,28 @@ one; it still renders, but correcting that job means fixing the value first.
 `ValueLimitTests` covers the rendered `max`, the refusal, the inclusive edge and
 the admin.
 
-### A photo of the work
+### Photos of the work
 
-`WorkOrder.photo` (*„Fotka"*) is **one optional upload per job** — a phone photo
-of what was processed, the state a machine was left in, a delivery note. It is
-asked of no submission, a fuel-only one included, and nothing reads it back: no
-report, no filter, no export. It is evidence hung on a job, not a record the app
-computes with.
+`JobPhoto` (*„Fotky"*) is **any number of optional uploads per job, up to
+`PHOTO_MAX_COUNT` (10)** — phone photos of what was processed, the state a
+machine was left in, a delivery note. They are asked of no submission, a
+fuel-only one included, and nothing reads them back: no report, no filter, no
+export. They are evidence hung on a job, not a record the app computes with.
+
+**A photo is its own row, not a column on the job.** `JobPhoto` is a
+`work_order` foreign key (`related_name='photos'`, `CASCADE` like every other
+row of a job) and a `file`, ordered by `id` so they read back in the order they
+were added. It replaced a single `WorkOrder.photo` column: migration
+`0007_jobphoto` copies each job's stored photo into a `JobPhoto` row — the
+file stays where it is — and `0008_remove_workorder_photo` drops the column,
+in a migration of its own so the data copy and the drop never share a
+transaction. Rolled back, the first photo of each job goes back on the column
+and any others are left as files with no row.
+
+**A new photo is always added, never swapped for one.** That is the reason the
+table exists: with one column, a second shot replaced the first. Every upload
+on a new job and on `job_edit` becomes one more row, and the only way a photo
+goes is a ticked „Odebrat" box on `job_edit` (below) or its job being deleted.
 
 **Every upload is shrunk before it is stored**, because the production disk is
 20 GB and a phone photo is 2–6 MB — at a few dozen jobs a day, the originals
@@ -254,17 +269,27 @@ read a photographed delivery note), flattens any transparency onto white and
 re-encodes it as a JPEG at quality 80. What lands on disk is a few hundred KB,
 and the original is not kept. Re-encoding drops the EXIF block too, GPS position
 included. A file that carries a photo's extension but does not decode — or is
-past Pillow's decompression-bomb limit — is a field error, never a 500.
+past Pillow's decompression-bomb limit — is a field error, never a 500, and the
+message names the file, since it may be one of several.
 
-Both forms that can set the column go through it: `WorkOrderForm.clean_photo`
-and `WorkOrderAdminForm.clean_photo`, so the admin is not a way round it.
-`shrink_photo` returns a `SimpleUploadedFile` rather than a `ContentFile`
-because `_apply_photo` tells a new photo from the stored `FieldFile` by
-`isinstance(photo, UploadedFile)`.
+**One submission's photos are checked together, before any is decoded**, in
+`WorkOrderForm._clean_photos` (called from `clean()`, since it spans both
+inputs): the count, against `PHOTO_MAX_COUNT` *including the photos the job
+keeps* on `job_edit` — stored, minus the ones ticked for removal — and then the
+total size, against `PHOTO_MAX_TOTAL_BYTES` (20 MB). Only then is each file
+shrunk. The total cap exists for the proxy: the `Caddyfile`'s `request_body
+max_size` is 25 MB, above it, so a batch the form refuses comes back as a Czech
+field error rather than Caddy's 413; only a batch past 25 MB gets the 413.
+
+Both forms that can store a photo go through `clean_photo_upload`: the job form
+for each upload, and `JobPhotoForm.clean_file` on the admin's `JobPhotoInline`,
+so the admin is not a way round it. The inline repeats `PHOTO_MAX_COUNT` as its
+`max_num`, or a job filled up there would refuse every photo added to it on
+`job_edit`.
 
 The column stays a plain **`FileField`, not an `ImageField`**: the form already
 decodes the file, and `ImageField`'s own check would only decode it a second
-time. The size cap is the form's for the same reason `NOTES_MAX_LENGTH` is —
+time. The size caps are the form's for the same reason `NOTES_MAX_LENGTH` is —
 a `FileField` column holds a path and refuses nothing by itself.
 
 The stored name is a fresh uuid under `job_photos/<year>/<month>/`
@@ -274,16 +299,16 @@ photo is re-encoded, the extension is always `.jpg`. The folder
 is the *upload* month rather than `performed_on`, which an edit can move while
 the file cannot.
 
-**The file is never public.** `MEDIA_ROOT` is not served by whitenoise and not
+**The files are never public.** `MEDIA_ROOT` is not served by whitenoise and not
 by Caddy — everything under `/static/` is unauthenticated to the internet, and a
 job photo is company data. `MEDIA_URL` points at
 `workorders.views.protected_media`, which carries `job_detail`'s own gate, so
-the photo is reachable by exactly the people who may open the job it belongs to
-and `photo.url` resolves the same on the job page and in the admin. The job page
-**links** the photo („Zobrazit fotku") rather than rendering it in an `<img>`:
-the detail page is for the job's figures, and the photo is one tap away. That gate is
-the whole of `MEDIA_ROOT`, so parking anything with a different audience there
-means revisiting it.
+a photo is reachable by exactly the people who may open the job it belongs to
+and `JobPhoto.file.url` resolves the same on the job page and in the admin. The
+job page **links** each photo („Fotka 1", „Fotka 2", …) rather than rendering
+it in an `<img>`: the detail page is for the job's figures, and each photo is
+one tap away. That gate is the whole of `MEDIA_ROOT`, so parking anything with
+a different audience there means revisiting it.
 
 **Two things about the form that are easy to get wrong.** The field renders last
 in `_job_form_fields.html`, but the `enctype="multipart/form-data"` belongs to
@@ -291,52 +316,64 @@ each caller's own `<form>` tag — the one part of the job form the shared parti
 cannot supply, and without it the browser posts the file's *name* and the upload
 silently never arrives. And a file input is the one control a page cannot be
 re-rendered carrying: whenever the form comes back — a row button on a browser
-running no JavaScript, any validation error — the pick is gone and has to be
+running no JavaScript, any validation error — the picks are gone and have to be
 made again. Last is where that costs least, and the hint under the field says so
-rather than letting a worker believe a photo went up with the job.
+rather than letting a worker believe the photos went up with the job.
 
-**The one photo arrives through two inputs.** „Vyberte fotku" is `photo`,
+**Photos arrive through two inputs.** „Vyberte fotky" is `photo`,
 `accept="image/*"` and nothing else — which Firefox on Android answers with a
 menu offering the camera and the gallery, but Chrome and Opera answer by opening
 the file picker with no camera at all. `capture="environment"` is the only way
 to ask those for the camera, and it takes the gallery away, so it cannot go on
-`photo`: it sits on a second field, `camera_photo` („Vyfoťte fotku", a plain
-`FileInput`), rendered above it. `camera_photo` passes through the same
-extension check and `clean_photo_upload`, and `WorkOrderForm.clean()` then moves
-it onto `photo` — so the views, `_apply_photo` and `job_edit`'s `initial` only
-ever see the one field, and nothing stores `camera_photo` under its own name.
-Both filled in at once is refused on `camera_photo` rather than one being
-dropped silently, and so is a shot alongside „Zrušit" (with `FileField`'s own
-`contradiction` message, the one Django gives for an upload plus „Zrušit"). The
-admin keeps its single widget; it is not used from a phone.
+`photo`: it sits on a second field, `camera_photo` („Vyfoťte fotku"), rendered
+above it. Both are a `MultipleFileField` — a `FileField` that cleans every file
+posted under its name and returns a list — and `WorkOrderForm.clean()` adds the
+camera's files to `photo`'s, so the views only ever see the one list and nothing
+stores `camera_photo` under its own name. `photo`'s widget renders `multiple`,
+so one gallery pick can be several files. `camera_photo`'s (`CameraInput`)
+deliberately does not: a camera returns one shot per opening, and what a phone
+does with `multiple` beside `capture` is not worth finding out per model — it
+still *reads* every file posted under its name, which is how the script below
+sends several shots. Both filled in at once is simply both kept.
 
-**With JavaScript running, the two inputs are one button.**
-`static/js/photo_picker.js` hides both behind „Vyfotit nebo vybrat fotku",
-whose menu opens one input or the other — see "One photo button" below. Nothing
-above changes: both inputs are still in the form and still what it posts.
+**With JavaScript running, the two inputs are one button that adds.**
+`static/js/photo_picker.js` hides both behind „Přidat fotku", whose menu opens
+one input or the other, and keeps every pick rather than the last — see "The
+photo button" below. Nothing above changes: every input is still in the form
+and still what it posts.
 
-On `job_edit` the same fact is what `FileField.clean`'s `initial` is for: the
-view puts the stored photo on `order_form.initial` on **every** path, bound POST
-included, so an edit that touches nothing else keeps the photo instead of
-clearing it. A new upload replaces, `ClearableFileInput`'s „Zrušit" box clears,
-and anything else leaves it alone — the three cases `views._apply_photo` acts
-on.
+**`job_edit` lists the stored photos with an „Odebrat" box each.**
+`WorkOrderForm` takes a `photos` queryset (the job's own) and, given one, adds
+`remove_photos`, a `ModelMultipleChoiceField` over it with checkboxes; the
+partial renders each as a „Fotka N" link and its box above the inputs. Its
+queryset is that job's photos only, so a pk from another job is „Vyberte
+platnou možnost." rather than a way to delete someone else's photo. A new job
+passes no `photos`, so the field does not exist, and a job without photos
+renders no list either (the field's length is its number of boxes). An edit
+that sends no file and ticks nothing — every edit that is not about photos —
+keeps them all. The no-JS row-button rebuild reads the form's fields back out
+of the POST one by one, and reads a multi-value field with `getlist`, or a
+ticked box would come back unticked.
 
-**The file is deleted when the job lets go of it**, which Django does not do on
-its own: replaced and cleared photos through `_apply_photo`, and a deleted job
-through a `post_delete` receiver on `WorkOrder` (registering it is itself what
-keeps Django off the fast-delete path, so the admin's „delete selected" fires it
-too). Both go through `models.discard_photo`, which defers the delete to
+`views._apply_photos` does the write, inside the job's transaction and after
+`_write_job_rows`: it deletes each row in `remove_photos`, then `bulk_create`s
+a `JobPhoto` per new upload.
+
+**A file is deleted when its row goes**, which Django does not do on its own,
+through a `post_delete` receiver on `JobPhoto` — whichever way the row goes:
+„Odebrat" on `job_edit`, the job deleted through `job_delete`, the admin's
+delete page or its „delete selected" (registering the receiver is itself what
+keeps Django off the fast-delete path for the cascade), or the admin inline's
+delete box. It calls `models.discard_photo`, which defers the delete to
 `transaction.on_commit` — a file outliving a rolled-back write is an orphan
 nobody notices, while deleting one early would leave a surviving row pointing at
 nothing. Tests asserting a file is gone therefore need
 `captureOnCommitCallbacks`.
 
-The admin is the one place that writes the column without going through
-`_apply_photo` — it edits the field through its own widget — so
-`WorkOrderAdmin.save_model` repeats the cleanup when a photo is replaced or
-cleared there. A job deleted from the admin needs nothing extra; that is the
-receiver's job either way.
+The one case the receiver cannot see is a row that *survives* with a different
+file, which only the admin's inline can do — it edits `file` through its own
+widget — so `WorkOrderAdmin.save_formset` discards the old file when a stored
+photo row's file changes there.
 
 `JobPhotoTests` in `workorders/tests.py` covers all of it.
 
@@ -763,42 +800,50 @@ one `<select>` for it to find, that the first option is the valueless
 the listbox is keyed off, and that `app.css` carries the three rules without
 which the list renders as a bullet list shoving the rows below it down.
 
-### One photo button
+### The photo button
 
 `static/js/photo_picker.js` is the third script, on the same terms as the other
-two. The form takes its one photo through two inputs (see "Fotka" above) — on
-Chrome and Opera for Android, `capture` is the only way to the camera and it
-takes the gallery away — and two labelled inputs read as two photos. The script
-hides both behind one „Vyfotit nebo vybrat fotku" button whose menu offers
-„Vyfotit" and „Vybrat z galerie", each opening the matching input, and shows
-„Vybráno: <file name>" with an „Odebrat" button once something is picked.
+two. The form takes its photos through two inputs (see "Photos of the work"
+above) — on Chrome and Opera for Android, `capture` is the only way to the
+camera and it takes the gallery away — and a bare file input holds one pick: open
+it again and the new pick replaces the old. The script hides both behind one
+„Přidat fotku" button whose menu offers „Vyfotit" and „Vybrat z galerie", each
+opening the matching input, and lists every pick so far under it, each with an
+„Odebrat" button.
 
-**Both inputs are still what the form posts.** A `hidden` file input still
-submits its file, and `click()` on one still opens the picker, so neither keeps
-a name or a value apart from the page; no view or form knows the file exists.
-With it missing, blocked or broken the page is the two labelled inputs.
+**It keeps a pick by moving its input.** After every pick the filled input is
+moved into that pick's list entry, hidden, and an empty copy of it — the
+server's own input, cloned — takes its place, so the next shot lands in the
+copy instead of over the last one. The moved input loses its `id` (the label's
+`for` belongs to the copy) and keeps its `name`, and the form reads every file
+posted under a name, so every pick is posted. „Odebrat" removes the entry and
+the input inside it with it.
 
-Three decisions worth knowing:
+**Every input is still what the form posts.** A `hidden` file input still
+submits its files, and `click()` on one still opens the picker, so no pick
+lives anywhere but in an input of the page; no view or form knows the script
+exists. With it missing, blocked or broken the page is the two labelled inputs,
+one shot and one gallery pick (of several files, if wanted) per submission.
 
-- **It builds no markup.** The button, the menu and the „Vybráno" line are a
-  `<template data-photo-picker>` in `_job_form_fields.html`, so the Czech copy
-  sits in the template like all the rest. Every button in it is
-  `type="button"`: it is cloned inside the job form, where a bare `<button>` is
-  a submit.
-- **One pick empties the other input, and „Zrušit".** A job holds one photo and
-  `WorkOrderForm.clean()` refuses a shot plus a picked file, or either plus
-  „Zrušit"; with the script running that refusal can only be reached on
-  purpose. Ticking „Zrušit" likewise drops a pick.
-- **On `job_edit` only the gallery input and its label are hidden**, not their
-  wrapper: `ClearableFileInput` renders the stored photo's link and „Zrušit"
-  around the input, and those stay. The button goes where the input was, after
-  the widget's „Změnit:".
+Two decisions worth knowing:
 
-`app.css` hides `[hidden]` explicitly inside `.photo-field`, because `label`,
-`input` and `.photo-menu` all set a `display` that would otherwise beat the UA
-stylesheet. `PhotoPickerTests` covers the contract: each input sits in its
-`data-photo-source` wrapper, the template carries the hooks the script reads,
-none of its buttons submits, and that CSS rule exists.
+- **It builds no markup.** The button, the menu and the list are a
+  `<template data-photo-picker>` in `_job_form_fields.html`, and a list entry is
+  a `<template data-photo-entry>` beside it, so the Czech copy sits in the
+  template like all the rest. Every button in both is `type="button"`: they are
+  cloned inside the job form, where a bare `<button>` is a submit.
+- **It does not touch the stored photos.** On `job_edit` their links and
+  „Odebrat" boxes are plain form controls rendered above the inputs, and the
+  script hides only the two inputs' wrappers, so removing a stored photo works
+  the same with or without it.
+
+The script does not count picks against `PHOTO_MAX_COUNT`; the form refuses an
+over-full submission and the hint under the field quotes the cap. `app.css`
+hides `[hidden]` explicitly inside `.photo-field`, because `label`, `input` and
+`.photo-menu` all set a `display` that would otherwise beat the UA stylesheet.
+`PhotoPickerTests` covers the contract: each input sits in its
+`data-photo-source` wrapper, the two templates carry the hooks the script reads,
+none of their buttons submits, and that CSS rule exists.
 
 ### Installing the app (VyrobaPK)
 
@@ -1584,7 +1629,7 @@ multiplies the `Sum` by the number of matched collaborators.
   worker (see "Installing the app (VyrobaPK)"). `static/js/job_rows.js` resizes a section of the job form in the
   DOM, `static/js/searchable_select.js` makes its four dropdowns
   type-to-narrow and `static/js/photo_picker.js` puts its two photo inputs
-  behind one button; every other page is a plain form POST with no script of
+  behind one button that adds every pick; every other page is a plain form POST with no script of
   its own. All three are **progressive enhancement and nothing more** — the searchable
   pickers hide a `<select>` that is still what the form posts, and the
   „+ další řádek" / „− odebrat řádek"

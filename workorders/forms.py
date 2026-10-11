@@ -43,7 +43,7 @@ DESCRIPTION_MAX_LENGTH = 40
 # `notes` is a TextField, so this cap is the form's alone; see `WorkOrderForm.notes`.
 NOTES_MAX_LENGTH = 2000
 
-# What „Fotka" accepts; `clean_photo_upload` then decodes and shrinks it. HEIC
+# What „Fotky" accepts; `clean_photo_upload` then decodes and shrinks it. HEIC
 # and HEIF are here because that is what an iPhone shoots by default — they are
 # stored as JPEG like everything else (see `photos.shrink_photo`).
 PHOTO_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif']
@@ -55,16 +55,27 @@ PHOTO_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif']
 # a temp file rather than held in memory.
 PHOTO_MAX_BYTES = 10 * 1024 * 1024
 
+# How many photos one job holds, the stored ones and the new ones together. A
+# job's photos are evidence of the work, not an album, and each new one is
+# decoded during the request that carries it.
+PHOTO_MAX_COUNT = 10
+
+# Every upload of one submission together, checked before any of them is
+# decoded. Kept below the `Caddyfile`'s `request_body max_size` (25 MB), so a
+# batch the form refuses comes back as this Czech error and not as Caddy's 413;
+# only a batch past Caddy's cap as well gets the 413.
+PHOTO_MAX_TOTAL_BYTES = 20 * 1024 * 1024
+
 
 def clean_photo_upload(photo):
     """Refuse an oversized or undecodable upload, and shrink the rest.
 
-    Shared by `WorkOrderForm` and the admin's form, so a photo is stored small
-    whichever way it came in. Only an upload is touched: False is „Zrušit"
-    ticked, and a FieldFile is the stored photo coming back unchanged — asking
-    that one for its size would stat the file on every save, and raise if it
-    went missing. The size is checked ahead of decoding so that an oversized
-    file is never decoded at all.
+    Shared by `WorkOrderForm` and the admin's photo inline, so a photo is stored
+    small whichever way it came in. Only an upload is touched: a FieldFile is a
+    stored photo coming back unchanged through the admin — asking that one for
+    its size would stat the file on every save, and raise if it went missing.
+    The size is checked ahead of decoding so that an oversized file is never
+    decoded at all.
     """
     if not isinstance(photo, UploadedFile):
         return photo
@@ -74,6 +85,45 @@ def clean_photo_upload(photo):
         return shrink_photo(photo)
     except UnreadablePhoto:
         raise forms.ValidationError('Soubor se nepodařilo otevřít jako fotku.') from None
+
+
+class MultipleFileInput(forms.FileInput):
+    """A file input that posts any number of files under one name.
+
+    `allow_multiple_selected` is what makes the widget read every file posted
+    under its name rather than the last, and render `multiple`, so a gallery
+    pick can be several photos at once. `photo_picker.js` also posts each
+    earlier pick through an input of its own under the same name.
+    """
+
+    allow_multiple_selected = True
+
+
+class CameraInput(MultipleFileInput):
+    """Reads every shot posted under its name, but renders without `multiple`.
+
+    A camera returns one shot per opening anyway, and what a phone's browser
+    does with `multiple` beside `capture` is not worth finding out per model.
+    Several shots arrive as several inputs, which `photo_picker.js` keeps.
+    """
+
+    def get_context(self, name, value, attrs):
+        context = super().get_context(name, value, attrs)
+        context['widget']['attrs'].pop('multiple', None)
+        return context
+
+
+class MultipleFileField(forms.FileField):
+    """A list of uploads, each checked as `FileField` checks its one (validators included).
+
+    Nothing posted is an empty list, so the views never tell None from [].
+    """
+
+    def clean(self, data, initial=None):
+        single = super().clean
+        if isinstance(data, (list, tuple)):
+            return [single(item, initial) for item in data if item]
+        return [single(data, initial)] if data else []
 
 
 def _hours_field(min_value=Decimal('0.5'), max_value=WORKER_HOURS_MAX, **kwargs):
@@ -150,27 +200,27 @@ class WorkOrderForm(forms.Form):
         required=False, label='Moje hodiny', widget=forms.NumberInput(attrs={'placeholder': 'Odpracované hodiny'})
     )
     # Optional on every job, including a fuel-only one: a photo is evidence, not
-    # a record, and nothing reads it back. `accept` is what makes Firefox on a
-    # phone offer the camera alongside the gallery; no `capture`, which takes the
-    # gallery away. ClearableFileInput is what lets `job_edit` drop a photo
-    # again — its „Zrušit" box posts False, which `FileField.clean` passes
-    # straight through (`_apply_photo` acts on it).
-    photo = forms.FileField(
+    # a record, and nothing reads it back. Any number of files up to
+    # PHOTO_MAX_COUNT; each one becomes a `JobPhoto`, added beside whatever the
+    # job already has — a new pick never replaces a stored photo, only
+    # `remove_photos` takes one away. `accept` is what makes Firefox on a phone
+    # offer the camera alongside the gallery; no `capture`, which takes the
+    # gallery away.
+    photo = MultipleFileField(
         required=False,
-        label='Fotka',
-        widget=forms.ClearableFileInput(attrs={'accept': 'image/*'}),
+        label='Fotky',
+        widget=MultipleFileInput(attrs={'accept': 'image/*'}),
         validators=[FileExtensionValidator(PHOTO_EXTENSIONS)],
     )
-    # The same photo, from the camera. Chrome and Opera on Android open `photo`
-    # straight into the file picker with no camera on offer, and `capture` is
-    # the only way to ask for one — at the price of the gallery, hence a second
-    # input rather than an attribute on the first. Never stored under its own
-    # name: `clean()` moves it onto `photo`, so the views and `_apply_photo`
-    # see one field. A plain FileInput, since there is nothing here to clear.
-    camera_photo = forms.FileField(
+    # Photos from the camera. Chrome and Opera on Android open `photo` straight
+    # into the file picker with no camera on offer, and `capture` is the only
+    # way to ask for one — at the price of the gallery, hence a second input
+    # rather than an attribute on the first. Never stored under its own name:
+    # `clean()` adds its shots to `photo`, so the views see one list.
+    camera_photo = MultipleFileField(
         required=False,
         label='Vyfotit',
-        widget=forms.FileInput(attrs={'accept': 'image/*', 'capture': 'environment'}),
+        widget=CameraInput(attrs={'accept': 'image/*', 'capture': 'environment'}),
         validators=[FileExtensionValidator(PHOTO_EXTENSIONS)],
     )
     # `format` is required: the cs locale would render 02.09.2026, which
@@ -181,9 +231,20 @@ class WorkOrderForm(forms.Form):
         label='Datum provedení',
     )
 
-    def __init__(self, *args, user=None, keep_location=None, **kwargs):
+    def __init__(self, *args, user=None, keep_location=None, photos=None, **kwargs):
         super().__init__(*args, **kwargs)
         _offer_recorded(self.fields['location'], keep_location)
+        # `job_edit` passes the job's stored photos; each gets an „Odebrat" box.
+        # A new job has none, so no field — and `{% if order_form.remove_photos %}`
+        # is false for a job without photos as well, the boxes being its length.
+        self.stored_photos = photos
+        if photos is not None:
+            self.fields['remove_photos'] = forms.ModelMultipleChoiceField(
+                queryset=photos,
+                required=False,
+                label='Odebrat',
+                widget=forms.CheckboxSelectMultiple,
+            )
         # Only managers and admins may record a job for someone else.
         if user is None or not user.is_manager_or_admin:
             return
@@ -195,29 +256,46 @@ class WorkOrderForm(forms.Form):
         )
         self.fields['hours'].label = 'Odpracované hodiny'
 
-    def clean_photo(self):
-        # The extension is the validator's business; the rest is shared with the admin.
-        return clean_photo_upload(self.cleaned_data.get('photo'))
+    def _clean_photos(self, cleaned_data):
+        """Put every new photo, from both inputs, on `photo` — shrunk, ready to store.
 
-    def clean_camera_photo(self):
-        return clean_photo_upload(self.cleaned_data.get('camera_photo'))
-
-    def _merge_camera_photo(self, cleaned_data):
-        """Put a camera shot on `photo`, the one field the views read.
-
-        A job holds one photo, so a shot plus a picked file, or a shot plus
-        „Zrušit", is refused rather than one of them silently dropped.
+        Here rather than in `clean_photo`, because the count and the total size
+        are over both inputs at once, and over the photos the job keeps. Both
+        are checked before anything is decoded. An undecodable or oversized
+        file is named in its message, since it may be one of several.
         """
-        camera_photo = cleaned_data.get('camera_photo')
-        if not camera_photo:
+        if 'photo' in self.errors or 'camera_photo' in self.errors:
+            # The extension validator refused one; nothing is worth decoding.
             return
-        photo = cleaned_data.get('photo')
-        if photo is False:
-            self.add_error('camera_photo', self.fields['photo'].error_messages['contradiction'])
-        elif isinstance(photo, UploadedFile):
-            self.add_error('camera_photo', 'Fotka může být jen jedna — buď ji vyfoťte, nebo vyberte, ne obojí.')
+        uploads = cleaned_data.get('photo', []) + cleaned_data.get('camera_photo', [])
+        cleaned_data['photo'] = []
+        if not uploads:
+            return
+        kept = 0
+        if self.stored_photos is not None:
+            kept = self.stored_photos.count() - len(cleaned_data.get('remove_photos') or ())
+        if kept + len(uploads) > PHOTO_MAX_COUNT:
+            already = f', už uloženo {kept}' if kept else ''
+            self.add_error(
+                'photo', f'Zakázka může mít nejvýše {PHOTO_MAX_COUNT} fotek (vybráno {len(uploads)}{already}).'
+            )
+            return
+        if sum(upload.size for upload in uploads) > PHOTO_MAX_TOTAL_BYTES:
+            self.add_error(
+                'photo',
+                f'Fotky jsou dohromady příliš velké (najednou nejvýše {PHOTO_MAX_TOTAL_BYTES // (1024 * 1024)} MB).',
+            )
+            return
+        shrunk, errors = [], []
+        for upload in uploads:
+            try:
+                shrunk.append(clean_photo_upload(upload))
+            except forms.ValidationError as exc:
+                errors.extend(f'{upload.name}: {message}' for message in exc.messages)
+        if errors:
+            self.add_error('photo', errors)
         else:
-            cleaned_data['photo'] = camera_photo
+            cleaned_data['photo'] = shrunk
 
     def author_or(self, submitter):
         """Whose job this is: the person picked in „Zapsat za", else the submitter."""
@@ -228,7 +306,7 @@ class WorkOrderForm(forms.Form):
         performed_on = cleaned_data.get('performed_on')
         if performed_on and performed_on > timezone.localdate():
             self.add_error('performed_on', 'Datum provedení nemůže být v budoucnosti.')
-        self._merge_camera_photo(cleaned_data)
+        self._clean_photos(cleaned_data)
         return cleaned_data
 
 

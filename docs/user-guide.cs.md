@@ -226,46 +226,52 @@ libovolný počet řádků *Stroj + Natankováno (l)*.
   to být „jen tankování" — **Lokace**, **Popis**, **Moje hodiny** i kontrola
   součtů se vrátí.
 
-**5. Fotka**
+**5. Fotky**
 
-Úplně dole ve formuláři je sekce **Fotka**. Je **nepovinná** a u žádné zakázky
-se nevyžaduje. Klepněte na **Vyfotit nebo vybrat fotku** a vyberte:
+Úplně dole ve formuláři je sekce **Fotky**. Je **nepovinná** a u žádné zakázky
+se nevyžaduje. Klepněte na **Přidat fotku** a vyberte:
 
 - **Vyfotit** — otevře rovnou fotoaparát a práci vyfotíte na místě.
-- **Vybrat z galerie** — otevře galerii nebo soubory, když už fotku máte.
+- **Vybrat z galerie** — otevře galerii nebo soubory, když už fotky máte.
+  Vybrat jich můžete i několik najednou.
 
-Pod tlačítkem se pak ukáže **Vybráno:** s názvem fotky. Tlačítkem **Odebrat**
-výběr zrušíte; vyberete-li fotku znovu, nahradí tu předchozí.
+Každá vyfocená nebo vybraná fotka se přidá do seznamu pod tlačítkem — **další
+fotka tu předchozí nenahradí**, přidá se k ní. Chcete-li jich víc, klepněte na
+**Přidat fotku** znovu. Tlačítkem **Odebrat** vedle fotky ji ze seznamu
+vyřadíte, než zakázku odešlete.
 
 Pokud místo jednoho tlačítka vidíte dvě pole, **Vyfoťte fotku** a **Vyberte
-fotku**, prohlížeč nespustil skript stránky. Formulář funguje stejně: první
-pole otevře fotoaparát, druhé galerii.
+fotky**, prohlížeč nespustil skript stránky. Formulář funguje skoro stejně:
+první pole otevře fotoaparát, druhé galerii, a odeslat můžete obě najednou.
+Jen každé pole drží jediný výběr — vyfotíte-li podruhé, nahradí to první
+snímek. Víc fotek z fotoaparátu tak pošlete jen přes galerii: vyfoťte je
+nejdřív běžně telefonem a pak je ve **Vyberte fotky** označte všechny.
 
-Použijte jen jedno z nich:
+Co dalšího platí:
 
-- Jedna fotka na zakázku. Vyberete-li druhou, nahradí tu první. (Ve verzi se
-  dvěma poli: vyplníte-li obě, aplikace zakázku neuloží a požádá vás, abyste
-  fotku buď vyfotili, nebo vybrali.)
+- Na jednu zakázku nejvýš **10 fotek**. Víc aplikace odmítne a napíše to pod
+  polem.
 - Přijímají se běžné formáty z telefonu — `jpg`, `png`, `webp`, `heic`.
   Dokument (třeba `pdf`) aplikace odmítne a napíše to pod polem.
-- Fotka může mít nejvýš **10 MB**. Větší aplikace odmítne, opět s hláškou u pole.
-- Aplikace fotku po odeslání **zmenší** (na 1600 bodů po delší straně) a uloží
-  jako `jpg`. Na displeji telefonu ani na počítači to nepoznáte a dodací list
-  na ní zůstane čitelný; originál v plném rozlišení se ale neukládá.
-- **Pole si fotku nepamatuje.** Pokud formulář po odeslání něco vytkne — nesedí
-  součty, chybí popis — nebo přidáte řádek, je potřeba fotku vyfotit nebo
+- Jedna fotka může mít nejvýš **10 MB** a všechny fotky odeslané najednou
+  dohromady nejvýš **20 MB**. Větší aplikace odmítne, opět s hláškou u pole.
+- Aplikace každou fotku po odeslání **zmenší** (na 1600 bodů po delší straně) a
+  uloží jako `jpg`. Na displeji telefonu ani na počítači to nepoznáte a dodací
+  list na ní zůstane čitelný; originál v plném rozlišení se ale neukládá.
+- **Pole si fotky nepamatuje.** Pokud formulář po odeslání něco vytkne — nesedí
+  součty, chybí popis — nebo přidáte řádek, je potřeba fotky vyfotit nebo
   vybrat **znovu**.
   Prohlížeče to jinak neumí a je to jediné pole formuláře, které se takto chová;
   proto je až úplně dole.
-- Fotka se ukazuje v **detailu zakázky**, tedy v Přehledu, kam vidí jen vedoucí
-  a správci. Vedoucí ji tam při úpravě může vyměnit, nebo ji zaškrtnutím
-  políčka **Zrušit** odstranit.
+- Fotky se ukazují v **detailu zakázky**, tedy v Přehledu, kam vidí jen vedoucí
+  a správci. Vedoucí tam při úpravě může přidat další, nebo kteroukoli
+  odstranit zaškrtnutím políčka **Odebrat**.
 - Fotky jsou **neveřejné** — otevřít je může jen přihlášený vedoucí nebo
-  správce, stejně jako samotnou zakázku. Jako pracovník se ke své odeslané
-  fotce zpátky nedostanete, takže ji nemažte z telefonu, dokud ji potřebujete.
+  správce, stejně jako samotnou zakázku. Jako pracovník se ke svým odeslaným
+  fotkám zpátky nedostanete, takže je nemažte z telefonu, dokud je potřebujete.
 
 > Celá zakázka se ukládá najednou — položky, hodiny lidí, hodiny strojů,
-> tankování i fotka. Po uložení se formulář vyprázdní a můžete zapsat další
+> tankování i fotky. Po uložení se formulář vyprázdní a můžete zapsat další
 > zakázku.
 
 ## Schvalování
@@ -294,9 +300,9 @@ je počet čekajících. Filtrovat lze podle stavu, pracovníka, lokace a data.
 
 Klepnutím na **Detail** otevřete celou zakázku se vším, co bylo ve formuláři
 vyplněno — hodiny všech lidí, spotřeba, výroba, stroje s motohodinami a tunami,
-**tankování** a **fotku**, pokud ji pracovník přiložil. Fotka je dostupná jen
-tady, a to jako odkaz **Zobrazit fotku** — klepnutím se otevře v plné
-velikosti. Dole jsou akce:
+**tankování** a **fotky**, pokud je pracovník přiložil. Fotky jsou dostupné
+jen tady, a to jako odkazy **Fotka 1**, **Fotka 2**, … — klepnutím se fotka
+otevře v plné velikosti. Dole jsou akce:
 
 | Akce | Co udělá |
 |---|---|
@@ -309,9 +315,11 @@ spotřeby a výroby musí rovnat**; u zakázky, která je jen tankování, se
 nekontrolují, stejně jako při zápisu. Pole *hodiny* patří tomu, kdo zakázku
 zapsal, ne vám.
 
-Fotku v úpravě buď nechte být — beze změny zůstane ta stávající —, nebo vyfoťte
-či vyberte novou, která ji nahradí, nebo zaškrtněte **Zrušit** a uložte, čímž se fotka
-odstraní. Odstraněnou ani přepsanou fotku už nelze vrátit.
+Uložené fotky jsou v úpravě vypsané nad tlačítkem **Přidat fotku**, každá jako
+odkaz s políčkem **Odebrat**. Necháte-li je být, zůstanou všechny. Nově
+vyfocené nebo vybrané fotky se k nim **přidají**, nic nenahradí. Fotku
+odstraníte zaškrtnutím **Odebrat** a uložením; odstraněnou fotku už nelze
+vrátit.
 
 ## Stroje
 
@@ -580,30 +588,34 @@ Je to záměr. Kdo potřebuje vidět vše, potřebuje roli vedoucího.
 Nejspíš byl vyřazen. Požádejte správce, aby ho v administraci znovu označil jako
 aktivní.
 
-**Odeslal jsem formulář s fotkou a fotka tam není.**
-Formulář nejspíš něco vytkl a vrátil se zpět — prohlížeč fotku v poli neudrží.
-Vyberte ji znovu a odešlete zakázku ještě jednou. Totéž platí po přidání řádku.
+**Odeslal jsem formulář s fotkami a fotky tam nejsou.**
+Formulář nejspíš něco vytkl a vrátil se zpět — prohlížeč fotky v poli neudrží.
+Vyberte je znovu a odešlete zakázku ještě jednou. Totéž platí po přidání řádku.
 
 **„Přípona souboru … není povolena."**
 Vybraný soubor není fotka. Přijímají se `jpg`, `png`, `webp` a `heic`.
 
-**„Fotka je příliš velká (maximálně 10 MB)."**
-Fotka je nad povolenou velikostí. Vyfoťte ji znovu v nižším rozlišení, nebo
-použijte jinou.
+**„… Fotka je příliš velká (maximálně 10 MB)."**
+Fotka s uvedeným názvem je nad povolenou velikostí. Vyfoťte ji znovu v nižším
+rozlišení, nebo použijte jinou.
 
-**„Fotka může být jen jedna — buď ji vyfoťte, nebo vyberte, ne obojí."**
-Vyplnili jste obě pole, **Vyfoťte fotku** i **Vyberte fotku** (objeví se jen
-tehdy, když prohlížeč nespustil skript stránky). Zakázka nese jen jednu fotku,
-takže použijte jen jedno z nich a odešlete znovu.
+**„Fotky jsou dohromady příliš velké (najednou nejvýše 20 MB)."**
+Každá fotka zvlášť je v pořádku, ale všechny dohromady jsou moc velké na jedno
+odeslání. Pošlete jich méně.
+
+**„Zakázka může mít nejvýše 10 fotek …"**
+Vybrali jste víc fotek, než se k jedné zakázce vejde; v závorce je, kolik jste
+vybrali a kolik jich zakázka už má uložených. Vyberte méně, nebo (při úpravě)
+nejdřív některou uloženou odeberte.
 
 **Klepnu na „Vybrat z galerie" a fotoaparát se nenabídne.**
 Některé prohlížeče (Chrome, Opera) tam ukážou jen soubory. Pro fotoaparát
 zvolte **Vyfotit**.
 
-**„Soubor se nepodařilo otevřít jako fotku."**
-Soubor má sice příponu fotky, ale aplikace ho nedokáže přečíst — bývá poškozený,
-nebo je to jiný soubor jen přejmenovaný. Vyfoťte práci znovu, nebo vyberte jinou
-fotku.
+**„… Soubor se nepodařilo otevřít jako fotku."**
+Soubor s uvedeným názvem má sice příponu fotky, ale aplikace ho nedokáže
+přečíst — bývá poškozený, nebo je to jiný soubor jen přejmenovaný. Vyfoťte
+práci znovu, nebo vyberte jinou fotku.
 
 **Zapomenuté heslo.**
 Aplikace neumí obnovu hesla přes e-mail. Požádejte správce o nastavení nového.

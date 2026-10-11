@@ -20,7 +20,7 @@ and code are in English.
 
 | | |
 |---|---|
-| **Transform** (*Zpracování*) | The main form, and the landing page. Each job names the **location** it was worked at, from an admin-maintained list. One job consumes some materials and produces others — crushing, sorting, cutting — logs the submitter's own hours, names collaborators with their hours, and records the machines that ran — with their motohodiny and the tonnage each processed, both optional — and the litres of fuel put into them. One optional **photo** can be attached from the phone's camera or gallery. A submission that is **nothing but fill-ups** is a valid job on its own: no materials, no hours, no balance to keep. |
+| **Transform** (*Zpracování*) | The main form, and the landing page. Each job names the **location** it was worked at, from an admin-maintained list. One job consumes some materials and produces others — crushing, sorting, cutting — logs the submitter's own hours, names collaborators with their hours, and records the machines that ran — with their motohodiny and the tonnage each processed, both optional — and the litres of fuel put into them. Optional **photos**, up to ten, can be attached from the phone's camera or gallery — each new one is added, never swapped for the last. A submission that is **nothing but fill-ups** is a valid job on its own: no materials, no hours, no balance to keep. |
 | **Review** (*Přehled*) | Every recorded job with everything that was typed into the form, filterable (location included), with the ones awaiting a decision highlighted. A manager approves, corrects or deletes from here. Manager/Admin only. |
 | **Machines** (*Stroje*) | One filter over hours and tonnage per machine, its two rates (Kč/hod, Kč/t), what those come to in money — per hours, per tonnes, and in total — and the individual usage rows behind it all. Plus a *Tankování* card over the same filter: litres and fill-up count per machine, and the individual fill-ups. Manager/Admin nav entry. |
 | **Materials** (*Materiál*) | Tonnage consumed, produced and net per material over a date range, and the individual line items behind those totals — "how much 8/16 did we make last month?" — optionally for one location. Manager/Admin only. |
@@ -33,10 +33,11 @@ filter the page is showing; Machines has two, one per summary card. Two detail
 tables download too — Materials' line items and Machines' fill-ups — each as every
 row the filter allows, not the page on screen.
 
-Any photo attached to a job is linked from its Review page and nowhere else. It
-is shrunk on upload to a JPEG of at most 1600 px (a few hundred KB, HEIC from an
-iPhone included), stored outside the public asset tree and served by Django behind the same gate
-as that page — no uploaded file is reachable without logging in.
+Photos attached to a job are linked from its Review page and nowhere else, and
+a manager can remove any of them when correcting the job. Each is shrunk on
+upload to a JPEG of at most 1600 px (a few hundred KB, HEIC from an iPhone
+included), stored outside the public asset tree and served by Django behind the
+same gate as that page — no uploaded file is reachable without logging in.
 
 A job is written as a single transaction: its material line items, every
 participant's hours, any machine usage and any fill-ups all land together or not
@@ -61,7 +62,7 @@ are still ordinary submits answered by the server.
 `static/js/searchable_select.js` lets you type to narrow the material, machine
 and worker dropdowns, writing the pick back to a `<select>` that is still what
 the form posts. `static/js/photo_picker.js` puts the camera and gallery inputs
-behind one „Fotka" button. With any of them blocked or broken the form works
+behind one „Přidat fotku" button that keeps every pick. With any of them blocked or broken the form works
 unchanged. A fourth, `static/js/pwa.js`, is on every page and only registers the
 service worker that makes the site installable; see
 [architecture.md](docs/architecture.md#installing-the-app-vyrobapk).
@@ -128,7 +129,7 @@ Full column reference: [docs/development.md](docs/development.md#seeding-data).
 ## Common commands
 
 ```bash
-python manage.py test                  # full suite (501 tests, needs Postgres)
+python manage.py test                  # full suite (512 tests, needs Postgres)
 python manage.py test workorders       # one app
 coverage run manage.py test && coverage html   # coverage report in htmlcov/
 ruff check . && ruff format .          # lint and format

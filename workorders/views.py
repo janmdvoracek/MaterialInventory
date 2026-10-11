@@ -1,5 +1,5 @@
 """Recording a job (Zpracování), reviewing it (Přehled and the job pages), and
-serving the photo attached to one."""
+serving the photos attached to one."""
 
 from decimal import Decimal
 from typing import NamedTuple
@@ -8,7 +8,6 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.core.files.storage import default_storage
-from django.core.files.uploadedfile import UploadedFile
 from django.db import transaction
 from django.db.models import Sum
 from django.http import FileResponse, Http404
@@ -19,8 +18,8 @@ from django.views.decorators.http import require_POST
 
 from accounts.decorators import REVIEWER_ROLES, role_required
 
-from .forms import JOB_SECTIONS, JobFilterForm, WorkOrderForm, job_row_formset
-from .models import MachineRefuel, MachineUsage, StockMovement, WorkerHours, WorkOrder, discard_photo
+from .forms import JOB_SECTIONS, PHOTO_MAX_COUNT, JobFilterForm, WorkOrderForm, job_row_formset
+from .models import JobPhoto, MachineRefuel, MachineUsage, StockMovement, WorkerHours, WorkOrder
 from .reports import _list_page_context
 
 
@@ -124,28 +123,19 @@ def _balance_error(consumed_rows, produced_rows):
     return None
 
 
-def _apply_photo(work_order, photo):
-    """Put „Fotka" on the job: a new upload replaces, „Zrušit" clears, else nothing.
+def _apply_photos(work_order, cleaned_data):
+    """Drop the stored photos ticked „Odebrat", then add every new one.
 
-    Three values reach here, because that is what `forms.FileField.clean`
-    returns: an uploaded file, `False` for the „Zrušit" box, or the stored
-    `FieldFile` (on `job_edit`, where the form carries it as `initial`) / None
-    (on a fresh submission) when the browser sent no file — a file input cannot
-    be re-filled, so „nothing was picked" has to mean „keep what is there".
-
-    The file the job lets go of is deleted explicitly in both cases that orphan
-    it (see `discard_photo`); Django drops the row's reference and leaves the
-    bytes on disk otherwise. Cleared is `''` and not None, which the column —
-    `blank=True`, not `null=True` — would refuse.
+    Call inside `transaction.atomic()`. New photos are added, never swapped
+    for a stored one: a pick is one more `JobPhoto`, and nothing but a ticked
+    box takes a photo away — an edit that sends no file, which is every edit,
+    since a browser cannot re-send one, keeps them all. Each removed row's
+    file goes once the write commits, through the post_delete receiver (see
+    `models.discard_photo`).
     """
-    if photo is False:
-        replacement = ''
-    elif isinstance(photo, UploadedFile):
-        replacement = photo
-    else:
-        return
-    discard_photo(work_order.photo)
-    work_order.photo = replacement
+    for photo in cleaned_data.get('remove_photos') or ():
+        photo.delete()
+    JobPhoto.objects.bulk_create(JobPhoto(work_order=work_order, file=upload) for upload in cleaned_data['photo'])
 
 
 def _write_job_rows(work_order, author, own_hours, rows):
@@ -263,7 +253,7 @@ def _section_form_kwargs(prefix, *, author, viewer, keep=None):
     return {'keep': (keep or {}).get(prefix, ())}
 
 
-def _job_forms(request, *, author, viewer, order_form_user=None, keep=None, initial=None):
+def _job_forms(request, *, author, viewer, order_form_user=None, keep=None, initial=None, photos=None):
     """Every form on the job page. Returns `(order_form, formsets_by_prefix, submitted)`.
 
     - Row button: rebuilt *unbound* from the POST with that section resized, so
@@ -272,8 +262,9 @@ def _job_forms(request, *, author, viewer, order_form_user=None, keep=None, init
     - GET: fresh forms, pre-filled from `initial` (keyed `order` and by section prefix).
 
     `keep` is keyed by section prefix, plus `location` for the job form's own picker.
+    `photos` is the job's stored photos on `job_edit`, which offers to remove them.
     """
-    order_kwargs = {'user': order_form_user, 'keep_location': (keep or {}).get('location', ())}
+    order_kwargs = {'user': order_form_user, 'keep_location': (keep or {}).get('location', ()), 'photos': photos}
     form_kwargs = {
         section.prefix: _section_form_kwargs(section.prefix, author=author, viewer=viewer, keep=keep)
         for section in JOB_SECTIONS
@@ -282,8 +273,14 @@ def _job_forms(request, *, author, viewer, order_form_user=None, keep=None, init
     if pressed:
         pressed_prefix, delta = pressed
         order_form = WorkOrderForm(**order_kwargs)
-        # Read off the form's own fields, so „Zapsat za" is carried when present.
-        order_form.initial = {name: request.POST.get(name, '') for name in order_form.fields}
+        # Read off the form's own fields, so „Zapsat za" is carried when present;
+        # every value of a multi-value one, so a ticked „Odebrat" stays ticked.
+        order_form.initial = {
+            name: request.POST.getlist(name)
+            if getattr(field.widget, 'allow_multiple_selected', False)
+            else request.POST.get(name, '')
+            for name, field in order_form.fields.items()
+        }
         formsets = {}
         for section in JOB_SECTIONS:
             rows, blank_rows = _resized_section(
@@ -295,7 +292,7 @@ def _job_forms(request, *, author, viewer, order_form_user=None, keep=None, init
             )
         return order_form, formsets, False
     if request.method == 'POST':
-        # request.FILES for „Fotka"; the rows carry no upload of their own.
+        # request.FILES for „Fotky"; the rows carry no upload of their own.
         order_form = WorkOrderForm(request.POST, request.FILES, **order_kwargs)
         formsets = {
             section.prefix: job_row_formset(section, data=request.POST, form_kwargs=form_kwargs[section.prefix])
@@ -340,13 +337,15 @@ def _job_context(order_form, formsets, **extra):
     """The job page's context: the job form, `sections` in render order, and each formset by name.
 
     The two row bounds go out as well, so `job_rows.js` reads the floor and the
-    cap off the page instead of restating them.
+    cap off the page instead of restating them, and so does the photo cap the
+    „Fotky" hint quotes.
     """
     return {
         'order_form': order_form,
         'sections': [(section, formsets[section.prefix]) for section in JOB_SECTIONS],
         'min_rows': MIN_ROWS_PER_SECTION,
         'max_rows': MAX_ROWS_PER_SECTION,
+        'photo_max_count': PHOTO_MAX_COUNT,
         **{section.context_name: formsets[section.prefix] for section in JOB_SECTIONS},
         **extra,
     }
@@ -371,16 +370,13 @@ def transform_create(request):
                     location=order_form.cleaned_data['location'],
                     description=order_form.cleaned_data['description'],
                     notes=order_form.cleaned_data['notes'],
-                    # Nothing picked is None here, and the column holds a path,
-                    # not NULL. A fresh job has nothing to replace or clear, so
-                    # `_apply_photo`'s other two cases cannot arise.
-                    photo=order_form.cleaned_data['photo'] or '',
                     performed_on=order_form.cleaned_data['performed_on'],
                     status=WorkOrder.Status.APPROVED if approved else WorkOrder.Status.PENDING,
                     reviewed_at=timezone.now() if approved else None,
                     reviewed_by=request.user if approved else None,
                 )
                 _write_job_rows(work_order, author, order_form.cleaned_data['hours'], rows)
+                _apply_photos(work_order, order_form.cleaned_data)
             messages.success(
                 request,
                 'Zpracování bylo zaznamenáno.'
@@ -411,7 +407,7 @@ def protected_media(request, path):
 
     The gate is `job_detail`'s, because job photos are the only thing under
     MEDIA_ROOT — park anything with a different audience there and this needs
-    revisiting. It is also what MEDIA_URL points at, so `photo.url` resolves the
+    revisiting. It is also what MEDIA_URL points at, so `JobPhoto.file.url` resolves the
     same on the job page and in the admin.
 
     Traversal is the storage's business: `FileSystemStorage` joins through
@@ -423,7 +419,7 @@ def protected_media(request, path):
         # Missing, or a directory — a 404 either way, and one syscall rather
         # than an exists() the file could be deleted out from under.
         raise Http404 from None
-    # Inline, and typed off the name: the job page shows it in an <img>.
+    # Inline, and typed off the name, so the job page's link opens it in the browser.
     return FileResponse(stored, filename=path.rsplit('/', 1)[-1])
 
 
@@ -470,6 +466,7 @@ def job_detail(request, pk):
         'workorders/job_detail.html',
         {
             'work_order': work_order,
+            'photos': work_order.photos.all(),
             'consumed': consumed,
             'produced': produced,
             'machine_usages': work_order.machine_usages.select_related('machine'),
@@ -504,12 +501,8 @@ def job_edit(request, pk):
         initial=_edit_initial(work_order, author, consumed, produced, usages, refuels)
         if request.method == 'GET'
         else None,
+        photos=work_order.photos.all(),
     )
-    # On every path, including a bound POST: a browser cannot re-send a file, so
-    # the stored one has to be the form's `initial` or an edit that touches
-    # nothing else would drop the photo. It is also what „Aktuálně / Zrušit"
-    # renders from.
-    order_form.initial['photo'] = work_order.photo
     if submitted:
         rows = _valid_job_rows(request, order_form, formsets)
         if rows is not None:
@@ -518,9 +511,9 @@ def job_edit(request, pk):
                 work_order.description = order_form.cleaned_data['description']
                 work_order.notes = order_form.cleaned_data['notes']
                 work_order.performed_on = order_form.cleaned_data['performed_on']
-                _apply_photo(work_order, order_form.cleaned_data['photo'])
-                work_order.save(update_fields=['location', 'description', 'notes', 'performed_on', 'photo'])
+                work_order.save(update_fields=['location', 'description', 'notes', 'performed_on'])
                 _write_job_rows(work_order, author, order_form.cleaned_data['hours'], rows)
+                _apply_photos(work_order, order_form.cleaned_data)
             messages.success(request, 'Zpracování bylo upraveno.')
             return redirect('job_detail', pk=work_order.pk)
     # Set on every path, since an invalid POST re-renders too.
@@ -560,7 +553,6 @@ def _edit_initial(work_order, author, consumed, produced, usages, refuels):
             'notes': work_order.notes,
             'hours': _trim(own_hours.hours) if own_hours else None,
             'performed_on': work_order.performed_on,
-            'photo': work_order.photo,
         },
         'consumed': [{'material': m.material_id, 'quantity': _trim(m.typed_quantity)} for m in consumed],
         'produced': [{'material': m.material_id, 'quantity': _trim(m.typed_quantity)} for m in produced],

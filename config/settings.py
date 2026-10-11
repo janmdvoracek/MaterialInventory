@@ -193,7 +193,7 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 # by whitenoise and must not be: a job photo is company data, and everything
 # under /static/ is unauthenticated to the internet. It goes out through
 # `workorders.views.protected_media`, which is what MEDIA_URL routes to, so
-# `photo.url` resolves in the admin and on the job page alike. In production the
+# `JobPhoto.file.url` resolves in the admin and on the job page alike. In production the
 # directory is a Docker volume, or every deploy would take the photos with it.
 MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'

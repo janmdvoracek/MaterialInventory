@@ -26,9 +26,10 @@ def discard_photo(photo):
 
     `on_commit`, not now: a file outliving a rolled-back write is an orphan
     nobody notices, while deleting one early would leave a surviving row
-    pointing at nothing. Both ends of a photo's life come through here — a job
-    deleted (`_delete_photo_file`) and a photo replaced or cleared
-    (`views._apply_photo`) — because Django removes neither on its own.
+    pointing at nothing. Every way a photo's file is let go of comes through
+    here — a `JobPhoto` deleted, on its own or with its job
+    (`_delete_photo_file`), and a file replaced in the admin
+    (`WorkOrderAdmin.save_formset`) — because Django removes it on neither.
     """
     if not photo:
         return
@@ -75,13 +76,6 @@ class WorkOrder(models.Model):
     description = models.CharField(max_length=255, verbose_name='popis')
     # Free-form and optional, unlike `description`: a whole paragraph, not a one-liner.
     notes = models.TextField(blank=True, verbose_name='poznámky')
-    # One optional photo of the work, taken on the phone that fills the form in.
-    # A plain FileField and not an ImageField: the forms decode, shrink and
-    # re-encode every upload to a small JPEG themselves (`clean_photo_upload`,
-    # through pillow-heif so an iPhone's HEIC opens), and ImageField's own check
-    # would only decode it a second time. Never public: MEDIA_ROOT is not
-    # served, the file goes out through `protected_media`.
-    photo = models.FileField(upload_to=job_photo_path, blank=True, verbose_name='fotka')
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING, verbose_name='stav')
     reviewed_at = models.DateTimeField(null=True, blank=True, verbose_name='posouzeno')
     reviewed_by = models.ForeignKey(
@@ -230,11 +224,39 @@ class MachineRefuel(models.Model):
         return f'{self.machine} - {self.litres} l (WorkOrder #{self.work_order_id})'
 
 
+class JobPhoto(models.Model):
+    """One photo of the work on a job, taken on the phone that fills the form in.
+
+    Its own table rather than a column on `WorkOrder`, because a job carries as
+    many as `forms.PHOTO_MAX_COUNT`. Like every other row of a job it cascades
+    when the job is deleted, and nothing reads it but `job_detail`.
+
+    A plain FileField and not an ImageField: the forms decode, shrink and
+    re-encode every upload to a small JPEG themselves (`clean_photo_upload`,
+    through pillow-heif so an iPhone's HEIC opens), and ImageField's own check
+    would only decode it a second time. Never public: MEDIA_ROOT is not served,
+    the file goes out through `protected_media`.
+    """
+
+    work_order = models.ForeignKey(WorkOrder, on_delete=models.CASCADE, related_name='photos', verbose_name='zakázka')
+    file = models.FileField(upload_to=job_photo_path, verbose_name='soubor')
+
+    class Meta:
+        # The order they were added.
+        ordering = ['id']
+        verbose_name = 'fotka'
+        verbose_name_plural = 'fotky'
+
+    def __str__(self):
+        return f'Fotka #{self.pk} (WorkOrder #{self.work_order_id})'
+
+
 # The file is not the row's to keep once the row is gone: Django deletes neither
-# on `delete()` nor on a cascade. A signal rather than a line in `job_delete`,
-# because a job also dies through the admin's „delete selected", which is a
-# queryset delete — registering this receiver is itself what keeps Django off
-# its fast-delete path, so the signal still fires for every row.
-@receiver(post_delete, sender=WorkOrder)
+# on `delete()` nor on a cascade. A signal rather than a line in each view,
+# because a photo also dies with its job — through `job_delete`, the admin's
+# delete page and its „delete selected", a queryset delete — and through the
+# admin inline's delete box. Registering this receiver is itself what keeps
+# Django off its fast-delete path for the cascade, so it fires for every row.
+@receiver(post_delete, sender=JobPhoto)
 def _delete_photo_file(sender, instance, **kwargs):
-    discard_photo(instance.photo)
+    discard_photo(instance.file)

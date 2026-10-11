@@ -21,14 +21,18 @@
     </table>
 </div>
 
-{% if work_order.photo %}
+{% if photos %}
 <div class="card">
-    <h2>Fotka</h2>
+    <h2>Fotky</h2>
     {# The only place an uploaded photo is reachable. Its URL is MEDIA_URL,     #}
     {# served by `protected_media` behind this page's own gate — never by the   #}
-    {# proxy. A link and deliberately not an <img>: the detail page is for the  #}
-    {# job's figures, and the photo is one tap away when it is wanted.          #}
-    <p><a href="{{ work_order.photo.url }}">Zobrazit fotku</a></p>
+    {# proxy. Links and deliberately not <img>s: the detail page is for the     #}
+    {# job's figures, and each photo is one tap away when it is wanted.        #}
+    <ul class="stored-photos">
+        {% for photo in photos %}
+            <li><a href="{{ photo.file.url }}">Fotka {{ forloop.counter }}</a></li>
+        {% endfor %}
+    </ul>
 </div>
 {% endif %}
 

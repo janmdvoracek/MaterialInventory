@@ -61,7 +61,7 @@ python manage.py test materials.tests.MaterialModelTests           # one class
 python manage.py test materials.tests.MaterialModelTests.test_material_str
 ```
 
-501 tests. Postgres must be reachable; expect a few minutes, and rather longer
+512 tests. Postgres must be reachable; expect a few minutes, and rather longer
 on a Windows checkout.
 
 ### Coverage
@@ -118,10 +118,10 @@ behaviour under test *is* the database interaction.
 
 One class does override a setting: `JobPhotoTests` points `MEDIA_ROOT` at a
 temporary directory, because those tests are about files on disk. The override
-resets `default_storage`, so `WorkOrder.photo` follows it. Uploaded files are
+resets `default_storage`, so `JobPhoto.file` follows it. Uploaded files are
 also the one place the suite has to reach past the test transaction — the file
-behind a replaced, cleared or deleted photo is removed on
-`transaction.on_commit` (see [architecture.md](architecture.md#a-photo-of-the-work)),
+behind a removed, replaced or deleted photo is removed on
+`transaction.on_commit` (see [architecture.md](architecture.md#photos-of-the-work)),
 which a `TestCase` never reaches, so those assertions run inside
 `self.captureOnCommitCallbacks(execute=True)`.
 
