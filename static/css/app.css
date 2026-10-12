@@ -183,6 +183,11 @@ table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid var(--border); white-space: nowrap; }
 th { color: var(--text); border-bottom: 2px solid var(--brand-green); }
 .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+/* job_detail's label/value table: values wrap, so a long „Poznámky" (up to
+   2000 characters, maybe one unbroken URL) stays inside the card. `anywhere`,
+   not `break-word`, because only it lowers the cell's min-content width. */
+.detail-fields th { vertical-align: top; }
+.detail-fields td { white-space: normal; overflow-wrap: anywhere; }
 nav.bottom {
     position: fixed;
     bottom: 0;

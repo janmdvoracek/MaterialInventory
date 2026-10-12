@@ -6,7 +6,7 @@
     <p>
         <span class="status-badge {{ work_order.status|lower }}">{{ work_order.get_status_display }}</span>
     </p>
-    <table>
+    <table class="detail-fields">
         <tbody>
             <tr><th>Datum provedení</th><td>{{ work_order.performed_on|date:"Y-m-d" }}</td></tr>
             <tr><th>Zaznamenáno</th><td>{{ work_order.created_at|date:"Y-m-d H:i" }}</td></tr>
