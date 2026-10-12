@@ -386,7 +386,7 @@ def protected_media(request, path):
     except OSError:
         # Missing, or a directory.
         raise Http404 from None
-    # Inline, and typed off the name, so the job page's link opens it in the browser.
+    # Inline, and typed off the name, so `job_photo`'s <img> can show it.
     return FileResponse(stored, filename=path.rsplit('/', 1)[-1])
 
 
@@ -439,6 +439,32 @@ def job_detail(request, pk):
             'machine_usages': work_order.machine_usages.select_related('machine'),
             'machine_refuels': work_order.machine_refuels.select_related('machine'),
             'worker_hours': work_order.worker_hours.select_related('user'),
+        },
+    )
+
+
+@role_required(*REVIEWER_ROLES)
+def job_photo(request, pk, number):
+    """„Fotka <number>" of a job, inside the app's own page.
+
+    A link straight to the file strands an installed app (no address bar, and
+    no back gesture on an iPhone), so the job pages link here instead.
+    `number` is the 1-based position the job pages label it with.
+    """
+    work_order = get_object_or_404(WorkOrder, pk=pk)
+    photos = list(work_order.photos.all())
+    if not 1 <= number <= len(photos):
+        raise Http404
+    return render(
+        request,
+        'workorders/job_photo.html',
+        {
+            'work_order': work_order,
+            'photo': photos[number - 1],
+            'number': number,
+            'count': len(photos),
+            'previous_number': number - 1 if number > 1 else None,
+            'next_number': number + 1 if number < len(photos) else None,
         },
     )
 

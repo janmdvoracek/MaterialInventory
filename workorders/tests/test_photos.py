@@ -253,13 +253,49 @@ class JobPhotoTests(ReviewFixtureMixin, TestCase):
 
     def test_the_job_page_links_every_photo_without_rendering_any(self):
         # Links, not <img>s: each photo is one tap away, not part of the page.
+        # To the photo page, never the bare file, which strands an installed app.
         work_order = self._job_with_photos(2)
         self.client.force_login(self.manager)
         response = self.client.get(reverse('job_detail', args=[work_order.pk]))
         for number, photo in enumerate(work_order.photos.all(), start=1):
             with self.subTest(number=number):
-                self.assertContains(response, f'<a href="{photo.file.url}">Fotka {number}</a>', html=True)
-                self.assertNotContains(response, f'src="{photo.file.url}"')
+                photo_url = reverse('job_photo', args=[work_order.pk, number])
+                self.assertContains(response, f'<a href="{photo_url}">Fotka {number}</a>', html=True)
+                self.assertNotContains(response, photo.file.url)
+
+    def test_the_photo_page_shows_the_photo_with_a_way_back(self):
+        work_order = self._job_with_photos(3)
+        photos = list(work_order.photos.all())
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('job_photo', args=[work_order.pk, 2]))
+        self.assertContains(response, f'src="{photos[1].file.url}"')
+        self.assertContains(response, f'href="{reverse("job_detail", args=[work_order.pk])}"')
+        self.assertContains(response, f'href="{reverse("job_photo", args=[work_order.pk, 1])}"')
+        self.assertContains(response, f'href="{reverse("job_photo", args=[work_order.pk, 3])}"')
+
+    def test_the_photo_page_offers_no_step_past_either_end(self):
+        work_order = self._job_with_photos(2)
+        self.client.force_login(self.manager)
+        first = self.client.get(reverse('job_photo', args=[work_order.pk, 1]))
+        self.assertNotContains(first, f'href="{reverse("job_photo", args=[work_order.pk, 0])}"')
+        self.assertContains(first, 'Fotka 2 →')
+        last = self.client.get(reverse('job_photo', args=[work_order.pk, 2]))
+        self.assertContains(last, '← Fotka 1')
+        self.assertNotContains(last, 'Fotka 3')
+
+    def test_a_photo_number_the_job_does_not_have_is_a_404(self):
+        work_order = self._job_with_photos(1)
+        self.client.force_login(self.manager)
+        for number in (0, 2):
+            with self.subTest(number=number):
+                self.assertEqual(self.client.get(reverse('job_photo', args=[work_order.pk, number])).status_code, 404)
+
+    def test_the_photo_page_is_the_reviewers(self):
+        work_order = self._job_with_photos(1)
+        url = reverse('job_photo', args=[work_order.pk, 1])
+        self.assertEqual(self.client.get(url).status_code, 403)
+        self.client.logout()
+        self.assertIn('/login/', self.client.get(url).url)
 
     def test_the_job_page_has_no_photo_card_without_photos(self):
         work_order = self.submit_job(self.worker)
@@ -376,7 +412,8 @@ class JobPhotoTests(ReviewFixtureMixin, TestCase):
         response = self.client.get(self._edit_url(work_order))
         for number, photo in enumerate(work_order.photos.all(), start=1):
             with self.subTest(number=number):
-                self.assertContains(response, f'<a href="{photo.file.url}">Fotka {number}</a>', html=True)
+                photo_url = reverse('job_photo', args=[work_order.pk, number])
+                self.assertContains(response, f'<a href="{photo_url}">Fotka {number}</a>', html=True)
                 self.assertContains(response, f'name="remove_photos" value="{photo.pk}"')
 
     def test_no_removal_box_where_there_is_nothing_to_remove(self):

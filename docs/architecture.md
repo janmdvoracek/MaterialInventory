@@ -148,7 +148,9 @@ It is shown and filtered on Přehled and Materiál only, plus `job_detail` and t
 
 ### Photos
 
-`JobPhoto` rows are optional evidence. No report, filter or export reads them, and they appear only on `job_detail`, as „Fotka 1", „Fotka 2", … links.
+`JobPhoto` rows are optional evidence. No report, filter or export reads them, and they appear only on `job_detail` (and `job_edit`), as „Fotka 1", „Fotka 2", … links.
+
+- **The links go to `job_photo`, never to the file.** The bare file is a page with no app chrome, and an installed app has no address bar (and an iPhone no back gesture), so it was a dead end. `job_photo` (`/jobs/<pk>/fotky/<n>/`) renders the one photo as an `<img>` inside `base.html`, with „← Zpět na zpracování" and previous/next links. `n` is the 1-based position the job pages label it with; one the job doesn't have is a 404. `job_detail` itself still renders no `<img>`.
 
 - **Always added, never replaced.** Every upload, on a new job or on `job_edit`, becomes a new row. A photo goes only via a ticked „Odebrat" box on `job_edit`, or with its job.
 - **Shrunk before storing**, because the disk is 20 GB and a phone photo is 2–6 MB. `clean_photo_upload` checks the extension (`PHOTO_EXTENSIONS`) and `PHOTO_MAX_BYTES` (10 MB), then `photos.shrink_photo` takes over:
@@ -391,6 +393,7 @@ All URLs are in `workorders/urls.py`, mounted at the root. Login and password ch
 | `/materials/` | `material_dashboard` | Materiál |
 | `/jobs/` | `job_dashboard` | Přehled: every job, pending ones highlighted |
 | `/jobs/<pk>/` | `job_detail` | One job, with review actions |
+| `/jobs/<pk>/fotky/<n>/` | `job_photo` | „Fotka n" of the job, with back and previous/next links |
 | `/jobs/<pk>/upravit/` | `job_edit` | Correct a job |
 | `/jobs/<pk>/schvalit/` | `job_approve` | POST only |
 | `/jobs/<pk>/smazat/` | `job_delete` | GET confirms, POST deletes |

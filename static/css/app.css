@@ -326,3 +326,5 @@ tr.row-pending > td { background: var(--row-pending-bg); }
 .stored-photos { list-style: none; margin: 0 0 1rem; padding: 0; }
 .stored-photos li { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.35rem 0; }
 .stored-photos label { display: inline-flex; align-items: center; gap: 0.4rem; margin: 0; font-weight: normal; }
+/* One photo on job_photo, fitted to the card. */
+.job-photo { display: block; max-width: 100%; height: auto; margin: 0 auto; }

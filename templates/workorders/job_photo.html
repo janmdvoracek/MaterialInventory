@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Fotka {{ number }} – Zpracování #{{ work_order.pk }}{% endblock %}
+{% block content %}
+<h1>Fotka {{ number }} z {{ count }}</h1>
+<p><a href="{% url 'job_detail' work_order.pk %}">← Zpět na zpracování #{{ work_order.pk }}</a></p>
+<div class="card">
+    {# The one page that renders a photo. A bare link to the file would leave an installed app with no way back. #}
+    <img class="job-photo" src="{{ photo.file.url }}" alt="Fotka {{ number }} – zpracování #{{ work_order.pk }}">
+</div>
+{% if previous_number or next_number %}
+    <div class="job-actions">
+        {% if previous_number %}
+            <a class="btn secondary" href="{% url 'job_photo' work_order.pk previous_number %}">← Fotka {{ previous_number }}</a>
+        {% endif %}
+        {% if next_number %}
+            <a class="btn secondary" href="{% url 'job_photo' work_order.pk next_number %}">Fotka {{ next_number }} →</a>
+        {% endif %}
+    </div>
+{% endif %}
+{% endblock %}

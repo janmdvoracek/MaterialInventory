@@ -40,6 +40,7 @@ urlpatterns = [
     # role_required, not just hidden from the nav.
     path('jobs/', views.job_dashboard, name='job_dashboard'),
     path('jobs/<int:pk>/', views.job_detail, name='job_detail'),
+    path('jobs/<int:pk>/fotky/<int:number>/', views.job_photo, name='job_photo'),
     path('jobs/<int:pk>/upravit/', views.job_edit, name='job_edit'),
     path('jobs/<int:pk>/schvalit/', views.job_approve, name='job_approve'),
     path('jobs/<int:pk>/smazat/', views.job_delete, name='job_delete'),

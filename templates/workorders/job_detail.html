@@ -24,10 +24,10 @@
 {% if photos %}
 <div class="card">
     <h2>Fotky</h2>
-    {# Links, not <img>s. Served by `protected_media`, behind this page's gate. #}
+    {# Links, not <img>s, to `job_photo`, which keeps the app's chrome and a way back. #}
     <ul class="stored-photos">
         {% for photo in photos %}
-            <li><a href="{{ photo.file.url }}">Fotka {{ forloop.counter }}</a></li>
+            <li><a href="{% url 'job_photo' work_order.pk forloop.counter %}">Fotka {{ forloop.counter }}</a></li>
         {% endfor %}
     </ul>
 </div>

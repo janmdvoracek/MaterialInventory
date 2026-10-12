@@ -174,7 +174,7 @@ Easy to break:
 - **`enctype="multipart/form-data"`** belongs on each caller's `<form>` tag. The shared partial can't supply it.
 - **File inputs lose their picks on every re-render**, so the photo field renders last, with a hint. Stored photos survive re-renders via the `remove_photos` checkboxes; the no-JS rebuild reads them back with `getlist`.
 - **Files are deleted by a `post_delete` receiver**, deferred to `transaction.on_commit`. Tests asserting that a file is gone need `captureOnCommitCallbacks`. `WorkOrderAdmin.save_formset` handles the one case the receiver can't see: an admin inline swapping the file on a surviving row.
-- **Photos are never public.** `MEDIA_URL` routes to `protected_media` (`role_required(MANAGER, ADMIN)`); neither whitenoise nor Caddy serves `MEDIA_ROOT`. Photos are shown on `job_detail` only, as links, never as `<img>`.
+- **Photos are never public.** `MEDIA_URL` routes to `protected_media` (`role_required(MANAGER, ADMIN)`); neither whitenoise nor Caddy serves `MEDIA_ROOT`. `job_detail` and `job_edit` list photos as links, never as `<img>`. The links go to `job_photo` (`/jobs/<pk>/fotky/<n>/`), the one page with an `<img>`, never to the bare file: an installed app has no address bar, so the bare file was a dead end.
 
 `JobPhotoTests` covers this.
 

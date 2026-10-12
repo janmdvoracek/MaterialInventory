@@ -82,7 +82,7 @@ an unrendered error looks like a button that did nothing.
         <ul class="stored-photos">
             {% for choice in order_form.remove_photos %}
                 <li>
-                    <a href="{{ choice.data.value.instance.file.url }}">Fotka {{ forloop.counter }}</a>
+                    <a href="{% url 'job_photo' choice.data.value.instance.work_order_id forloop.counter %}">Fotka {{ forloop.counter }}</a>
                     <label for="{{ choice.id_for_label }}">{{ choice.tag }} Odebrat</label>
                 </li>
             {% endfor %}
