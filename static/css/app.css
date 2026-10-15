@@ -330,38 +330,14 @@ tr.row-pending > td { background: var(--row-pending-bg); }
 .job-photo { display: block; max-width: 100%; height: auto; margin: 0 auto; }
 
 /* Desktop layout: the same markup, rearranged from 900px up. Below that
-   everything above applies unchanged (phones, portrait tablets).
-   - body becomes a grid so the nav, last in the source, can sit under the
-     header as a sticky top bar instead of a fixed bottom one.
+   everything above applies unchanged (phones, portrait tablets). The bottom
+   nav stays as it is on every width.
    - main widens to 640px, and to 1200px on pages that set
      `{% block main_class %}wide{% endblock %}` (the reports and Přehled).
-     `width: 100%` because a grid item with auto margins otherwise shrinks
-     to its content.
    - The filter card lays its fields side by side; a field's errorlist,
      which Django renders before the field's <p>, takes a row of its own. */
 @media (min-width: 900px) {
-    body {
-        display: grid;
-        grid-template-rows: auto auto 1fr;
-        min-height: 100vh;
-        padding-bottom: 2rem;
-    }
-    header { grid-row: 1; }
-    nav.bottom {
-        grid-row: 2;
-        position: sticky;
-        top: 0;
-        z-index: 10;
-        justify-content: center;
-        border-top: none;
-        border-bottom: 1px solid var(--chrome-border);
-    }
-    nav.bottom a {
-        flex: 0 0 auto;
-        padding: 0.8rem 1.25rem;
-        font-size: 0.95rem;
-    }
-    main { grid-row: 3; width: 100%; max-width: 640px; padding: 1.5rem 1rem; }
+    main { max-width: 640px; padding: 1.5rem 1rem; }
     main.wide { max-width: 1200px; }
     .filter-form {
         display: grid;

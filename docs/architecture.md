@@ -416,7 +416,7 @@ The bottom nav is hardcoded in `base.html`. `<body class="page-{{ url_name }}">`
 
 Phones and desktops get the same HTML. The phone layout is the default; one `@media (min-width: 900px)` block at the end of `app.css` rearranges it for wide screens, so no device is detected and a resized window or rotated tablet just reflows:
 
-- `body` becomes a grid and the nav, last in the source, sits under the header as a sticky top bar instead of the fixed bottom one.
+- The bottom nav is the same on every width; it was tried as a top bar on desktop and deliberately kept at the bottom.
 - `main` widens from 480px to 640px, which is enough for the job form and `job_detail`. A page that holds tables opts into 1200px with `{% block main_class %}wide{% endblock %}`: today Přehled, Hodiny, Stroje and Materiál. A class set by the template, rather than `body.page-<url_name>`, so renaming a URL can't drop it.
 - The filter card's form (`.filter-form`) lays its fields side by side, with any errorlist on a row of its own.
 
