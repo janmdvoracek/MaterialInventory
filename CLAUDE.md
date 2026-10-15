@@ -72,6 +72,7 @@ The scripts build no markup of their own. They clone server-rendered `<template>
 - **Colours.** Every colour is a custom property declared twice, once in `:root` and once under `@media (prefers-color-scheme: dark)`. A colour literal below those two blocks is a bug. `ThemeTokenTests` enforces this.
 - **Dark mode** follows the OS setting only. The `theme-color` metas in `base.html` and the manifest's `theme_color` are kept in step with `--chrome-bg` by hand.
 - **`button[hidden], .btn[hidden] { display: none }` is load-bearing.** `button, .btn` sets a `display`, which beats the UA `[hidden]` rule. The same applies to `.photo-field [hidden]` and to the `.combo` rules.
+- **Desktop layout** is one `@media (min-width: 900px)` block at the end of `app.css`, over the same HTML; never sniff the user agent or fork templates per device. It must stay below the dark-mode block (`ThemeTokenTests` finds that by the first matching `@media`). Pages with tables set `{% block main_class %}wide{% endblock %}`; the nav becomes a sticky top bar via a grid on `body`.
 - **Page-scoped CSS** uses `body.page-<url_name>`, so renaming a URL name drops that page's styles. Grep for `.page-` first. (None exist today.)
 
 **PWA („VyrobaPK").** `workorders/pwa.py` serves three public URLs: `manifest.webmanifest`, `sw.js` and `offline/`. The manifest and service worker are templates in `templates/pwa/`, not static files. That way the icon URLs are hashed, and the worker is served from the root so its scope covers the whole site.

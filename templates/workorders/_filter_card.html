@@ -8,7 +8,7 @@ ranges and the form. Needs `form` and `date_presets`.
 {% endif %}
 <div class="card">
     {% include "workorders/_date_presets.html" %}
-    <form method="get">
+    <form class="filter-form" method="get">
         {{ form.as_p }}
         <button type="submit">Filtrovat</button>
     </form>
