@@ -34,6 +34,9 @@ python manage.py test workorders.tests.test_review.JobEditTests
 python manage.py test materials.tests.MaterialModelTests.test_material_str
 coverage run manage.py test --parallel && coverage combine && coverage report -m
 ruff check . && ruff format .
+shellcheck scripts/*.sh                                 # CI lint job runs this too
+pre-commit install                                      # optional local mirror of CI lint + migration check
+bash scripts/smoke_prod_stack.sh                        # CI docker-build job: full prod stack under a throwaway project
 python manage.py seed_data                              # from seed_data/*.csv
 python manage.py compilemessages -l cs --ignore=.venv
 docker compose up --build                               # dev stack only

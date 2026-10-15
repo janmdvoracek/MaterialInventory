@@ -47,8 +47,8 @@ To load the catalog, machines, locations and staff accounts, copy the four `seed
 ## Common commands
 
 ```bash
-python manage.py test                          # needs Postgres
-coverage run manage.py test && coverage html   # report in htmlcov/
+python manage.py test --parallel               # needs Postgres
+coverage run manage.py test --parallel && coverage combine && coverage html   # report in htmlcov/
 ruff check . && ruff format .
 ```
 
