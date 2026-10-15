@@ -389,6 +389,28 @@ def machine_refuel_detail_export(request):
 
 
 @role_required(*REVIEWER_ROLES)
+def machine_usage_detail_export(request):
+    """„Detail používání strojů" as a CSV: every filtered usage row, not just the page on screen."""
+    _, usages = _filtered_machine_usages(request)
+    return _csv_response(
+        'detail-pouzivani-stroju',
+        ['Provedeno', 'Stroj', 'Hodin na zakázce', 'Tuny', 'Zakázka', 'Kým'],
+        [
+            [
+                usage.work_order.performed_on.isoformat(),
+                usage.machine.name,
+                # Run time from `_with_run_hours`, as on the page; a first or blank reading is a blank cell.
+                _csv_number(usage.run_hours, 1),
+                _csv_number(usage.tons, 2),
+                usage.work_order.description,
+                usage.work_order.created_by.username,
+            ]
+            for usage in usages
+        ],
+    )
+
+
+@role_required(*REVIEWER_ROLES)
 def material_dashboard_export(request):
     """„Souhrn materiálů" as a CSV, built from the same helpers as the page."""
     form, movements = _filtered_material_movements(request)

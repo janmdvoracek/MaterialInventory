@@ -248,7 +248,7 @@ Hodiny, Stroje and Materiál each have a filter card, a summary table, and the d
 **CSV exports** sit at `<page>/export/`:
 
 - summaries: `time_worked_export`, `machine_dashboard_export`, `machine_refuel_export`, `material_dashboard_export`;
-- detail rows: `material_detail_export`, `machine_refuel_detail_export`.
+- detail rows: `material_detail_export`, `machine_refuel_detail_export`, `machine_usage_detail_export`.
 
 Rules:
 

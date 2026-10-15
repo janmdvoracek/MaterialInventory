@@ -17,9 +17,14 @@ urlpatterns = [
     path('machines/fuel/export/', reports.machine_refuel_export, name='machine_refuel_export'),
     path('materials/export/', reports.material_dashboard_export, name='material_dashboard_export'),
     path('hours/export/', reports.time_worked_export, name='time_worked_export'),
-    # The two row-level downloads: Materiál's line items and Stroje's fill-ups,
-    # each the whole filtered set rather than the page on screen.
+    # The row-level downloads: Materiál's line items and Stroje's usage rows and
+    # fill-ups, each the whole filtered set rather than the page on screen.
     path('materials/detail/export/', reports.material_detail_export, name='material_detail_export'),
+    path(
+        'machines/detail/export/',
+        reports.machine_usage_detail_export,
+        name='machine_usage_detail_export',
+    ),
     path(
         'machines/fuel/detail/export/',
         reports.machine_refuel_detail_export,

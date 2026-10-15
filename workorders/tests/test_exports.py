@@ -232,6 +232,7 @@ class TableExportTests(TestCase):
             'material_detail_export',
             'machine_refuel_export',
             'machine_refuel_detail_export',
+            'machine_usage_detail_export',
         ):
             with self.subTest(name=name):
                 response = self.client.get(reverse(name))
@@ -305,6 +306,59 @@ class TableExportTests(TestCase):
         self.client.force_login(self.manager)
         rows = self._rows(self.client.get(reverse('material_detail_export'), {'date_from': 'not-a-date'}))
         self.assertEqual(len(rows), 1)
+
+    def test_usage_detail_export_carries_the_usage_rows(self):
+        # „Detail používání strojů": the run time per row, as the page computes
+        # it, and a blank cell where the page prints „—" (first reading, no tons).
+        self._job(usage=(Decimal('100'), None), performed_on=date(2026, 9, 1))
+        self._job(usage=(Decimal('112.5'), Decimal('20.5')), performed_on=date(2026, 9, 2))
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('machine_usage_detail_export'))
+        self.assertEqual(
+            response['Content-Disposition'],
+            f'attachment; filename="detail-pouzivani-stroju-{date.today().isoformat()}.csv"',
+        )
+        rows = self._rows(response)
+        self.assertEqual(rows[0], ['Provedeno', 'Stroj', 'Hodin na zakázce', 'Tuny', 'Zakázka', 'Kým'])
+        self.assertEqual(
+            rows[1:],
+            [
+                ['2026-09-02', 'Crusher A', '12,5', '20,50', 'job', 'worker'],
+                ['2026-09-01', 'Crusher A', '', '', 'job', 'worker'],
+            ],
+        )
+
+    def test_usage_detail_export_is_every_row_not_one_page(self):
+        for _ in range(HISTORY_PAGE_SIZE + 1):
+            self._job(usage=(None, Decimal('1')))
+        self.client.force_login(self.manager)
+        rows = self._rows(self.client.get(reverse('machine_usage_detail_export')))
+        self.assertEqual(len(rows) - 1, HISTORY_PAGE_SIZE + 1)
+
+    def test_usage_detail_export_follows_the_filter_and_hides_pending_jobs(self):
+        # The run time still counts from the unfiltered baseline, as on the page.
+        self._job(usage=(Decimal('100'), Decimal('4')), performed_on=date.today() - timedelta(days=40))
+        self._job(usage=(Decimal('130'), Decimal('9')), status=WorkOrder.Status.PENDING)
+        self._job(usage=(Decimal('110'), Decimal('1.5')))
+        self.client.force_login(self.manager)
+        response = self.client.get(
+            reverse('machine_usage_detail_export'), {'date_from': (date.today() - timedelta(days=7)).isoformat()}
+        )
+        self.assertEqual([row[2:4] for row in self._rows(response)[1:]], [['10,0', '1,50']])
+
+    def test_usage_detail_export_is_gated_and_header_only_on_an_invalid_filter(self):
+        self._job(usage=(Decimal('100'), None))
+        self.client.force_login(self.worker)
+        self.assertEqual(self.client.get(reverse('machine_usage_detail_export')).status_code, 403)
+        self.client.force_login(self.manager)
+        rows = self._rows(self.client.get(reverse('machine_usage_detail_export'), {'date_from': 'not-a-date'}))
+        self.assertEqual(len(rows), 1)
+
+    def test_usage_detail_download_is_linked_from_the_page(self):
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('machine_dashboard'), {'date_from': '2026-01-01'})
+        url = reverse('machine_usage_detail_export')
+        self.assertContains(response, f'{url}?date_from=2026-01-01')
 
     def test_both_material_downloads_are_linked_from_the_page(self):
         # One under each table, each carrying the filter that was on screen.

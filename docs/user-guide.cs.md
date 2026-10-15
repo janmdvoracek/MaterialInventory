@@ -184,10 +184,10 @@ Pod tabulkami je tlačítko **Stáhnout do CSV / Excelu**. Stáhne se tabulka **
 | Stránka | Tabulka |
 |---|---|
 | Hodiny | Souhrn |
-| Stroje | Stav strojů, Tankování, Detail tankování |
+| Stroje | Stav strojů, Tankování, Detail tankování, Detail používání strojů |
 | Materiál | Souhrn materiálů, Detail položek |
 
-- **Detailní tabulky** (Detail položek, Detail tankování) se stáhnou **celé**, ne jen otevřená stránka. Hodí se k porovnání s dodacími listy a doklady za naftu.
+- **Detailní tabulky** (Detail položek, Detail tankování, Detail používání strojů) se stáhnou **celé**, ne jen otevřená stránka. Hodí se k porovnání s dodacími listy a doklady za naftu.
 - Soubor otevřete poklepáním. Excel ho rozdělí do sloupců a čísla umí sečíst.
 - **Prázdná buňka znamená „nevíme"** (na stránce pomlčka). Nula se tam schválně nepíše, aby nepokazila součet.
 - Jsou v něm jen schválené zakázky a pracovník stáhne jen své hodiny. Při chybném filtru je soubor bez řádků.

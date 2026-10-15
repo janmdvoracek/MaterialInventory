@@ -111,6 +111,7 @@
         </tbody>
     </table>
     </div>
+    <a class="btn" href="{% url 'machine_usage_detail_export' %}?{{ querystring }}">Stáhnout do CSV / Excelu</a>
 </div>
 {% include "workorders/_pagination.html" %}
 {% endblock %}
