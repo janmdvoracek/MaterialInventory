@@ -4,7 +4,7 @@
 {% block content %}
 <h1>Stroje</h1>
 {% include "workorders/_filter_card.html" %}
-<div class="card">
+<div class="card" id="{{ tables.machines.anchor }}">
     <h2>Stav strojů</h2>
     <div class="table-scroll">
     <table>
@@ -12,7 +12,7 @@
             <tr><th>Stroj</th><th>Stav motohodin</th><th>Hodin za období</th><th>Tun</th><th>Sazba (Kč/hod)</th><th>Cena (Kč/t)</th><th>Cena za hodiny (Kč)</th><th>Cena za tuny (Kč)</th><th>Celkem (Kč)</th></tr>
         </thead>
         <tbody>
-        {% for machine in machines %}
+        {% for machine in tables.machines.rows %}
             <tr>
                 <td>{{ machine.name }}</td>
                 {# The highest meter reading in range; the hours run beside it are what is priced. #}
@@ -32,10 +32,11 @@
         </tbody>
     </table>
     </div>
-    {# The filter goes with the download, so the file is the table above it. #}
+    {% include "workorders/_show_all.html" with table=tables.machines %}
+    {# The filter goes with the download, so the file is every row, not just those shown. #}
     <a class="btn" href="{% url 'machine_dashboard_export' %}?{{ querystring }}">Stáhnout do CSV / Excelu</a>
 </div>
-<div class="card">
+<div class="card" id="{{ tables.refuels.anchor }}">
     <h2>Tankování</h2>
     {# Fuel is independent of usage, and its zeros are real (litres is never null). #}
     <div class="table-scroll">
@@ -44,7 +45,7 @@
             <tr><th>Stroj</th><th>Počet tankování</th><th>Natankováno (l)</th></tr>
         </thead>
         <tbody>
-        {% for machine in refuel_machines %}
+        {% for machine in tables.refuels.rows %}
             <tr>
                 <td>{{ machine.name }}</td>
                 <td>{{ machine.filtered_refuels }}</td>
@@ -59,9 +60,10 @@
         </tfoot>
     </table>
     </div>
+    {% include "workorders/_show_all.html" with table=tables.refuels %}
     <a class="btn" href="{% url 'machine_refuel_export' %}?{{ querystring }}">Stáhnout do CSV / Excelu</a>
 </div>
-<div class="card">
+<div class="card" id="{{ tables.refuel_rows.anchor }}">
     <h2>Detail tankování</h2>
     <div class="table-scroll">
     <table>
@@ -69,7 +71,7 @@
             <tr><th>Provedeno</th><th>Stroj</th><th>Zdroj</th><th>Litry</th><th>Kým</th><th></th></tr>
         </thead>
         <tbody>
-        {% for refuel in fuel_page.page_obj %}
+        {% for refuel in tables.refuel_rows.rows %}
             <tr>
                 <td>{{ refuel.refuelling.performed_on|date:"Y-m-d" }}</td>
                 <td>{{ refuel.machine.name }}</td>
@@ -84,11 +86,12 @@
         </tbody>
     </table>
     </div>
+    {% include "workorders/_show_all.html" with table=tables.refuel_rows %}
     <a class="btn" href="{% url 'machine_refuel_detail_export' %}?{{ querystring }}">Stáhnout do CSV / Excelu</a>
 </div>
 {# Its own page parameter, so paging the fill-ups leaves the usage rows put. #}
-{% include "workorders/_pagination.html" with page_obj=fuel_page.page_obj querystring=fuel_page.querystring page_param=fuel_page.page_param %}
-<div class="card">
+{% if tables.refuel_rows.expanded %}{% include "workorders/_pagination.html" with page_obj=fuel_page.page_obj querystring=fuel_page.querystring page_param=fuel_page.page_param %}{% endif %}
+<div class="card" id="{{ tables.usages.anchor }}">
     <h2>Detail používání strojů</h2>
     <div class="table-scroll">
     <table>
@@ -96,7 +99,7 @@
             <tr><th>Provedeno</th><th>Stroj</th><th>Hodin na zakázce</th><th>Tuny</th><th>Zakázka</th><th>Kým</th></tr>
         </thead>
         <tbody>
-        {% for usage in page_obj %}
+        {% for usage in tables.usages.rows %}
             <tr>
                 <td>{{ usage.work_order.performed_on|date:"Y-m-d" }}</td>
                 <td>{{ usage.machine.name }}</td>
@@ -112,7 +115,8 @@
         </tbody>
     </table>
     </div>
+    {% include "workorders/_show_all.html" with table=tables.usages %}
     <a class="btn" href="{% url 'machine_usage_detail_export' %}?{{ querystring }}">Stáhnout do CSV / Excelu</a>
 </div>
-{% include "workorders/_pagination.html" %}
+{% if tables.usages.expanded %}{% include "workorders/_pagination.html" %}{% endif %}
 {% endblock %}

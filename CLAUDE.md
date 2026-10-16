@@ -239,6 +239,8 @@ It must also widen the catalog pickers to the retired records the job already na
 
 Souhrn, Stroje and Materiál each have a filter card, a summary table, and the detail rows behind it. Stroje has two summary/detail pairs: usage and fuel.
 
+**Every report table starts at `PREVIEW_ROWS` (5) rows.** `_previews` / `_preview` cut each one, and `_show_all.html` renders „Zobrazit vše (n)", a plain link that adds the table's key to `?vse=` (`EXPAND_PARAM`), keeps the filters and other expanded tables, and jumps back to the card (`#tabulka-<key>`). Templates loop over `tables.<key>.rows`, not the raw context. A paginated detail table shows its page links only once expanded, and they carry `vse`. Exports ignore all of this. `ShowAllTests` covers this.
+
 - **Stroje** (`machine_dashboard`): a manager page.
   - Per machine: latest reading (`Max`), hours run, tonnage, both rates, and three money columns from `_machine_costs`. That makes `_machine_summary` a list rather than a queryset.
   - **Motohodiny are readings, never summed.** `_with_run_hours` computes each row's run time as its reading minus the previous approved reading of that machine. "Previous" is by value with a pk tie-break, the baseline is all approved rows (not just filtered ones), and a first or blank reading is `None`. „Cena za hodiny" prices the summed run hours. `MachineReadingTests` covers this.

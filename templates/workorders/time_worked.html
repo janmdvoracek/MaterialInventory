@@ -25,7 +25,7 @@
 </div>
 {% endif %}
 {% include "workorders/_filter_card.html" %}
-<div class="card">
+<div class="card" id="{{ tables.hours.anchor }}">
     <h2>Odpracované hodiny</h2>
     <div class="table-scroll">
     <table>
@@ -33,7 +33,7 @@
             <tr><th>Pracovník</th><th>Hodiny</th><th>Zakázek</th></tr>
         </thead>
         <tbody>
-        {% for row in summary %}
+        {% for row in tables.hours.rows %}
             <tr>
                 <td>{{ row.user }}</td>
                 <td>{{ row.hours|floatformat:1 }} h</td>
@@ -45,12 +45,13 @@
         </tbody>
     </table>
     </div>
-    {# The filter goes with the download, so the file is the table above it. #}
+    {% include "workorders/_show_all.html" with table=tables.hours %}
+    {# The filter goes with the download, so the file is every row, not just those shown. #}
     <a class="btn" href="{% url 'time_worked_export' %}?{{ querystring }}">Stáhnout do CSV / Excelu</a>
 </div>
 {% if fleet %}
 {# Every approved entry, not just this worker's: the machines' totals — see _fleet_totals. #}
-<div class="card">
+<div class="card" id="{{ tables.machines.anchor }}">
     <h2>Stroje</h2>
     <div class="table-scroll">
     <table>
@@ -58,7 +59,7 @@
             <tr><th>Stroj</th><th>Hodin za období</th><th>Tun</th></tr>
         </thead>
         <tbody>
-        {% for machine in fleet.machines %}
+        {% for machine in tables.machines.rows %}
             <tr>
                 <td>{{ machine.name }}</td>
                 <td>{% if machine.filtered_hours is None %}—{% else %}{{ machine.filtered_hours|floatformat:1 }} h{% endif %}</td>
@@ -70,8 +71,9 @@
         </tbody>
     </table>
     </div>
+    {% include "workorders/_show_all.html" with table=tables.machines %}
 </div>
-<div class="card">
+<div class="card" id="{{ tables.refuels.anchor }}">
     <h2>Tankování</h2>
     <div class="table-scroll">
     <table>
@@ -79,7 +81,7 @@
             <tr><th>Stroj</th><th>Počet tankování</th><th>Natankováno (l)</th></tr>
         </thead>
         <tbody>
-        {% for machine in fleet.refuel_machines %}
+        {% for machine in tables.refuels.rows %}
             <tr>
                 <td>{{ machine.name }}</td>
                 <td>{{ machine.filtered_refuels }}</td>
@@ -94,9 +96,10 @@
         </tfoot>
     </table>
     </div>
+    {% include "workorders/_show_all.html" with table=tables.refuels %}
 </div>
 {% endif %}
-<div class="card">
+<div class="card" id="{{ tables.jobs.anchor }}">
     <h2>Detail zakázek</h2>
     <div class="table-scroll">
     <table>
@@ -104,7 +107,7 @@
             <tr><th>Provedeno</th><th>Popis</th><th>Hodiny</th><th>Pracovníci</th></tr>
         </thead>
         <tbody>
-        {% for order in page_obj %}
+        {% for order in tables.jobs.rows %}
             <tr>
                 <td>{{ order.performed_on|date:"Y-m-d" }}</td>
                 <td>{{ order.description|default:"—" }}</td>
@@ -119,6 +122,7 @@
         </tbody>
     </table>
     </div>
+    {% include "workorders/_show_all.html" with table=tables.jobs %}
 </div>
-{% include "workorders/_pagination.html" %}
+{% if tables.jobs.expanded %}{% include "workorders/_pagination.html" %}{% endif %}
 {% endblock %}

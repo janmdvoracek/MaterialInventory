@@ -11,7 +11,7 @@ from accounts.models import User
 from machines.models import Machine
 from materials.models import Material
 from workorders.models import MachineRefuel, MachineUsage, Refuelling, StockMovement, WorkerHours, WorkOrder
-from workorders.reports import _last_month
+from workorders.reports import EXPAND_PARAM, HISTORY_PAGE_SIZE, PREVIEW_ROWS, _last_month
 
 from .helpers import ReviewFixtureMixin, job_payload
 
@@ -983,6 +983,109 @@ class SouhrnFleetTests(TestCase):
     def test_nav_names_the_page_souhrn(self):
         response = self.client.get(reverse('transform_create'))
         self.assertContains(response, f'<a href="{reverse("time_worked")}">Souhrn</a>', html=True)
+
+
+APPROVED = WorkOrder.Status.APPROVED
+
+
+class ShowAllTests(TestCase):
+    """Report tables start at PREVIEW_ROWS rows; „Zobrazit vše" shows the rest, and exports always hold every row."""
+
+    MANY = PREVIEW_ROWS + 2
+
+    def setUp(self):
+        self.worker = User.objects.create_user(username='worker', password='pw', role=User.Role.WORKER)
+        self.manager = User.objects.create_user(username='manager', password='pw', role=User.Role.MANAGER)
+        self.machines = [Machine.objects.create(name=f'Stroj {i:02}') for i in range(self.MANY)]
+        material = Material.objects.create(sku='RAW', name='Štěrk')
+        for i in range(self.MANY):
+            work_order = WorkOrder.objects.create(created_by=self.worker, description=f'job {i}', status=APPROVED)
+            WorkerHours.objects.create(work_order=work_order, user=self.worker, hours=Decimal('1'))
+            MachineUsage.objects.create(work_order=work_order, machine=self.machines[0], hours=100 + i)
+            StockMovement.objects.create(
+                material=material,
+                quantity=-1,
+                movement_type=StockMovement.MovementType.TRANSFORM_CONSUME,
+                work_order=work_order,
+                created_by=self.worker,
+            )
+            refuelling = Refuelling.objects.create(created_by=self.worker, status=APPROVED)
+            MachineRefuel.objects.create(refuelling=refuelling, machine=self.machines[0], litres=Decimal('10'))
+
+    def _tables(self, url_name, user, params=None):
+        self.client.force_login(user)
+        if isinstance(params, str):
+            response = self.client.get(f'{reverse(url_name)}?{params}')
+        else:
+            response = self.client.get(reverse(url_name), params or {})
+        return response, response.context['tables']
+
+    def test_every_table_starts_cut_to_the_preview(self):
+        pages = (
+            ('time_worked', self.worker, ('machines', 'refuels', 'jobs')),
+            ('machine_dashboard', self.manager, ('machines', 'refuels', 'refuel_rows', 'usages')),
+            ('material_dashboard', self.manager, ('movements',)),
+        )
+        for url_name, user, keys in pages:
+            response, tables = self._tables(url_name, user)
+            for key in keys:
+                with self.subTest(page=url_name, table=key):
+                    table = tables[key]
+                    self.assertEqual(len(table['rows']), PREVIEW_ROWS)
+                    self.assertEqual(table['total'], self.MANY)
+                    self.assertTrue(table['has_more'])
+                    self.assertContains(response, f'id="{table["anchor"]}"')
+                    self.assertContains(response, f'Zobrazit vše ({self.MANY})')
+
+    def test_a_short_table_has_no_button(self):
+        _, tables = self._tables('material_dashboard', self.manager)
+        self.assertEqual(len(tables['materials']['rows']), 1)
+        self.assertFalse(tables['materials']['has_more'])
+        _, tables = self._tables('time_worked', self.worker)
+        self.assertFalse(tables['hours']['has_more'])
+
+    def test_show_all_expands_only_its_own_table(self):
+        _, tables = self._tables('machine_dashboard', self.manager, {EXPAND_PARAM: 'usages'})
+        self.assertEqual(len(tables['usages']['rows']), self.MANY)
+        self.assertTrue(tables['usages']['expanded'])
+        self.assertFalse(tables['usages']['has_more'])
+        self.assertEqual(len(tables['machines']['rows']), PREVIEW_ROWS)
+
+    def test_the_link_keeps_the_filters_and_the_tables_already_expanded(self):
+        date_from = (date.today() - timedelta(days=7)).isoformat()
+        response, tables = self._tables(
+            'machine_dashboard', self.manager, {'date_from': date_from, EXPAND_PARAM: 'usages'}
+        )
+        querystring = tables['machines']['expand_querystring']
+        self.assertIn(f'date_from={date_from}', querystring)
+        self.assertIn(f'{EXPAND_PARAM}=usages', querystring)
+        self.assertIn(f'{EXPAND_PARAM}=machines', querystring)
+        self.assertContains(response, f'href="?{querystring.replace("&", "&amp;")}#tabulka-machines"')
+        # Expanding a second table keeps the first one open.
+        _, tables = self._tables('machine_dashboard', self.manager, querystring)
+        self.assertTrue(tables['usages']['expanded'])
+        self.assertTrue(tables['machines']['expanded'])
+
+    def test_a_paginated_table_shows_its_page_links_only_once_expanded(self):
+        work_order = WorkOrder.objects.create(created_by=self.worker, description='bulk', status=APPROVED)
+        MachineUsage.objects.bulk_create(
+            MachineUsage(work_order=work_order, machine=self.machines[1], hours=1000 + i)
+            for i in range(HISTORY_PAGE_SIZE)
+        )
+        response, tables = self._tables('machine_dashboard', self.manager)
+        self.assertEqual(tables['usages']['total'], self.MANY + HISTORY_PAGE_SIZE)
+        self.assertNotContains(response, 'Další</a>')
+        response, tables = self._tables('machine_dashboard', self.manager, {EXPAND_PARAM: 'usages'})
+        self.assertEqual(len(tables['usages']['rows']), HISTORY_PAGE_SIZE)
+        # The page links carry the expansion, so page two is expanded too.
+        self.assertContains(response, f'href="?{EXPAND_PARAM}=usages&page=2">Další</a>')
+
+    def test_exports_hold_every_row(self):
+        self.client.force_login(self.manager)
+        for url_name in ('machine_dashboard_export', 'machine_usage_detail_export', 'machine_refuel_detail_export'):
+            with self.subTest(export=url_name):
+                lines = self.client.get(reverse(url_name)).content.decode('utf-8-sig').strip().split('\r\n')
+                self.assertEqual(len(lines) - 1, self.MANY)
 
 
 class DatePresetTests(ReviewFixtureMixin, TestCase):

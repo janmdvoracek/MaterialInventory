@@ -4,7 +4,7 @@
 {% block content %}
 <h1>Materiál</h1>
 {% include "workorders/_filter_card.html" %}
-<div class="card">
+<div class="card" id="{{ tables.materials.anchor }}">
     <h2>Souhrn materiálů</h2>
     <div class="table-scroll">
     <table>
@@ -12,7 +12,7 @@
             <tr><th>Materiál</th><th>Spotřebováno</th><th>Vyrobeno</th><th>Rozdíl</th></tr>
         </thead>
         <tbody>
-        {% for material in materials %}
+        {% for material in tables.materials.rows %}
             <tr>
                 <td>{{ material.name }}</td>
                 <td>{{ material.filtered_consumed|default:"0"|floatformat:2 }} t</td>
@@ -25,10 +25,11 @@
         </tbody>
     </table>
     </div>
-    {# The filter goes with the download, so the file is the table above it. #}
+    {% include "workorders/_show_all.html" with table=tables.materials %}
+    {# The filter goes with the download, so the file is every row, not just those shown. #}
     <a class="btn" href="{% url 'material_dashboard_export' %}?{{ querystring }}">Stáhnout do CSV / Excelu</a>
 </div>
-<div class="card">
+<div class="card" id="{{ tables.movements.anchor }}">
     <h2>Detail položek</h2>
     <div class="table-scroll">
     <table>
@@ -36,7 +37,7 @@
             <tr><th>ID</th><th>Provedeno</th><th>Lokace</th><th>Materiál</th><th>Druh</th><th>Množství (t)</th><th>Zakázka</th><th>Kým</th></tr>
         </thead>
         <tbody>
-        {% for movement in page_obj %}
+        {% for movement in tables.movements.rows %}
             <tr>
                 <td><a href="{% url 'job_detail' movement.work_order_id %}">#{{ movement.work_order_id }}</a></td>
                 <td>{{ movement.work_order.performed_on|date:"Y-m-d" }}</td>
@@ -53,8 +54,9 @@
         </tbody>
     </table>
     </div>
+    {% include "workorders/_show_all.html" with table=tables.movements %}
     {# Every row the filter allows, not just this page of them. #}
     <a class="btn" href="{% url 'material_detail_export' %}?{{ querystring }}">Stáhnout do CSV / Excelu</a>
 </div>
-{% include "workorders/_pagination.html" %}
+{% if tables.movements.expanded %}{% include "workorders/_pagination.html" %}{% endif %}
 {% endblock %}

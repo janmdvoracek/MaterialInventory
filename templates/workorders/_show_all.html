@@ -1,0 +1,8 @@
+{% comment %}
+„Zobrazit vše" under a report table cut to its first rows by `_preview`.
+A plain link (no script): it keeps the filters and jumps back to the table.
+Needs `table`.
+{% endcomment %}
+{% if table.has_more %}
+<a class="btn secondary" href="?{{ table.expand_querystring }}#{{ table.anchor }}">Zobrazit vše ({{ table.total }})</a>
+{% endif %}

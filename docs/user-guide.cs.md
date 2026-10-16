@@ -204,6 +204,8 @@ Obě tabulky řídí jen datum ve filtru. Vedoucí je tu nemá, stejná čísla 
 
 Nahoře je pět zakázek, které jste naposledy **zapsali vy**, seřazené podle času zápisu. Ukazují stav: žluté *Čeká na schválení*, nebo *Schváleno*. Tady zjistíte, proč vám hodiny zatím chybí. Smazaná zakázka zmizí. Zakázky, kde jste jen spolupracovník, tu nejsou, objeví se vám po schválení v Odpracovaných hodinách. Filtry tuto tabulku neovlivňují. Vedoucí ji nemá.
 
+> **Zobrazit vše:** tabulky v Souhrnu, Strojích a Materiálu ukazují nejdřív **pět řádků**. Je-li jich víc, je pod tabulkou tlačítko **Zobrazit vše** s jejich počtem. Filtry zůstanou. Export do Excelu obsahuje vždy všechny řádky.
+
 > **Rychlé období:** nad každým filtrem jsou tlačítka **Vše**, **Posledních 7 dní**, **Posledních 30 dní** a **Minulý měsíc**. Ostatní filtry zůstanou. **Vše** filtr data zruší.
 
 ## Stažení do Excelu
@@ -216,7 +218,7 @@ Pod tabulkami je tlačítko **Stáhnout do CSV / Excelu**. Stáhne se tabulka **
 | Stroje | Stav strojů, Tankování, Detail tankování, Detail používání strojů |
 | Materiál | Souhrn materiálů, Detail položek |
 
-- **Detailní tabulky** (Detail položek, Detail tankování, Detail používání strojů) se stáhnou **celé**, ne jen otevřená stránka. Hodí se k porovnání s dodacími listy a doklady za naftu.
+- Stáhne se **celá tabulka**, i když jich je na stránce vidět jen pět. **Detailní tabulky** (Detail položek, Detail tankování, Detail používání strojů) se stáhnou celé, ne jen otevřená stránka. Hodí se k porovnání s dodacími listy a doklady za naftu.
 - Soubor otevřete poklepáním. Excel ho rozdělí do sloupců a čísla umí sečíst.
 - **Prázdná buňka znamená „nevíme"** (na stránce pomlčka). Nula se tam schválně nepíše, aby nepokazila součet.
 - Jsou v něm jen schválené zakázky a pracovník stáhne jen své hodiny. Při chybném filtru je soubor bez řádků.
