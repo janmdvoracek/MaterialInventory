@@ -39,7 +39,7 @@ Bez signálu ukáže aplikace stránku **Bez připojení**. Zakázku bez připoj
 | Tlačítko | K čemu | Kdo vidí |
 |---|---|---|
 | **Zpracování** | zápis zakázky (otevře se po přihlášení i po klepnutí na logo) | všichni |
-| **Tankování** | zápis tankování | pracovníci (vedoucí ho najde v Přehledu → Přehled tankování) |
+| **Tankování** | zápis tankování | všichni |
 | **Hodiny** | odpracované hodiny | všichni |
 | **Přehled** | všechny zakázky a tankování, schvalování | vedoucí |
 | **Stroje** | motohodiny, tuny, ceny, tankování | vedoucí |
@@ -109,7 +109,7 @@ Použijte, kdykoli jste natankovali jeden nebo více strojů. Je to samostatný 
 
 - **Poznámky**: nepovinné.
 - **Datum provedení**: předvyplněný je dnešek, nesmí být v budoucnosti.
-- **Tankované stroje**: v každém řádku vyberte **Stroj**, **Zdroj** (odkud nafta je, např. nádrž nebo čerpací stanice) a zapište **litry**. Řádek vyplňte celý, nebo ho nechte prázdný. Musí být aspoň jeden.
+- **Tankované stroje**: v každém řádku vyberte **Stroj** a zapište **litry**. **Zdroj** (odkud nafta je, např. nádrž nebo čerpací stanice) je nepovinný. Řádek bez stroje nebo bez litrů aplikace odmítne, prázdný přeskočí. Musí být aspoň jeden.
 - Každý stroj uveďte **jen jednou**. Z jednoho zdroje můžete natankovat víc strojů. Tankoval-li jeden stroj ze dvou zdrojů, zapište to jako dvě tankování.
 - Litry pište **s tečkou** (`45.5`), nejvýš 2000. Řádky přidáte a odeberete stejně jako u zakázky.
 - Chybí-li zdroj v seznamu, řekněte vedoucímu, přidá ho správce.
@@ -136,7 +136,7 @@ Seznam všech zakázek: datum, autor, lokace, popis, hodiny a stav. Čekající 
 
 ### Přehled tankování
 
-Odkaz **Přehled tankování** je pod nadpisem Přehledu, u něj počet tankování, která čekají na schválení. Seznam ukazuje datum, autora, stroje, litry a stav; filtrovat lze podle autora, stavu a data. Tlačítko **Zaznamenat tankování** otevře formulář. **Detail** tankování nabízí stejné akce jako zakázka: **Schválit**, **Upravit** (neschvaluje) a **Smazat**. U tankování zapsaných před zavedením zdrojů je zdroj prázdný; při úpravě ho doplňte.
+Odkaz **Přehled tankování** je pod nadpisem Přehledu, u něj počet tankování, která čekají na schválení. Seznam ukazuje datum, autora, stroje, litry a stav; filtrovat lze podle autora, stavu a data. **Detail** tankování nabízí stejné akce jako zakázka: **Schválit**, **Upravit** (neschvaluje) a **Smazat**. U tankování zapsaných před zavedením zdrojů je zdroj prázdný.
 
 ## Stroje
 
@@ -223,7 +223,7 @@ Rozepsaný řádek. Doplňte ho, nebo vymažte. Totéž u spolupracovníků.
 **„Přidejte alespoň jednu položku spotřeby a jednu položku výroby."** / **„Celkové množství spotřeby a výroby se musí rovnat."**
 Viz [Spotřeba a výroba](#spotřeba-a-výroba). V závorce hlášky jsou oba součty.
 
-**„Vyplňte stroj, zdroj i litry, nebo řádek nechte prázdný."**
+**„Vyplňte stroj i litry, nebo řádek nechte prázdný."**
 Rozepsaný řádek tankování. Doplňte ho, nebo vymažte.
 
 **Zakázku nevidím v Hodinách** / **tankování nevidím ve Strojích.**

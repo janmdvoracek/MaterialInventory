@@ -197,7 +197,7 @@ It must also widen the catalog pickers to the retired records the job already na
 
 `Refuelling` is its own entry, not part of a job: optional `notes`, `performed_on` (same `EntryForm` field and rules as the job's) and `MachineRefuel` rows (machine, `source` → `FuelSource`, `litres`), written in one `transaction.atomic()` by `refuel_create` (`/refuel/`).
 
-- **Rows** are all three fields or blank (`RefuelRowForm`), at least one row, one row per machine (`RefuelRowFormSet`). `litres` is 0,01 to `LITRES_MAX` and not nullable. `source` is required on the form but nullable in the column: fill-ups migrated from jobs have none, and editing one asks for it.
+- **Rows** are a machine and litres, or blank (`RefuelRowForm.check_row`); `source` is optional, on the form and in the column. At least one row, one row per machine (`RefuelRowFormSet`). `litres` is 0,01 to `LITRES_MAX` and not nullable. Fill-ups migrated from jobs have no source.
 - **Same machinery as the job form.** `_entry_forms` builds the page (row buttons, unbound rebuild, error banner), `_row_sections.html` renders the section. No photos, no „Zapsat za".
 - **Review** is the job's: `ReviewStatus`, saved by `_review_on_submit`, approved by `_approve`, three actions (approve, edit, delete) under `/refuels/`, all `role_required(MANAGER, ADMIN)`. `refuel_edit` widens its pickers with `keep` (machines) and `keep_source`. Only approved refuellings count on Stroje.
 - **Migration `0010_move_fill_ups`** moved each job's fill-ups onto a refuelling with the job's date, author and status. Emptied fuel-only jobs were deleted, except ones with photos.
@@ -261,7 +261,7 @@ Rules:
 
 ## Access
 
-- **The nav** (in `base.html`, hardcoded): workers see Zpracování, Tankování and Hodiny; managers see Zpracování, Přehled, Hodiny, Stroje and Materiál. Hiding a link is not access control: the manager views are also gated with `role_required(MANAGER, ADMIN)`. A sixth manager entry wraps on a phone, so managers reach Tankování from Přehled tankování; keep nav labels short.
+- **The nav** (in `base.html`, hardcoded): everyone sees Zpracování, Tankování and Hodiny; Přehled, Stroje and Materiál sit inside `{% if user.is_manager_or_admin %}`. Hiding a link is not access control: those views are also gated with `role_required(MANAGER, ADMIN)`. Keep nav labels short, since a manager has six entries.
 - **Worker scoping** happens in the queryset, not by hiding fields. Only `time_worked` needs it. It applies `participation_filter`, and it also filters the summary rows to the requesting user. Deleting the `worker` filter field is cosmetic (`test_worker_cannot_bypass_restriction_via_worker_param`). Don't add scoping to `role_required` views.
 - **Filter forms** subclass `DateRangeFilterForm` and declare `lookups` / `date_lookup`; views call `form.filter(qs)`. Unbound shows everything; **invalid returns `.none()`**.
 - **List pages.** A filtered page needs `**_list_page_context(request, rows)` (`page_obj`, `querystring`, `date_presets`) plus the `_filter_card.html` and `_pagination.html` includes. Date presets are plain links.

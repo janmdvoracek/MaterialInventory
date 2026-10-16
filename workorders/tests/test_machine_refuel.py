@@ -93,15 +93,21 @@ class RefuellingFormTests(RefuelFixtureMixin, TestCase):
         self.assertContains(response, NO_ROWS_ERROR)
         self.assertFalse(Refuelling.objects.exists())
 
-    def test_a_row_missing_its_source_or_litres_is_refused(self):
+    def test_the_source_is_optional(self):
+        row = self._row()
+        del row['source']
+        refuelling = self.record(self.worker, [row])
+        self.assertIsNone(refuelling.machine_refuels.get().source)
+
+    def test_a_row_missing_its_machine_or_litres_is_refused(self):
         self.client.force_login(self.worker)
-        for missing in ('source', 'litres'):
+        for missing in ('machine', 'litres'):
             with self.subTest(missing=missing):
                 row = self._row()
                 del row[missing]
                 response = self._submit([row])
                 self.assertEqual(response.status_code, 200)
-                self.assertContains(response, 'Vyplňte stroj, zdroj i litry')
+                self.assertContains(response, 'Vyplňte stroj i litry')
                 # A half-filled row is not a missing required field (as on the job form).
                 self.assertContains(response, FORM_ERRORS_MESSAGE)
                 self.assertFalse(Refuelling.objects.exists())
@@ -160,17 +166,12 @@ class RefuellingFormTests(RefuelFixtureMixin, TestCase):
         # No photos on a refuelling.
         self.assertNotContains(response, 'js/photo_picker.js')
 
-    def test_the_nav_links_the_form_for_workers(self):
-        self.client.force_login(self.worker)
-        self.assertContains(self.client.get(reverse('time_worked')), f'href="{reverse("refuel_create")}"')
-
-    def test_managers_reach_the_form_from_the_refuelling_list(self):
-        # A sixth nav entry doesn't fit a phone, so the manager's nav stays at five.
-        self.client.force_login(self.manager)
-        form_link = f'href="{reverse("refuel_create")}"'
-        self.assertNotContains(self.client.get(reverse('time_worked')), form_link)
-        self.assertContains(self.client.get(reverse('refuel_dashboard')), form_link)
-        self.assertEqual(self.client.get(reverse('refuel_create')).status_code, 200)
+    def test_the_nav_links_the_form_for_everyone(self):
+        for user in (self.worker, self.manager):
+            with self.subTest(user=user.username):
+                self.client.force_login(user)
+                response = self.client.get(reverse('time_worked'))
+                self.assertContains(response, f'href="{reverse("refuel_create")}"', count=1)
 
     def test_a_worker_sees_their_recent_refuellings_and_their_status(self):
         for _ in range(MY_JOBS_LIMIT + 1):
@@ -272,15 +273,16 @@ class RefuellingReviewTests(RefuelFixtureMixin, TestCase):
             self.assertIn(self.machine_a, form.fields['machine'].queryset)
             self.assertIn(self.source_tank, form.fields['source'].queryset)
 
-    def test_a_fill_up_from_before_sources_asks_for_one_on_edit(self):
-        # Migrated fill-ups have no source; the form requires one.
+    def test_a_fill_up_without_a_source_saves_as_it_is_on_edit(self):
+        # Migrated fill-ups have no source, and none is asked for.
         refuelling = self.record(self.worker)
         MachineRefuel.objects.update(source=None)
         self.client.force_login(self.manager)
         url = reverse('refuel_edit', args=[refuelling.pk])
         self.assertIsNone(self.client.get(url).context['refuel_formset'].forms[0].initial['source'])
         response = self.client.post(url, refuel_payload([{'machine': self.machine_a, 'litres': '40'}]))
-        self.assertContains(response, 'Vyplňte stroj, zdroj i litry')
+        self.assertRedirects(response, reverse('refuel_detail', args=[refuelling.pk]))
+        self.assertIsNone(MachineRefuel.objects.get().source)
 
     def test_deleting_takes_the_fill_ups_with_it(self):
         refuelling = self.record(self.worker)

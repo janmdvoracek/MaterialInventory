@@ -43,7 +43,7 @@ Refuelling #5   performed_on: 2026-09-02, notes: "…"
 | `StockMovement` | one material line | `quantity` is **signed**: negative = consumed, positive = produced. Always tonnes. The name is historical. |
 | `WorkerHours` | one person's labour on the job | One per person per job (`UniqueConstraint`). |
 | `MachineUsage` | one machine that ran | `hours` is the **hour-meter reading**, not run time. `hours` and `tons` are nullable, meaning unknown. |
-| `MachineRefuel` | one machine's fill-up, on a `Refuelling` | `litres`, not nullable. `source` (a `FuelSource`) is required on the form, nullable for fill-ups recorded before sources existed. |
+| `MachineRefuel` | one machine's fill-up, on a `Refuelling` | `litres`, not nullable. `source` (a `FuelSource`) is optional. |
 | `JobPhoto` | one uploaded photo | Up to 10 per job. |
 
 Shared rules:
@@ -167,7 +167,7 @@ It is shown and filtered on Přehled and Materiál only, plus `job_detail` and t
 
 ## Recording a refuelling
 
-`refuel_create` (Tankování, `workorders/refuels.py`) takes optional notes („Poznámky"), the date („Datum provedení", the same `EntryForm` fields and rules as the job's) and one section, *Tankované stroje* (`REFUEL_SECTIONS`). Each row is stroj, zdroj, litry: all three or blank (`RefuelRowForm`, plain `RowForm` rules). At least one row is needed. It is written in one `transaction.atomic()`.
+`refuel_create` (Tankování, `workorders/refuels.py`) takes optional notes („Poznámky"), the date („Datum provedení", the same `EntryForm` fields and rules as the job's) and one section, *Tankované stroje* (`REFUEL_SECTIONS`). Each row is stroj, zdroj, litry: a machine and litres, or blank; the source is optional (`RefuelRowForm.check_row`). At least one row is needed. It is written in one `transaction.atomic()`.
 
 - **„Zdroj" is a catalog**, `machines.FuelSource` (name, `is_active`), managed in the admin exactly like `Location`: retired with `is_active=False`, protected from deletion. It has no balance; nothing is summed or refused per source.
 - **One row per machine** (`RefuelRowFormSet`). One source may feed several machines. A machine filled from two sources is two refuellings.
@@ -176,7 +176,7 @@ It is shown and filtered on Přehled and Materiál only, plus `job_detail` and t
 
 `RefuellingFormTests` covers this.
 
-**Migration.** Fill-ups used to be rows of a job. Migration `0010_move_fill_ups` gave every job's fill-ups a refuelling with the job's date, author and review state. A fuel-only job (fill-ups and nothing else) was then empty, so it was deleted, with its description and notes carried into the refuelling's notes. The exception is a fuel-only job with photos, which was kept so the photos survive. A job that also recorded work kept everything else, and its refuelling's notes say „Převedeno ze zpracování #N". Migrated fill-ups have no source; editing one asks for it.
+**Migration.** Fill-ups used to be rows of a job. Migration `0010_move_fill_ups` gave every job's fill-ups a refuelling with the job's date, author and review state. A fuel-only job (fill-ups and nothing else) was then empty, so it was deleted, with its description and notes carried into the refuelling's notes. The exception is a fuel-only job with photos, which was kept so the photos survive. A job that also recorded work kept everything else, and its refuelling's notes say „Převedeno ze zpracování #N". Migrated fill-ups have no source.
 
 ## Review
 
@@ -429,7 +429,7 @@ All URLs are in `workorders/urls.py`, mounted at the root. Login and password ch
 
 The reports stay a module rather than a separate app: they aggregate only `workorders` models, and a separate app would need shared helpers moved out to avoid a circular import, for no behaviour change.
 
-The bottom nav is hardcoded in `base.html`. Workers get Zpracování, Tankování and Hodiny. Managers get Zpracování, Přehled, Hodiny, Stroje and Materiál; a sixth entry wraps on a phone, so they reach Tankování from Přehled tankování. `<body class="page-{{ url_name }}">` enables page-scoped CSS, so renaming a URL name drops that page's styles.
+The bottom nav is hardcoded in `base.html`. Everyone gets Zpracování, Tankování and Hodiny; managers also get Přehled, Stroje and Materiál. `<body class="page-{{ url_name }}">` enables page-scoped CSS, so renaming a URL name drops that page's styles.
 
 ### Desktop layout
 

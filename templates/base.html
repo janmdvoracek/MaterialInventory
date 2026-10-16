@@ -42,11 +42,9 @@
     {% if user.is_authenticated %}
     <nav class="bottom">
         <a href="{% url 'transform_create' %}">Zpracování</a>
+        <a href="{% url 'refuel_create' %}">Tankování</a>
         {% if user.is_manager_or_admin %}
             <a href="{% url 'job_dashboard' %}">Přehled</a>
-        {% else %}
-            {# Workers only: a sixth manager entry doesn't fit a phone; managers reach it from Přehled tankování. #}
-            <a href="{% url 'refuel_create' %}">Tankování</a>
         {% endif %}
         <a href="{% url 'time_worked' %}">Hodiny</a>
         {% if user.is_manager_or_admin %}

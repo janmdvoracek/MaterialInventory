@@ -230,7 +230,7 @@ class MachineRefuel(models.Model):
     machine = models.ForeignKey(
         'machines.Machine', on_delete=models.PROTECT, related_name='refuels', verbose_name='stroj'
     )
-    # Null only on fill-ups recorded before sources existed; the form requires it.
+    # Optional: a fill-up may not say where its fuel came from.
     source = models.ForeignKey(
         'machines.FuelSource',
         on_delete=models.PROTECT,

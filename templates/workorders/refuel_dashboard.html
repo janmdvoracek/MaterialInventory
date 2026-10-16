@@ -4,7 +4,6 @@
 {% block content %}
 <h1>Přehled tankování</h1>
 <p><a href="{% url 'job_dashboard' %}">← Přehled zpracování</a></p>
-<p><a class="btn" href="{% url 'refuel_create' %}">Zaznamenat tankování</a></p>
 {% if pending_count %}
     <p class="messages error">Čeká na schválení: {{ pending_count }}</p>
 {% endif %}

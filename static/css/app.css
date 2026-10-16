@@ -197,8 +197,10 @@ nav.bottom {
     background: var(--chrome-bg);
     border-top: 1px solid var(--chrome-border);
 }
+/* Sized to its label rather than an equal share, so a manager's six entries
+   fit a phone without breaking „Zpracování" mid-word. */
 nav.bottom a {
-    flex: 1;
+    flex: 1 1 auto;
     min-width: 0;
     text-align: center;
     padding: 0.7rem 0.25rem;

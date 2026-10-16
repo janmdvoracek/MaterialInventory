@@ -439,10 +439,13 @@ class MachineUsageForm(RowForm):
 
 
 class RefuelRowForm(RowForm):
-    """One machine on a refuelling: where the fuel came from and how much. Blank, or all three."""
+    """One machine on a refuelling: how much fuel, and optionally where it came from.
+
+    Blank, or a machine and litres; „Zdroj" may be left empty.
+    """
 
     catalog_field = 'machine'
-    incomplete_error = 'Vyplňte stroj, zdroj i litry, nebo řádek nechte prázdný.'
+    incomplete_error = 'Vyplňte stroj i litry, nebo řádek nechte prázdný.'
 
     machine = forms.ModelChoiceField(
         queryset=Machine.objects.filter(is_active=True),
@@ -470,6 +473,12 @@ class RefuelRowForm(RowForm):
     def __init__(self, *args, keep_source=None, **kwargs):
         super().__init__(*args, **kwargs)
         _offer_recorded(self.fields['source'], keep_source)
+
+    def check_row(self, cleaned_data):
+        # A source alone is half a row too.
+        filled = [cleaned_data.get(name) for name in self.fields]
+        if any(filled) and not (cleaned_data.get('machine') and cleaned_data.get('litres')):
+            raise forms.ValidationError(self.incomplete_error)
 
 
 class WorkerHoursForm(RowForm):
