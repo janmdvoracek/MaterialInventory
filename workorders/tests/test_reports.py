@@ -673,6 +673,35 @@ class MaterialDashboardTests(TestCase):
         self.assertContains(response, 'Výroba')
         self.assertContains(response, self.worker.username)
 
+    def test_the_movement_type_filter_narrows_the_detail_rows_only(self):
+        # The summary already splits the two directions into columns; narrowing
+        # it too would zero one column and turn „Rozdíl" into nonsense.
+        self._job(consumed=[(self.raw, Decimal('5'))], produced=[(self.finished, Decimal('5'))])
+        for movement_type, material in (
+            (StockMovement.MovementType.TRANSFORM_CONSUME, self.raw),
+            (StockMovement.MovementType.TRANSFORM_PRODUCE, self.finished),
+        ):
+            with self.subTest(movement_type=movement_type):
+                response = self.client.get(reverse('material_dashboard'), {'movement_type': movement_type})
+                rows = response.context['page_obj'].object_list
+                self.assertEqual([(row.movement_type, row.material) for row in rows], [(movement_type, material)])
+                self.assertEqual(self._row(response, self.finished).filtered_produced, Decimal('5.000'))
+                self.assertEqual(self._row(response, self.raw).filtered_consumed, Decimal('5.000'))
+
+    def test_the_movement_type_filter_offers_both_directions(self):
+        response = self.client.get(reverse('material_dashboard'))
+        self.assertContains(response, 'Druh pohybu')
+        self.assertContains(response, '<option value="" selected>Všechny druhy</option>', html=True)
+        self.assertContains(response, '<option value="TRANSFORM_CONSUME">Spotřeba</option>', html=True)
+        self.assertContains(response, '<option value="TRANSFORM_PRODUCE">Výroba</option>', html=True)
+
+    def test_an_unknown_movement_type_is_an_invalid_filter(self):
+        self._job(consumed=[(self.raw, Decimal('5'))], produced=[(self.finished, Decimal('5'))])
+        response = self.client.get(reverse('material_dashboard'), {'movement_type': 'ADJUSTMENT'})
+        self.assertFalse(response.context['form'].is_valid())
+        self.assertEqual(list(response.context['materials']), [])
+        self.assertEqual(len(response.context['page_obj'].object_list), 0)
+
 
 class TimeWorkedTests(TestCase):
     def setUp(self):

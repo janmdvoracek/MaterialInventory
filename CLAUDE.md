@@ -246,7 +246,7 @@ Hodiny, Stroje and Materiál each have a filter card, a summary table, and the d
   - The fuel card (`_refuel_summary`) stays a queryset, because its zeros are real. It reads approved refuellings through `RefuelFilterForm` (Stroje's filter, dated and authored by the refuelling). „Detail tankování" shows each fill-up's source and links to its refuelling.
   - Every active machine is listed; naming one in the filter narrows the table to it.
   - The two tables paginate independently (`_paginated(request, rows, param)`). `MachineRefuelReportTests` covers this.
-- **Materiál** (`material_dashboard`): a manager page; the only place line items are read across jobs. It annotates consumed (`Abs`), produced and net (`Coalesce`); zeros are real. Its filter has `location` but no `created_by`.
+- **Materiál** (`material_dashboard`): a manager page; the only place line items are read across jobs. It annotates consumed (`Abs`), produced and net (`Coalesce`); zeros are real. Its filter has `location` but no `created_by`. Its „Druh pohybu" (`movement_type`) narrows only Detail položek and its export (`MaterialFilterForm.detail_rows`), never the summary, whose columns already split the two directions.
 - **Hodiny** (`time_worked`): any user. It sums `WorkerHours` per person. It re-queries by `pk__in` before aggregating, because the collaborator join would otherwise multiply the `Sum`. Workers see only their own rows (see Access).
 - **Přehled** (`job_dashboard` and the `/jobs/` pages): a manager page. Location is shown and filtered only here and on Materiál. It links to **Přehled tankování** (`refuel_dashboard`) with the pending refuelling count.
 

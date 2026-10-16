@@ -393,6 +393,8 @@ The two detail tables paginate independently. `_paginated(request, rows, param)`
 
 Zeros are real here (`0,00 t`). Every active material is listed, and naming one narrows the table. `MaterialFilterForm` offers retired materials and locations, so their history stays reachable. It has `location` but no `created_by`.
 
+„Druh pohybu" (`movement_type`: Spotřeba, Výroba) narrows **Detail položek and its CSV only**, through `MaterialFilterForm.detail_rows`; it is not in `lookups`, so the summary ignores it. That is the one exception to "every summary is built from the filtered rows": the summary already shows each direction in its own column, and narrowing it would zero one column and make „Rozdíl" meaningless. An unknown value is an invalid filter like any other, so both tables show nothing.
+
 ### Hodiny
 
 `time_worked` (any logged-in user) sums `WorkerHours.hours` per person. It re-queries the scoped jobs by `pk__in` before aggregating, because the collaborator join would otherwise multiply the `Sum`.

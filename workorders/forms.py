@@ -12,7 +12,7 @@ from locations.models import Location
 from machines.models import FuelSource, Machine
 from materials.models import Material
 
-from .models import ReviewStatus
+from .models import ReviewStatus, StockMovement
 from .photos import UnreadablePhoto, shrink_photo
 
 # Upper bounds for the job form's number boxes, rendered as each input's `max`.
@@ -659,9 +659,11 @@ class MaterialFilterForm(DateRangeFilterForm):
     """Filters Materiál's totals and line items.
 
     Offers retired materials too, the only way to reach their rows.
+    `movement_type` narrows only „Detail položek" (`detail_rows`), so it is not
+    in `lookups`: the summary already splits the two directions into columns.
     """
 
-    field_order = ['material', 'location', 'date_from', 'date_to']
+    field_order = ['material', 'movement_type', 'location', 'date_from', 'date_to']
     date_lookup = 'work_order__performed_on'
     lookups = {'material': 'material', 'location': 'work_order__location'}
 
@@ -678,6 +680,17 @@ class MaterialFilterForm(DateRangeFilterForm):
         label='Lokace',
         empty_label='Všechny lokace',
     )
+    movement_type = forms.ChoiceField(
+        choices=[('', 'Všechny druhy')] + StockMovement.MovementType.choices,
+        required=False,
+        label='Druh pohybu',
+    )
+
+    def detail_rows(self, movements):
+        """`movements` (already `filter`ed) narrowed to the chosen direction."""
+        if self.is_bound and self.is_valid() and self.cleaned_data['movement_type']:
+            return movements.filter(movement_type=self.cleaned_data['movement_type'])
+        return movements
 
 
 class JobFilterForm(DateRangeFilterForm):

@@ -289,6 +289,17 @@ class TableExportTests(TestCase):
         quantities = [row[5] for row in self._rows(response)[1:]]
         self.assertEqual(quantities, ['1,50', '1,50'])
 
+    def test_detail_export_follows_the_movement_type_filter(self):
+        self._job(quantity=Decimal('3'))
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('material_detail_export'), {'movement_type': 'TRANSFORM_CONSUME'})
+        self.assertEqual([row[4] for row in self._rows(response)[1:]], ['Spotřeba'])
+        # The summary file keeps both directions, like the page's summary.
+        summary = self._rows(
+            self.client.get(reverse('material_dashboard_export'), {'movement_type': 'TRANSFORM_CONSUME'})
+        )
+        self.assertIn(['Frakce 8/16', '0,00', '3,00', '3,00'], summary)
+
     def test_detail_export_leaves_a_missing_description_blank(self):
         # The page prints „—" there; a dash is text in a column meant for text
         # the reader filters on, and blank is the same statement without it.

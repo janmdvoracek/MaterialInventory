@@ -185,7 +185,7 @@ Odpověď na „kolik jsme toho vyrobili". Počítá se z řádků ve Zpracován
 | **Vyrobeno** | tun vzniklých (výstup) |
 | **Rozdíl** | vyrobeno minus spotřebováno; záporný = víc se zpracovalo, než vyrobilo |
 
-Filtr: materiál, lokace, datum. Nabízí i vyřazené materiály, kvůli jejich historii. Pod souhrnem je **Detail položek**, jednotlivé řádky zakázek. Sloupec **ID** je číslo zakázky (klepnutím ji otevřete); podle něj v exportu poznáte řádky stejné zakázky i dvě jinak stejné zakázky od sebe.
+Filtr: materiál, druh pohybu, lokace, datum. Nabízí i vyřazené materiály, kvůli jejich historii. Pod souhrnem je **Detail položek**, jednotlivé řádky zakázek. **Druh pohybu** (Spotřeba, nebo Výroba) zúží jen Detail položek a jeho export; souhrn má oba směry ve vlastních sloupcích, a tak se nemění. Sloupec **ID** je číslo zakázky (klepnutím ji otevřete); podle něj v exportu poznáte řádky stejné zakázky i dvě jinak stejné zakázky od sebe.
 
 Příklad: „kolik frakce 8/16 minulý měsíc?" → **Minulý měsíc**, vyberte materiál, čtěte **Vyrobeno**.
 

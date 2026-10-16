@@ -196,7 +196,7 @@ def material_dashboard(request):
         {
             'form': form,
             'materials': _material_summary(movements, form),
-            **_list_page_context(request, movements),
+            **_list_page_context(request, form.detail_rows(movements)),
         },
     )
 
@@ -433,7 +433,7 @@ def material_dashboard_export(request):
 @role_required(*REVIEWER_ROLES)
 def material_detail_export(request):
     """„Detail položek" as a CSV: every filtered line item, not just the page on screen."""
-    _, movements = _filtered_material_movements(request)
+    form, movements = _filtered_material_movements(request)
     return _csv_response(
         'detail-polozek',
         ['ID', 'Provedeno', 'Lokace', 'Materiál', 'Druh', 'Množství (t)', 'Zakázka', 'Kým'],
@@ -451,7 +451,7 @@ def material_detail_export(request):
                 movement.work_order.description,
                 movement.work_order.created_by.username,
             ]
-            for movement in movements
+            for movement in form.detail_rows(movements)
         ],
     )
 
