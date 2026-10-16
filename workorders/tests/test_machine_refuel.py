@@ -224,6 +224,15 @@ class RefuellingReviewTests(RefuelFixtureMixin, TestCase):
         self.assertEqual(response.context['pending_refuel_count'], 1)
         self.assertContains(response, reverse('refuel_dashboard'))
 
+    def test_the_way_back_is_at_the_top_and_the_bottom(self):
+        # As on job_detail: approving reloads the page at the top.
+        refuelling = self.record(self.worker)
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('refuel_detail', args=[refuelling.pk]))
+        self.assertContains(
+            response, f'<a href="{reverse("refuel_dashboard")}">← Zpět na přehled tankování</a>', count=2
+        )
+
     def test_the_detail_page_lists_the_machines(self):
         refuelling = self.record(self.worker, notes='Poznámka')
         self.client.force_login(self.manager)

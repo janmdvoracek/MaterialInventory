@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Tankování #{{ refuelling.pk }}{% endblock %}
 {% block content %}
+{# Repeated at the bottom: after approving, the page reloads at the top. #}
+<p><a href="{% url 'refuel_dashboard' %}">← Zpět na přehled tankování</a></p>
 <h1>Tankování #{{ refuelling.pk }}</h1>
 <div class="card">
     <p>

@@ -82,6 +82,13 @@ class JobReviewTests(ReviewFixtureMixin, TestCase):
         self.assertEqual(work_order.reviewed_by, self.manager)
         self.assertIsNotNone(work_order.reviewed_at)
 
+    def test_the_way_back_is_at_the_top_and_the_bottom(self):
+        # Approving reloads the page at the top; the bottom link is a long scroll away on a phone.
+        work_order = self.submit_job(self.worker)
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('job_detail', args=[work_order.pk]))
+        self.assertContains(response, f'<a href="{reverse("job_dashboard")}">← Zpět na přehled</a>', count=2)
+
     def test_approve_rejects_a_get(self):
         work_order = self.submit_job(self.worker)
         self.client.force_login(self.manager)
