@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/janmdvoracek/MaterialInventory/actions/workflows/ci.yml/badge.svg)](https://github.com/janmdvoracek/MaterialInventory/actions/workflows/ci.yml)
 
-Job tracking for a materials depot: what each processing job consumed and produced, who worked on it and for how long, which machines ran and what fuel went into them. Workers record jobs from their phones. The interface is **Czech**; the code and docs are English.
+Job tracking for a materials depot: what each processing job consumed and produced, who worked on it and for how long, and which machines ran; plus, separately, what fuel went into the machines and from where. Workers record both from their phones. The interface is **Czech**; the code and docs are English.
 
 > Despite the name, this app does **not** track stock levels. It records what was processed, not what is on hand.
 
@@ -10,22 +10,23 @@ Job tracking for a materials depot: what each processing job consumed and produc
 
 | Page | |
 |---|---|
-| **Zpracování** (record a job) | The landing page. The worker enters location, materials consumed and produced, their own and collaborators' hours, the machines used (motohodiny, tonnage, fuel) and up to ten photos. The consumed and produced totals must match. A job that is only refuelling is valid on its own. |
-| **Přehled** (review) | Every job, with pending ones highlighted. A manager approves, corrects or deletes. Manager only. |
+| **Zpracování** (record a job) | The landing page. The worker enters location, materials consumed and produced, their own and collaborators' hours, the machines used (motohodiny, tonnage) and up to ten photos. The consumed and produced totals must match. |
+| **Tankování** (record a refuelling) | Its own entry: notes, a date, and one row per machine with the fuel source and litres. Fuel sources are a catalog kept in the admin. |
+| **Přehled** (review) | Every job, with pending ones highlighted, and a link to the same list of refuellings. A manager approves, corrects or deletes. Manager only. |
 | **Stroje** (machines) | Per machine: meter reading, hours run, tonnage, rates, cost, and fuel, plus the rows behind each figure. Manager only. |
 | **Materiál** (materials) | Tonnes consumed, produced and net per material, plus the line items. Manager only. |
-| **Hodiny** (hours) | Hours per person. A worker also sees their last five submissions and their review status. |
+| **Hodiny** (hours) | Hours per person. A worker also sees their last five job submissions and their review status (and their last five refuellings under the Tankování form). |
 
 A few more things:
 
-- **Approval.** A worker's job counts in reports only once a manager approves it; a manager's own job is approved immediately.
+- **Approval.** A worker's job or refuelling counts in reports only once a manager approves it; a manager's own is approved immediately.
 - **Exports.** Every summary table, and the material and fuel detail tables, download as an Excel-friendly CSV of whatever the filter shows.
 - **Photos.** They are shrunk on upload and are never publicly reachable.
 - **Phone app.** The site installs to a phone's home screen as **VyrobaPK**.
 
 ## Tech stack
 
-Django 6, PostgreSQL 16, server-rendered templates, gunicorn and WhiteNoise in production, Caddy in front. There is no build step, no JS framework and no CDN. Three small scripts on the job form are pure enhancement: without them every page is still a plain form POST. Python 3.14.
+Django 6, PostgreSQL 16, server-rendered templates, gunicorn and WhiteNoise in production, Caddy in front. There is no build step, no JS framework and no CDN. Three small scripts on the entry forms are pure enhancement: without them every page is still a plain form POST. Python 3.14.
 
 ## Quick start
 

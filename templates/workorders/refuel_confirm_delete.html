@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Smazat tankování #{{ refuelling.pk }}{% endblock %}
+{% block content %}
+<div class="card">
+    <h1>Smazat tankování #{{ refuelling.pk }}?</h1>
+    <p>
+        Zaznamenal {{ refuelling.created_by.username }}, {{ refuelling.created_at|date:"Y-m-d H:i" }}.
+        Smazání je nevratné — zmizí všechny jeho natankované stroje a přestanou se
+        počítat do přehledu Stroje.
+    </p>
+    <div class="table-scroll">
+    <table>
+        <thead><tr><th>Stroj</th><th>Zdroj</th><th>Natankováno</th></tr></thead>
+        <tbody>
+        {% for fill_up in fill_ups %}
+            <tr>
+                <td>{{ fill_up.machine.name }}</td>
+                <td>{{ fill_up.source.name|default:"—" }}</td>
+                <td>{{ fill_up.litres|floatformat:2 }} l</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    <div class="job-actions">
+        <form method="post">
+            {% csrf_token %}
+            <button class="btn danger" type="submit">Ano, smazat</button>
+        </form>
+        <a class="btn secondary" href="{% url 'refuel_detail' refuelling.pk %}">Zpět</a>
+    </div>
+</div>
+{% endblock %}

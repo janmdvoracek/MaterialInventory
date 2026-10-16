@@ -1,4 +1,4 @@
-"""Fill-ups: on the job form and on the Stroje fuel card."""
+"""Refuellings: the Tankování form, their review, and the Stroje fuel card."""
 
 import csv
 import io
@@ -10,348 +10,293 @@ from django.urls import reverse
 from django.utils import timezone
 
 from accounts.models import User
-from machines.models import Machine
-from workorders.models import MachineRefuel, MachineUsage, StockMovement, WorkerHours, WorkOrder
-from workorders.reports import FUEL_PAGE_PARAM, HISTORY_PAGE_SIZE
+from machines.models import FuelSource, Machine
+from workorders.forms import LITRES_MAX
+from workorders.models import MachineRefuel, Refuelling, WorkOrder
+from workorders.refuels import NO_ROWS_ERROR
+from workorders.reports import FUEL_PAGE_PARAM, HISTORY_PAGE_SIZE, MY_JOBS_LIMIT
+from workorders.views import FORM_ERRORS_MESSAGE
 
-from .helpers import ReviewFixtureMixin, job_payload
+from .helpers import ReviewFixtureMixin, refuel_payload
 
 
-class MachineRefuelTests(ReviewFixtureMixin, TestCase):
-    """Fuel on the machines section.
+class RefuelFixtureMixin(ReviewFixtureMixin):
+    def _row(self, machine=None, source=None, litres='40'):
+        return {'machine': machine or self.machine_a, 'source': source or self.source_tank, 'litres': litres}
 
-    Only the machine is required; a fuel-only submission is a valid job, exempt from the mass balance and the work
-    fields; `job_edit` merges usage and fuel back into one row per machine.
-    """
-
-    def _submit(self, machine_rows, url=None, **overrides):
-        """A balanced job carrying `machine_rows`, unless a test empties the material sections."""
-        payload = job_payload(
-            [{'material': self.material_raw, 'quantity': Decimal('5')}],
-            [{'material': self.material_finished, 'quantity': Decimal('5')}],
-            machine_rows=machine_rows,
-        )
+    def _submit(self, rows, url=None, **overrides):
+        payload = refuel_payload(rows)
         payload.update(overrides)
-        return self.client.post(url or reverse('transform_create'), payload)
+        return self.client.post(url or reverse('refuel_create'), payload)
 
-    def _fuel_only(self, machine_rows, url=None, **overrides):
-        """Just machines and litres: no materials, no motohodiny, no „Popis", no hours."""
-        payload = job_payload([], [], machine_rows=machine_rows, description='', hours='')
-        payload.update(overrides)
-        return self.client.post(url or reverse('transform_create'), payload)
+    def record(self, user, rows=None, **overrides):
+        """Record a refuelling through the real form, as `user` would."""
+        self.client.force_login(user)
+        response = self._submit(rows or [self._row()], **overrides)
+        self.assertRedirects(response, reverse('refuel_create'))
+        return Refuelling.objects.order_by('-pk').first()
 
-    def test_a_machine_row_records_litres_alongside_hours(self):
-        self.client.force_login(self.worker)
-        response = self._submit(
-            [{'machine': self.machine_a, 'hours': Decimal('2'), 'tons': Decimal('5'), 'litres': Decimal('40.5')}]
+
+class RefuellingFormTests(RefuelFixtureMixin, TestCase):
+    """Notes, a date and one row per machine (stroj, zdroj, litry); every row is all three or blank."""
+
+    def test_a_worker_records_a_refuelling_that_waits_for_review(self):
+        refuelling = self.record(
+            self.worker,
+            [self._row(litres='60'), self._row(machine=self.machine_b, source=self.source_station, litres='45.5')],
+            notes='Ranní tankování',
         )
-        self.assertRedirects(response, reverse('transform_create'))
-        # One row in, two tables out: the usage and the fill-up are not derived
-        # from each other and nothing checks one against the other.
-        self.assertEqual(MachineUsage.objects.get().hours, Decimal('2.00'))
-        refuel = MachineRefuel.objects.get()
-        self.assertEqual(refuel.machine, self.machine_a)
-        self.assertEqual(refuel.litres, Decimal('40.50'))
-
-    def test_a_row_naming_only_litres_records_no_usage(self):
-        self.client.force_login(self.worker)
-        response = self._submit([{'machine': self.machine_a, 'litres': Decimal('30')}])
-        self.assertRedirects(response, reverse('transform_create'))
-        self.assertEqual(MachineRefuel.objects.get().litres, Decimal('30.00'))
-        # A machine that was only refuelled did not run: no hours to invent.
-        self.assertFalse(MachineUsage.objects.exists())
-
-    def test_zero_litres_beside_a_usage_is_the_blank_box(self):
-        # A worker who types 0 for „didn't refuel" means what an empty box means,
-        # and must not be told to type at least 0,01 instead.
-        self.client.force_login(self.worker)
-        response = self._submit(
-            [{'machine': self.machine_a, 'hours': Decimal('2'), 'tons': Decimal('5'), 'litres': '0'}]
+        self.assertEqual(refuelling.created_by, self.worker)
+        self.assertEqual(refuelling.status, Refuelling.Status.PENDING)
+        self.assertIsNone(refuelling.reviewed_by)
+        self.assertEqual(refuelling.notes, 'Ranní tankování')
+        self.assertEqual(refuelling.performed_on, timezone.localdate())
+        self.assertEqual(
+            [(row.machine, row.source, row.litres) for row in refuelling.machine_refuels.all()],
+            [
+                (self.machine_a, self.source_tank, Decimal('60.00')),
+                (self.machine_b, self.source_station, Decimal('45.50')),
+            ],
         )
-        self.assertRedirects(response, reverse('transform_create'))
-        self.assertEqual(MachineUsage.objects.count(), 1)
-        # No fill-up of nothing: the row is a usage row and only that.
-        self.assertFalse(MachineRefuel.objects.exists())
-
-    def test_zero_litres_alone_is_a_machine_with_nothing_recorded(self):
-        # Treated as blank all the way through, „stroj + 0" is a machine with
-        # nothing beside it: a usage row, and no fill-up of nothing.
-        self.client.force_login(self.worker)
-        response = self._submit([{'machine': self.machine_a, 'litres': '0'}])
-        self.assertRedirects(response, reverse('transform_create'))
-        usage = MachineUsage.objects.get()
-        self.assertIsNone(usage.hours)
-        self.assertIsNone(usage.tons)
-        self.assertFalse(MachineRefuel.objects.exists())
-
-    def test_zero_litres_alone_is_not_a_fuel_only_job(self):
-        # With no fill-up it records work, so the job is asked everything a
-        # work job is — rather than being a fuel-only job that recorded nothing.
-        self.client.force_login(self.worker)
-        response = self._fuel_only([{'machine': self.machine_a, 'litres': '0'}])
-        self.assertEqual(response.status_code, 200)
+        # A refuelling is not a job, and writes none.
         self.assertFalse(WorkOrder.objects.exists())
 
-    def test_the_litres_box_allows_zero_but_not_less(self):
+    def test_a_managers_own_refuelling_is_approved_at_once(self):
+        refuelling = self.record(self.manager)
+        self.assertEqual(refuelling.status, Refuelling.Status.APPROVED)
+        self.assertEqual(refuelling.reviewed_by, self.manager)
+        self.assertIsNotNone(refuelling.reviewed_at)
+
+    def test_notes_are_optional(self):
+        self.assertEqual(self.record(self.worker).notes, '')
+
+    def test_the_date_defaults_to_today_and_may_be_earlier(self):
         self.client.force_login(self.worker)
-        self.assertContains(self.client.get(reverse('transform_create')), 'min="0"')
-        response = self._submit(
-            [{'machine': self.machine_a, 'hours': Decimal('2'), 'tons': Decimal('5'), 'litres': '-1'}]
-        )
+        response = self.client.get(reverse('refuel_create'))
+        self.assertContains(response, f'value="{timezone.localdate().isoformat()}"')
+        earlier = timezone.localdate() - timedelta(days=3)
+        refuelling = self.record(self.worker, performed_on=earlier.isoformat())
+        self.assertEqual(refuelling.performed_on, earlier)
+
+    def test_a_future_date_is_refused(self):
+        self.client.force_login(self.worker)
+        tomorrow = timezone.localdate() + timedelta(days=1)
+        response = self._submit([self._row()], performed_on=tomorrow.isoformat())
         self.assertEqual(response.status_code, 200)
-        self.assertFalse(WorkOrder.objects.exists())
+        self.assertContains(response, 'Datum provedení nemůže být v budoucnosti.')
+        self.assertFalse(Refuelling.objects.exists())
 
-    def test_hours_without_tons_is_a_usage_row(self):
-        # Machines are priced outside the app for now, so neither number is
-        # asked for; the one left blank is stored as unknown.
+    def test_at_least_one_machine_is_needed(self):
         self.client.force_login(self.worker)
-        response = self._submit([{'machine': self.machine_a, 'hours': Decimal('2'), 'tons': ''}])
-        self.assertRedirects(response, reverse('transform_create'))
-        usage = MachineUsage.objects.get()
-        self.assertEqual(usage.hours, Decimal('2.00'))
-        self.assertIsNone(usage.tons)
+        response = self._submit([])
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, NO_ROWS_ERROR)
+        self.assertFalse(Refuelling.objects.exists())
 
-    def test_tons_without_hours_is_a_usage_row(self):
+    def test_a_row_missing_its_source_or_litres_is_refused(self):
         self.client.force_login(self.worker)
-        response = self._submit([{'machine': self.machine_a, 'hours': '', 'tons': Decimal('5')}])
-        self.assertRedirects(response, reverse('transform_create'))
-        usage = MachineUsage.objects.get()
-        self.assertIsNone(usage.hours)
-        self.assertEqual(usage.tons, Decimal('5.00'))
-
-    def test_zero_hours_and_tons_are_the_blank_box(self):
-        # As with litres: a worker who types 0 means „not recorded", and a stored
-        # 0 would read on Stroje as a machine that ran and processed nothing.
-        self.client.force_login(self.worker)
-        response = self._submit([{'machine': self.machine_a, 'hours': '0', 'tons': '0'}])
-        self.assertRedirects(response, reverse('transform_create'))
-        usage = MachineUsage.objects.get()
-        self.assertIsNone(usage.hours)
-        self.assertIsNone(usage.tons)
-
-    def test_negative_hours_and_tons_are_refused(self):
-        self.client.force_login(self.worker)
-        for field in ('hours', 'tons'):
-            with self.subTest(field=field):
-                response = self._submit([{'machine': self.machine_a, field: '-1'}])
+        for missing in ('source', 'litres'):
+            with self.subTest(missing=missing):
+                row = self._row()
+                del row[missing]
+                response = self._submit([row])
                 self.assertEqual(response.status_code, 200)
-                self.assertFalse(WorkOrder.objects.exists())
+                self.assertContains(response, 'Vyplňte stroj, zdroj i litry')
+                # A half-filled row is not a missing required field (as on the job form).
+                self.assertContains(response, FORM_ERRORS_MESSAGE)
+                self.assertFalse(Refuelling.objects.exists())
 
-    def test_hours_with_litres_and_no_tons_records_both(self):
+    def test_litres_must_be_positive_and_capped(self):
         self.client.force_login(self.worker)
-        response = self._submit([{'machine': self.machine_a, 'hours': Decimal('2'), 'litres': Decimal('30')}])
-        self.assertRedirects(response, reverse('transform_create'))
-        self.assertEqual(MachineUsage.objects.get().hours, Decimal('2.00'))
-        self.assertEqual(MachineRefuel.objects.get().litres, Decimal('30.00'))
+        for litres in ('0', '-1', str(LITRES_MAX + Decimal('0.01'))):
+            with self.subTest(litres=litres):
+                response = self._submit([self._row(litres=litres)])
+                self.assertEqual(response.status_code, 200)
+                self.assertFalse(Refuelling.objects.exists())
+        self.record(self.worker, [self._row(litres=str(LITRES_MAX))])
+        self.assertEqual(MachineRefuel.objects.get().litres, LITRES_MAX)
 
-    def test_litres_without_a_machine_is_refused(self):
+    def test_the_same_machine_twice_is_refused(self):
+        # Same rule as every row section; a second source is a second refuelling.
         self.client.force_login(self.worker)
-        response = self._submit([], **{'machines-0-litres': '30'})
+        response = self._submit([self._row(), self._row(source=self.source_station)])
         self.assertEqual(response.status_code, 200)
-        self.assertFalse(WorkOrder.objects.exists())
-        self.assertContains(response, 'Vyberte stroj')
+        self.assertContains(response, 'Stroj „Crusher A“ je vybraný víckrát.')
+        self.assertFalse(Refuelling.objects.exists())
 
-    def test_a_machine_with_nothing_beside_it_is_a_usage_row(self):
-        # Naming the machine still says it ran on the job, with both numbers
-        # unknown rather than zero.
-        self.client.force_login(self.worker)
-        response = self._submit([{'machine': self.machine_a}])
-        self.assertRedirects(response, reverse('transform_create'))
-        usage = MachineUsage.objects.get()
-        self.assertEqual(usage.machine, self.machine_a)
-        self.assertIsNone(usage.hours)
-        self.assertIsNone(usage.tons)
-        self.assertFalse(MachineRefuel.objects.exists())
+    def test_one_source_may_feed_several_machines(self):
+        refuelling = self.record(self.worker, [self._row(), self._row(machine=self.machine_b)])
+        self.assertEqual(refuelling.machine_refuels.count(), 2)
 
-    def test_a_machine_alone_beside_fill_ups_ends_the_fuel_only_exemption(self):
-        # It is a usage row, so the job records work and must balance.
+    def test_retired_machines_and_sources_are_not_offered(self):
+        self.machine_b.is_active = False
+        self.machine_b.save(update_fields=['is_active'])
+        self.source_station.is_active = False
+        self.source_station.save(update_fields=['is_active'])
         self.client.force_login(self.worker)
-        response = self._fuel_only([{'machine': self.machine_a, 'litres': Decimal('60')}, {'machine': self.machine_b}])
+        form = self.client.get(reverse('refuel_create')).context['refuel_formset'].forms[0]
+        self.assertNotIn(self.machine_b, form.fields['machine'].queryset)
+        self.assertNotIn(self.source_station, form.fields['source'].queryset)
+        self.assertIn(self.source_tank, form.fields['source'].queryset)
+
+    def test_the_row_buttons_rebuild_the_form_without_saving(self):
+        self.client.force_login(self.worker)
+        response = self._submit([self._row()], add_refuels='')
         self.assertEqual(response.status_code, 200)
-        self.assertFalse(WorkOrder.objects.exists())
+        self.assertEqual(len(response.context['refuel_formset'].forms), 2)
+        self.assertFalse(Refuelling.objects.exists())
+        response = self._submit([self._row(), self._row(machine=self.machine_b)], remove_refuels='')
+        self.assertEqual(len(response.context['refuel_formset'].forms), 1)
 
-    def test_edit_keeps_a_machine_recorded_with_no_numbers(self):
-        """The row comes back with the machine selected and both boxes empty,
-        and saving it as rendered keeps the usage row rather than dropping it."""
-        work_order = self.submit_job(self.worker, machine_rows=[{'machine': self.machine_a}])
-        self.client.force_login(self.manager)
-        formset = self.client.get(reverse('job_edit', args=[work_order.pk])).context['machine_formset']
-        self.assertEqual(formset.forms[0].initial, {'machine': self.machine_a.pk, 'hours': None, 'tons': None})
-        response = self._submit([{'machine': self.machine_a}], url=reverse('job_edit', args=[work_order.pk]))
-        self.assertRedirects(response, reverse('job_detail', args=[work_order.pk]))
-        usage = MachineUsage.objects.get()
-        self.assertIsNone(usage.hours)
-        self.assertIsNone(usage.tons)
+    def test_the_page_offers_both_pickers_and_the_litres_box(self):
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('refuel_create'))
+        for name in ('refuels-0-machine', 'refuels-0-source', 'refuels-0-litres', 'refuels-__prefix__-source'):
+            self.assertContains(response, f'name="{name}"')
+        self.assertContains(response, '<option value="" selected>Zdroj</option>', html=False)
+        self.assertContains(response, 'data-unique-field="machine"')
+        for script in ('js/job_rows.js', 'js/searchable_select.js'):
+            self.assertContains(response, script)
+        # No photos on a refuelling.
+        self.assertNotContains(response, 'js/photo_picker.js')
 
-    def test_the_job_pages_show_a_dash_for_unrecorded_hours(self):
-        work_order = self.submit_job(self.worker, machine_rows=[{'machine': self.machine_a}])
-        WorkOrder.objects.filter(pk=work_order.pk).update(status=WorkOrder.Status.APPROVED)
+    def test_the_nav_links_the_form_for_workers(self):
+        self.client.force_login(self.worker)
+        self.assertContains(self.client.get(reverse('time_worked')), f'href="{reverse("refuel_create")}"')
+
+    def test_managers_reach_the_form_from_the_refuelling_list(self):
+        # A sixth nav entry doesn't fit a phone, so the manager's nav stays at five.
         self.client.force_login(self.manager)
-        for url in (reverse('job_detail', args=[work_order.pk]), reverse('machine_dashboard')):
+        form_link = f'href="{reverse("refuel_create")}"'
+        self.assertNotContains(self.client.get(reverse('time_worked')), form_link)
+        self.assertContains(self.client.get(reverse('refuel_dashboard')), form_link)
+        self.assertEqual(self.client.get(reverse('refuel_create')).status_code, 200)
+
+    def test_a_worker_sees_their_recent_refuellings_and_their_status(self):
+        for _ in range(MY_JOBS_LIMIT + 1):
+            self.record(self.worker)
+        self.record(self.other_worker)
+        self.client.force_login(self.worker)
+        mine = self.client.get(reverse('refuel_create')).context['my_refuellings']
+        self.assertEqual(len(mine), MY_JOBS_LIMIT)
+        self.assertTrue(all(refuelling.created_by == self.worker for refuelling in mine))
+        self.assertEqual(mine[0].total_litres, Decimal('40.00'))
+
+    def test_a_manager_gets_no_recent_list(self):
+        self.record(self.manager)
+        self.assertFalse(self.client.get(reverse('refuel_create')).context['my_refuellings'])
+
+
+class RefuellingReviewTests(RefuelFixtureMixin, TestCase):
+    """Approve, edit, delete — like a job, and gated like one."""
+
+    def test_the_review_pages_are_manager_only(self):
+        refuelling = self.record(self.worker)
+        urls = [reverse('refuel_dashboard')] + [
+            reverse(name, args=[refuelling.pk]) for name in ('refuel_detail', 'refuel_edit', 'refuel_delete')
+        ]
+        for url in urls:
             with self.subTest(url=url):
-                content = self.client.get(url).content.decode()
-                # The hours cell follows the machine's name in both tables.
-                self.assertRegex(content, r'<td>Crusher A</td>\s*<td>—</td>')
+                self.assertEqual(self.client.get(url).status_code, 403)
+        self.assertEqual(self.client.post(reverse('refuel_approve', args=[refuelling.pk])).status_code, 403)
+        self.assertEqual(Refuelling.objects.get().status, Refuelling.Status.PENDING)
 
-    def test_a_job_of_nothing_but_fill_ups_is_valid(self):
-        self.client.force_login(self.worker)
-        response = self._fuel_only(
-            [
-                {'machine': self.machine_a, 'litres': Decimal('60')},
-                {'machine': self.machine_b, 'litres': Decimal('45.5')},
-            ]
-        )
-        self.assertRedirects(response, reverse('transform_create'))
-        work_order = WorkOrder.objects.get()
+    def test_the_list_shows_every_refuelling_and_the_pending_count(self):
+        self.record(self.worker)
+        self.record(self.manager)
+        response = self.client.get(reverse('refuel_dashboard'))
+        self.assertEqual(len(response.context['page_obj']), 2)
+        self.assertEqual(response.context['pending_count'], 1)
+        self.assertContains(response, 'Crusher A')
+        self.assertContains(response, '40,00 l')
+
+    def test_the_list_filters_by_status(self):
+        self.record(self.worker)
+        self.record(self.manager)
+        response = self.client.get(reverse('refuel_dashboard'), {'status': Refuelling.Status.PENDING})
+        self.assertEqual([r.created_by for r in response.context['page_obj']], [self.worker])
+
+    def test_prehled_points_to_pending_refuellings(self):
+        self.record(self.worker)
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('job_dashboard'))
+        self.assertEqual(response.context['pending_refuel_count'], 1)
+        self.assertContains(response, reverse('refuel_dashboard'))
+
+    def test_the_detail_page_lists_the_machines(self):
+        refuelling = self.record(self.worker, notes='Poznámka')
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('refuel_detail', args=[refuelling.pk]))
+        for text in ('Crusher A', 'Nádrž dílna', '40,00 l', 'Poznámka', 'Schválit'):
+            self.assertContains(response, text)
+
+    def test_approving_counts_it(self):
+        refuelling = self.record(self.worker)
+        self.client.force_login(self.manager)
+        response = self.client.post(reverse('refuel_approve', args=[refuelling.pk]))
+        self.assertRedirects(response, reverse('refuel_detail', args=[refuelling.pk]))
+        refuelling.refresh_from_db()
+        self.assertEqual(refuelling.status, Refuelling.Status.APPROVED)
+        self.assertEqual(refuelling.reviewed_by, self.manager)
+
+    def test_edit_prefills_and_rewrites_without_approving(self):
+        refuelling = self.record(self.worker, notes='před')
+        self.client.force_login(self.manager)
+        url = reverse('refuel_edit', args=[refuelling.pk])
+        response = self.client.get(url)
+        self.assertEqual(response.context['order_form'].initial['notes'], 'před')
         self.assertEqual(
-            sorted((r.machine.name, r.litres) for r in work_order.machine_refuels.all()),
-            [('Crusher A', Decimal('60.00')), ('Excavator B', Decimal('45.50'))],
+            response.context['refuel_formset'].forms[0].initial,
+            {'machine': self.machine_a.pk, 'source': self.source_tank.pk, 'litres': Decimal('40')},
         )
-        # Nothing else is written — including no hours row for the author, whose
-        # „Moje hodiny" could not have been answered (its minimum is half an hour).
-        self.assertFalse(StockMovement.objects.exists())
-        self.assertFalse(MachineUsage.objects.exists())
-        self.assertFalse(WorkerHours.objects.exists())
-        self.assertEqual(work_order.description, '')
-        # Still an ordinary job otherwise: dated, authored and awaiting review.
-        self.assertEqual(work_order.created_by, self.worker)
-        self.assertEqual(work_order.performed_on, timezone.localdate())
-        self.assertEqual(work_order.status, WorkOrder.Status.PENDING)
-
-    def test_a_fuel_only_job_needs_no_material_rows(self):
-        """The mass balance is skipped rather than passed: there are no totals.
-
-        Without the exemption „Přidejte alespoň jednu položku…" would refuse the
-        submission, which is the whole reason `_is_fuel_only` exists.
-        """
-        self.client.force_login(self.worker)
-        response = self._fuel_only([{'machine': self.machine_a, 'litres': Decimal('20')}])
-        self.assertRedirects(response, reverse('transform_create'))
-        self.assertEqual(MachineRefuel.objects.count(), 1)
-
-    def test_a_job_that_also_records_work_still_needs_its_fields(self):
-        # The exemption is only for a job that records nothing else. Add any
-        # motohodiny and the row stops being a bare fill-up.
-        self.client.force_login(self.worker)
-        response = self._fuel_only(
-            [{'machine': self.machine_a, 'hours': Decimal('2'), 'tons': Decimal('5'), 'litres': Decimal('20')}]
+        response = self._submit(
+            [self._row(machine=self.machine_b, source=self.source_station, litres='75')], url=url, notes='po'
         )
-        self.assertEqual(response.status_code, 200)
-        self.assertFalse(WorkOrder.objects.exists())
-        self.assertContains(response, 'Toto pole je třeba vyplnit.')
-        self.assertContains(response, 'Přidejte alespoň jednu položku')
+        self.assertRedirects(response, reverse('refuel_detail', args=[refuelling.pk]))
+        refuelling.refresh_from_db()
+        self.assertEqual(refuelling.notes, 'po')
+        self.assertEqual(refuelling.status, Refuelling.Status.PENDING)
+        # The rows stay the author's entry, rewritten whole.
+        self.assertEqual(refuelling.created_by, self.worker)
+        fill_up = MachineRefuel.objects.get()
+        self.assertEqual((fill_up.machine, fill_up.source, fill_up.litres), (self.machine_b, self.source_station, 75))
 
-    def test_material_rows_without_a_description_are_still_refused(self):
-        # Same rule from the other side: material rows are work, so the job's
-        # own fields come back.
-        self.client.force_login(self.worker)
-        response = self._submit([], description='', hours='')
-        self.assertEqual(response.status_code, 200)
-        self.assertFalse(WorkOrder.objects.exists())
-        self.assertContains(response, 'Toto pole je třeba vyplnit.')
+    def test_edit_keeps_retired_machines_and_sources_the_entry_names(self):
+        """Otherwise the row renders blank and saving it drops the fill-up."""
+        refuelling = self.record(self.worker)
+        Machine.objects.filter(pk=self.machine_a.pk).update(is_active=False)
+        FuelSource.objects.filter(pk=self.source_tank.pk).update(is_active=False)
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('refuel_edit', args=[refuelling.pk]))
+        for form in (response.context['refuel_formset'].forms[0], response.context['refuel_formset'].empty_form):
+            self.assertIn(self.machine_a, form.fields['machine'].queryset)
+            self.assertIn(self.source_tank, form.fields['source'].queryset)
 
-    def test_a_fuel_only_job_may_still_carry_a_description(self):
-        # Not asked for is not the same as refused — the four list pages read
-        # that column, so a worker who types one keeps it.
-        self.client.force_login(self.worker)
-        response = self._fuel_only([{'machine': self.machine_a, 'litres': Decimal('20')}], description='Tankování')
-        self.assertRedirects(response, reverse('transform_create'))
-        self.assertEqual(WorkOrder.objects.get().description, 'Tankování')
+    def test_a_fill_up_from_before_sources_asks_for_one_on_edit(self):
+        # Migrated fill-ups have no source; the form requires one.
+        refuelling = self.record(self.worker)
+        MachineRefuel.objects.update(source=None)
+        self.client.force_login(self.manager)
+        url = reverse('refuel_edit', args=[refuelling.pk])
+        self.assertIsNone(self.client.get(url).context['refuel_formset'].forms[0].initial['source'])
+        response = self.client.post(url, refuel_payload([{'machine': self.machine_a, 'litres': '40'}]))
+        self.assertContains(response, 'Vyplňte stroj, zdroj i litry')
 
-    def test_the_same_machine_refuelled_twice_in_one_job_is_refused(self):
-        # Same rule as the motohodiny: two rows for one machine are two halves
-        # of a number that belongs on one row.
-        self.client.force_login(self.worker)
-        response = self._fuel_only(
-            [
-                {'machine': self.machine_a, 'litres': Decimal('20')},
-                {'machine': self.machine_a, 'litres': Decimal('25')},
-            ]
-        )
-        self.assertEqual(response.status_code, 200)
+    def test_deleting_takes_the_fill_ups_with_it(self):
+        refuelling = self.record(self.worker)
+        self.client.force_login(self.manager)
+        self.assertContains(self.client.get(reverse('refuel_delete', args=[refuelling.pk])), 'Crusher A')
+        response = self.client.post(reverse('refuel_delete', args=[refuelling.pk]))
+        self.assertRedirects(response, reverse('refuel_dashboard'))
+        self.assertFalse(Refuelling.objects.exists())
         self.assertFalse(MachineRefuel.objects.exists())
-        self.assertContains(response, 'Sečtěte motohodiny, tuny a litry')
-
-    def test_the_form_renders_the_litres_box_on_both_pages(self):
-        work_order = self.submit_job(self.worker)
-        self.client.force_login(self.manager)
-        for url in (reverse('transform_create'), reverse('job_edit', args=[work_order.pk])):
-            with self.subTest(url=url):
-                response = self.client.get(url)
-                self.assertContains(response, 'name="machines-0-litres"')
-
-    def test_edit_prefills_both_halves_on_one_row(self):
-        work_order = self.submit_job(
-            self.worker,
-            machine_rows=[{'machine': self.machine_a, 'hours': Decimal('2'), 'tons': Decimal('5'), 'litres': '40'}],
-        )
-        self.client.force_login(self.manager)
-        formset = self.client.get(reverse('job_edit', args=[work_order.pk])).context['machine_formset']
-        self.assertEqual(
-            formset.forms[0].initial,
-            {'machine': self.machine_a.pk, 'hours': Decimal('2'), 'tons': Decimal('5'), 'litres': Decimal('40')},
-        )
-
-    def test_edit_prefills_a_fill_up_that_has_no_usage_row(self):
-        """A fuel-only job's row has litres and nothing else, and must come back
-        that way — a row rendered blank would be saved as blank and the fill-up
-        would vanish while the page reported success."""
-        self.client.force_login(self.worker)
-        self._fuel_only([{'machine': self.machine_a, 'litres': Decimal('60')}])
-        work_order = WorkOrder.objects.get()
-        self.client.force_login(self.manager)
-        formset = self.client.get(reverse('job_edit', args=[work_order.pk])).context['machine_formset']
-        self.assertEqual(formset.forms[0].initial, {'machine': self.machine_a.pk, 'litres': Decimal('60')})
-
-    def test_editing_a_fuel_only_job_rewrites_its_litres(self):
-        self.client.force_login(self.worker)
-        self._fuel_only([{'machine': self.machine_a, 'litres': Decimal('60')}])
-        work_order = WorkOrder.objects.get()
-        self.client.force_login(self.manager)
-        response = self._fuel_only(
-            [{'machine': self.machine_a, 'litres': Decimal('75')}],
-            url=reverse('job_edit', args=[work_order.pk]),
-        )
-        self.assertRedirects(response, reverse('job_detail', args=[work_order.pk]))
-        self.assertEqual(MachineRefuel.objects.get().litres, Decimal('75.00'))
-
-    def test_edit_keeps_a_retired_machine_that_only_a_fill_up_names(self):
-        """Same data-loss trap as the usage rows: a picker that excludes the
-        stored machine renders the row empty and saving it drops the fill-up."""
-        self.client.force_login(self.worker)
-        self._fuel_only([{'machine': self.machine_a, 'litres': Decimal('60')}])
-        self.machine_a.is_active = False
-        self.machine_a.save(update_fields=['is_active'])
-        self.client.force_login(self.manager)
-        work_order = WorkOrder.objects.get()
-        formset = self.client.get(reverse('job_edit', args=[work_order.pk])).context['machine_formset']
-        self.assertIn(self.machine_a, formset.forms[0].fields['machine'].queryset)
-
-    def test_deleting_the_job_takes_its_fill_ups_with_it(self):
-        self.client.force_login(self.worker)
-        self._fuel_only([{'machine': self.machine_a, 'litres': Decimal('60')}])
-        work_order = WorkOrder.objects.get()
-        self.client.force_login(self.manager)
-        self.client.post(reverse('job_delete', args=[work_order.pk]))
-        self.assertFalse(MachineRefuel.objects.exists())
-
-    def test_the_job_pages_show_the_fill_ups(self):
-        work_order = self.submit_job(
-            self.worker,
-            machine_rows=[{'machine': self.machine_a, 'hours': Decimal('2'), 'tons': Decimal('5'), 'litres': '40'}],
-        )
-        self.client.force_login(self.manager)
-        for name in ('job_detail', 'job_delete'):
-            with self.subTest(page=name):
-                response = self.client.get(reverse(name, args=[work_order.pk]))
-                self.assertContains(response, 'Tankování')
 
 
 class MachineRefuelReportTests(TestCase):
     """The „Tankování" card on Stroje: per-machine litres, the fill-ups, the CSV.
 
-    It answers to the page's one filter card, counts only approved jobs, and is
-    gated exactly like the rest of Stroje.
+    It answers to the page's one filter card, counts only approved refuellings,
+    and is gated exactly like the rest of Stroje.
     """
 
     def setUp(self):
@@ -360,13 +305,16 @@ class MachineRefuelReportTests(TestCase):
         self.machine = Machine.objects.create(name='Crusher A')
         self.other = Machine.objects.create(name='Excavator B')
         self.retired = Machine.objects.create(name='Old Loader', is_active=False)
+        self.source = FuelSource.objects.create(name='Nádrž dílna')
         self.client.force_login(self.manager)
 
-    def _refuel(self, litres, machine=None, performed_on=None, status=WorkOrder.Status.APPROVED):
-        work_order = WorkOrder.objects.create(created_by=self.worker, description='job', status=status)
+    def _refuel(self, litres, machine=None, performed_on=None, status=Refuelling.Status.APPROVED, source=None):
+        refuelling = Refuelling.objects.create(created_by=self.worker, status=status)
         if performed_on is not None:
-            WorkOrder.objects.filter(pk=work_order.pk).update(performed_on=performed_on)
-        return MachineRefuel.objects.create(work_order=work_order, machine=machine or self.machine, litres=litres)
+            Refuelling.objects.filter(pk=refuelling.pk).update(performed_on=performed_on)
+        return MachineRefuel.objects.create(
+            refuelling=refuelling, machine=machine or self.machine, source=source or self.source, litres=litres
+        )
 
     def _summary(self, **params):
         return {
@@ -385,7 +333,6 @@ class MachineRefuelReportTests(TestCase):
     def test_the_card_renders_the_czech_decimal_comma(self):
         self._refuel(Decimal('65.5'))
         response = self.client.get(reverse('machine_dashboard'))
-        self.assertContains(response, 'Tankování')
         self.assertContains(response, '65,50 l')
 
     def test_a_machine_never_refuelled_reads_a_real_zero(self):
@@ -397,18 +344,24 @@ class MachineRefuelReportTests(TestCase):
     def test_retired_machines_are_left_out(self):
         self.assertNotIn('Old Loader', self._summary())
 
-    def test_pending_jobs_are_invisible(self):
-        self._refuel(Decimal('40'), status=WorkOrder.Status.PENDING)
+    def test_pending_refuellings_are_invisible(self):
+        self._refuel(Decimal('40'), status=Refuelling.Status.PENDING)
         self.assertEqual(self._summary()['Crusher A'].filtered_litres, Decimal('0'))
 
     def test_the_date_filter_narrows_the_totals(self):
-        # Dated by the job, like every other row type: `job_edit` rewrites the
-        # rows, so their own insert time would drift to the day of a correction.
+        # Dated by the refuelling, whose rows an edit rewrites.
         self._refuel(Decimal('40'), performed_on=date.today() - timedelta(days=40))
         self._refuel(Decimal('15'))
         rows = self._summary(date_from=(date.today() - timedelta(days=7)).isoformat())
         self.assertEqual(rows['Crusher A'].filtered_litres, Decimal('15.00'))
         self.assertEqual(rows['Crusher A'].filtered_refuels, 1)
+
+    def test_the_author_filter_reads_the_refuelling(self):
+        self._refuel(Decimal('40'))
+        rows = self._summary(created_by=self.manager.pk)
+        self.assertEqual(rows['Crusher A'].filtered_litres, Decimal('0'))
+        rows = self._summary(created_by=self.worker.pk)
+        self.assertEqual(rows['Crusher A'].filtered_litres, Decimal('40.00'))
 
     def test_naming_a_machine_narrows_the_card_to_it(self):
         self._refuel(Decimal('40'))
@@ -429,11 +382,13 @@ class MachineRefuelReportTests(TestCase):
         )
         self.assertEqual(response.context['refuel_total_litres'], Decimal('20.00'))
 
-    def test_the_detail_table_lists_the_fill_ups(self):
-        self._refuel(Decimal('40'))
+    def test_the_detail_table_lists_the_fill_ups_with_their_source(self):
+        refuel = self._refuel(Decimal('40'))
         response = self.client.get(reverse('machine_dashboard'))
         self.assertContains(response, 'Detail tankování')
         self.assertEqual(len(response.context['fuel_page']['page_obj'].object_list), 1)
+        self.assertContains(response, '<td>Nádrž dílna</td>', html=False)
+        self.assertContains(response, reverse('refuel_detail', args=[refuel.refuelling_id]))
 
     def test_each_detail_table_pages_on_its_own_parameter(self):
         """Stroje holds two paginated tables. One shared `page` would move both,
@@ -496,8 +451,8 @@ class MachineRefuelReportTests(TestCase):
     def test_the_detail_export_carries_the_fill_ups(self):
         self._refuel(Decimal('25.5'), performed_on=date(2026, 9, 1))
         rows = self._detail_rows()
-        self.assertEqual(rows[0], ['Provedeno', 'Stroj', 'Natankováno (l)', 'Zakázka', 'Kým'])
-        self.assertEqual(rows[1], ['2026-09-01', 'Crusher A', '25,50', 'job', 'worker'])
+        self.assertEqual(rows[0], ['Provedeno', 'Stroj', 'Zdroj', 'Natankováno (l)', 'Kým'])
+        self.assertEqual(rows[1], ['2026-09-01', 'Crusher A', 'Nádrž dílna', '25,50', 'worker'])
 
     def test_the_detail_export_is_a_bom_csv_named_for_the_day(self):
         response = self.client.get(reverse('machine_refuel_detail_export'))
@@ -512,18 +467,18 @@ class MachineRefuelReportTests(TestCase):
             self._refuel(Decimal('1'))
         self.assertEqual(len(self._detail_rows()), HISTORY_PAGE_SIZE + 2)
 
-    def test_the_detail_export_follows_the_filter_and_hides_pending_jobs(self):
+    def test_the_detail_export_follows_the_filter_and_hides_pending_refuellings(self):
         self._refuel(Decimal('40'), performed_on=date.today() - timedelta(days=40))
         self._refuel(Decimal('15'))
-        self._refuel(Decimal('7'), status=WorkOrder.Status.PENDING)
+        self._refuel(Decimal('7'), status=Refuelling.Status.PENDING)
         self._refuel(Decimal('5'), machine=self.other)
         rows = self._detail_rows(date_from=(date.today() - timedelta(days=7)).isoformat(), machine=self.machine.pk)
-        self.assertEqual([row[2] for row in rows[1:]], ['15,00'])
+        self.assertEqual([row[3] for row in rows[1:]], ['15,00'])
 
-    def test_the_detail_export_leaves_a_missing_description_blank(self):
+    def test_the_detail_export_leaves_a_missing_source_blank(self):
         refuel = self._refuel(Decimal('40'))
-        WorkOrder.objects.filter(pk=refuel.work_order_id).update(description='')
-        self.assertEqual(self._detail_rows()[1][3], '')
+        MachineRefuel.objects.filter(pk=refuel.pk).update(source=None)
+        self.assertEqual(self._detail_rows()[1][2], '')
 
     def test_an_invalid_filter_exports_only_a_header_on_the_detail_too(self):
         self._refuel(Decimal('40'))

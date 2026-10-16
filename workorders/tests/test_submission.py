@@ -18,7 +18,7 @@ from workorders.forms import (
     DESCRIPTION_MAX_LENGTH,
     NOTES_MAX_LENGTH,
 )
-from workorders.models import MachineRefuel, MachineUsage, StockMovement, WorkerHours, WorkOrder
+from workorders.models import MachineUsage, StockMovement, WorkerHours, WorkOrder
 
 from .helpers import ReviewFixtureMixin, default_location, job_payload
 
@@ -83,10 +83,8 @@ class TransformCreateTests(TestCase):
             data[f'machines-{i}-machine'] = row['machine'].pk
             if 'hours' in row:
                 data[f'machines-{i}-hours'] = str(row['hours'])
-                # Tuny go with the motohodiny; a row naming only litres is a fill-up.
+                # Tuny go with the motohodiny.
                 data[f'machines-{i}-tons'] = str(row.get('tons', '5'))
-            if 'litres' in row:
-                data[f'machines-{i}-litres'] = str(row['litres'])
         self.client.force_login(self.worker)
         return self.client.post(reverse('transform_create'), data)
 
@@ -806,7 +804,7 @@ class RecordingForSomeoneElseTests(TestCase):
 
 
 class DescriptionAndNotesTests(ReviewFixtureMixin, TestCase):
-    """„Popis" is required (except on a fuel-only job); „Poznámky" is optional."""
+    """„Popis" is required; „Poznámky" is optional."""
 
     def _submit(self, url=None, **overrides):
         payload = job_payload(
@@ -906,7 +904,7 @@ class ValueLimitTests(ReviewFixtureMixin, TestCase):
         payload = job_payload(
             [{'material': self.material_raw, 'quantity': quantity}],
             [{'material': self.material_finished, 'quantity': quantity}],
-            machine_rows=[{'machine': self.machine_a, 'hours': '2', 'tons': '5', 'litres': '50'}],
+            machine_rows=[{'machine': self.machine_a, 'hours': '2', 'tons': '5'}],
             worker_rows=[{'user': self.other_worker, 'hours': '1'}],
         )
         payload.update(overrides)
@@ -926,12 +924,15 @@ class ValueLimitTests(ReviewFixtureMixin, TestCase):
             ('produced-0-quantity', '99999'),
             ('machines-0-hours', '99999'),
             ('machines-0-tons', '99999'),
-            ('machines-0-litres', '2000'),
             ('workers-0-hours', '24'),
         ):
             with self.subTest(name=name):
                 tag = re.search(rf'<input[^>]*name="{name}"[^>]*>', html).group(0)
                 self.assertIn(f'max="{limit}"', tag)
+        # Litres are on the Tankování form (`RefuellingFormTests` enforces them).
+        html = self.client.get(reverse('refuel_create')).content.decode()
+        tag = re.search(r'<input[^>]*name="refuels-0-litres"[^>]*>', html).group(0)
+        self.assertIn('max="2000"', tag)
 
     def test_a_value_over_its_limit_is_refused_with_nothing_written(self):
         over = {
@@ -940,7 +941,6 @@ class ValueLimitTests(ReviewFixtureMixin, TestCase):
             'consumed-0-quantity': '99999.01',
             'machines-0-hours': '99999.5',
             'machines-0-tons': '99999.01',
-            'machines-0-litres': '2000.01',
         }
         for name, value in over.items():
             with self.subTest(name=name):
@@ -958,7 +958,6 @@ class ValueLimitTests(ReviewFixtureMixin, TestCase):
                 'workers-0-hours': '24',
                 'machines-0-hours': '99999',
                 'machines-0-tons': '99999',
-                'machines-0-litres': '2000',
             },
         )
         response = self._submit(payload)
@@ -967,7 +966,6 @@ class ValueLimitTests(ReviewFixtureMixin, TestCase):
         self.assertEqual(WorkerHours.objects.get(user=self.other_worker).hours, Decimal('24'))
         usage = MachineUsage.objects.get()
         self.assertEqual((usage.hours, usage.tons), (Decimal('99999'), Decimal('99999')))
-        self.assertEqual(MachineRefuel.objects.get().litres, Decimal('2000'))
         self.assertEqual(
             sorted(StockMovement.objects.values_list('quantity', flat=True)), [Decimal('-99999'), Decimal('99999')]
         )
@@ -975,9 +973,7 @@ class ValueLimitTests(ReviewFixtureMixin, TestCase):
     def test_the_admin_inlines_carry_the_same_limits(self):
         # Without them a value saved in the admin would be refused the next
         # time the job is opened on `job_edit`.
-        work_order = self.submit_job(
-            self.worker, machine_rows=[{'machine': self.machine_a, 'hours': '2', 'litres': '50'}]
-        )
+        work_order = self.submit_job(self.worker, machine_rows=[{'machine': self.machine_a, 'hours': '2'}])
         admin_user = User.objects.create_superuser(username='root', password='pw', role=User.Role.ADMIN)
         self.client.force_login(admin_user)
         html = self.client.get(reverse('admin:workorders_workorder_change', args=[work_order.pk])).content.decode()
@@ -985,19 +981,20 @@ class ValueLimitTests(ReviewFixtureMixin, TestCase):
             ('movements-0-quantity', ('max="99999"', 'min="-99999"')),
             ('machine_usages-0-hours', ('max="99999"',)),
             ('machine_usages-0-tons', ('max="99999"',)),
-            ('machine_refuels-0-litres', ('max="2000"',)),
             ('worker_hours-0-hours', ('max="24"',)),
         ):
             with self.subTest(name=name):
                 tag = re.search(rf'<input[^>]*name="{name}"[^>]*>', html).group(0)
                 for limit in limits:
                     self.assertIn(limit, tag)
+        # And the refuelling's own inline.
+        html = self.client.get(reverse('admin:workorders_refuelling_add')).content.decode()
+        tag = re.search(r'<input[^>]*name="machine_refuels-0-litres"[^>]*>', html).group(0)
+        self.assertIn('max="2000"', tag)
 
 
 class LocationTests(ReviewFixtureMixin, TestCase):
-    """One location per job: a label, required on work jobs, exempt on fuel-only ones, shown and filtered on Přehled
-    and Materiál.
-    """
+    """One location per job: a label, required, shown and filtered on Přehled and Materiál."""
 
     def setUp(self):
         super().setUp()
@@ -1028,15 +1025,6 @@ class LocationTests(ReviewFixtureMixin, TestCase):
         self.assertEqual(response.context['order_form'].errors['location'], ['Toto pole je třeba vyplnit.'])
         # Rendered, or the refusal would look like a button that did nothing.
         self.assertContains(response, 'Toto pole je třeba vyplnit.')
-
-    def test_fuel_only_job_needs_no_location(self):
-        self.client.force_login(self.worker)
-        payload = job_payload(
-            [], [], machine_rows=[{'machine': self.machine_a, 'litres': Decimal('40')}], description='', hours=''
-        )
-        payload['location'] = ''
-        self.assertRedirects(self.client.post(reverse('transform_create'), payload), reverse('transform_create'))
-        self.assertIsNone(WorkOrder.objects.get().location)
 
     def test_retired_location_is_not_offered_on_a_new_job(self):
         self.south.is_active = False

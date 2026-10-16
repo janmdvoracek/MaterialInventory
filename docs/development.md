@@ -122,6 +122,7 @@ uv sync                                # bring .venv in line with uv.lock
 cp seed_data/materials.example.csv seed_data/materials.csv
 cp seed_data/machines.example.csv seed_data/machines.csv
 cp seed_data/locations.example.csv seed_data/locations.csv
+cp seed_data/fuel_sources.example.csv seed_data/fuel_sources.csv
 cp seed_data/users.example.csv seed_data/users.csv
 # edit, then:
 python manage.py seed_data
@@ -134,13 +135,14 @@ The real CSVs are gitignored. Each path can be overridden (`--materials-file=…
 | `materials.csv` | `sku`, `name` | `sku` | updates in place |
 | `machines.csv` | `name`, `hourly_rate`?, `rate_per_ton`? | `name` | a blank or missing optional cell **keeps** the stored value |
 | `locations.csv` | `name` | `name` | create-only; never touches an existing one, including `is_active` |
+| `fuel_sources.csv` | `name` | `name` | the same as `locations.csv` |
 | `users.csv` | `username`, `first_name`, `last_name`, `email`, `role` | `username` | create-only; existing users are skipped |
 
 - **Short rows are fine.** `Bagr,10` under a three-column header leaves `rate_per_ton` unset.
 - **A missing required column** aborts with a `CommandError` naming it, rather than skipping every row and reporting "0 created". Extra columns are ignored.
 - **Clearing a rate** is done in the admin, not through the CSV.
 - **`role`** must be `WORKER`, `MANAGER` or `ADMIN`. Each new user gets a random temporary password printed to the console. Only `ADMIN` gets admin access.
-- **The example files differ.** `locations.example.csv` and `users.example.csv` are placeholders; the materials and machines examples carry the real catalog.
+- **The example files differ.** `locations.example.csv`, `fuel_sources.example.csv` and `users.example.csv` are placeholders; the materials and machines examples carry the real catalog.
 
 ## CI
 

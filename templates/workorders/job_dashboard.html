@@ -6,6 +6,8 @@
 {% if pending_count %}
     <p class="messages error">Čeká na schválení: {{ pending_count }}</p>
 {% endif %}
+{# Refuellings are reviewed on their own list. #}
+<p><a href="{% url 'refuel_dashboard' %}">Přehled tankování →</a>{% if pending_refuel_count %} (čeká na schválení: {{ pending_refuel_count }}){% endif %}</p>
 {% include "workorders/_filter_card.html" %}
 <div class="card">
     <div class="table-scroll">

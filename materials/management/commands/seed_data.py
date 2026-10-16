@@ -8,28 +8,30 @@ from django.db import transaction
 
 from accounts.models import User
 from locations.models import Location
-from machines.models import Machine
+from machines.models import FuelSource, Machine
 from materials.models import Material
 
 
 class Command(BaseCommand):
     help = (
-        'Seed the material catalog, machinery, locations and employee accounts from CSV files. '
-        'Safe to re-run: materials/machines are matched and updated, existing locations and users '
-        'are left untouched.'
+        'Seed the material catalog, machinery, locations, fuel sources and employee accounts from CSV files. '
+        'Safe to re-run: materials/machines are matched and updated, existing locations, fuel sources '
+        'and users are left untouched.'
     )
 
     def add_arguments(self, parser):
         parser.add_argument('--materials-file', default='seed_data/materials.csv')
         parser.add_argument('--machines-file', default='seed_data/machines.csv')
         parser.add_argument('--locations-file', default='seed_data/locations.csv')
+        parser.add_argument('--fuel-sources-file', default='seed_data/fuel_sources.csv')
         parser.add_argument('--users-file', default='seed_data/users.csv')
 
     def handle(self, *args, **options):
         with transaction.atomic():
             self.seed_materials(Path(options['materials_file']))
             self.seed_machines(Path(options['machines_file']))
-            self.seed_locations(Path(options['locations_file']))
+            self.seed_names(Path(options['locations_file']), Location, 'Locations')
+            self.seed_names(Path(options['fuel_sources_file']), FuelSource, 'Fuel sources')
             self.seed_users(Path(options['users_file']))
 
     def _read_csv(self, path, required=()):
@@ -88,10 +90,12 @@ class Command(BaseCommand):
             updated += not was_created
         self.stdout.write(self.style.SUCCESS(f'Machines: {created} created, {updated} updated.'))
 
-    def seed_locations(self, path):
-        # Name is the whole record, so there is nothing to update: an existing
-        # location is left alone, `is_active` included, so re-seeding never
-        # brings back one that was retired in the admin.
+    def seed_names(self, path, model, label):
+        """Seed a catalog whose name is the whole record: locations and fuel sources.
+
+        There is nothing to update: an existing record is left alone, `is_active`
+        included, so re-seeding never brings back one that was retired in the admin.
+        """
         rows = self._read_csv(path, required=('name',))
         created = 0
         existing = 0
@@ -99,10 +103,10 @@ class Command(BaseCommand):
             name = self._cell(row, 'name')
             if not name:
                 continue
-            _, was_created = Location.objects.get_or_create(name=name)
+            _, was_created = model.objects.get_or_create(name=name)
             created += was_created
             existing += not was_created
-        self.stdout.write(self.style.SUCCESS(f'Locations: {created} created, {existing} already existed.'))
+        self.stdout.write(self.style.SUCCESS(f'{label}: {created} created, {existing} already existed.'))
 
     def seed_users(self, path):
         rows = self._read_csv(path, required=('username',))

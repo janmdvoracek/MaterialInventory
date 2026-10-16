@@ -7,7 +7,7 @@ from django.utils import timezone
 
 from accounts.models import User
 from locations.models import Location
-from machines.models import Machine
+from machines.models import FuelSource, Machine
 from materials.models import Material
 from workorders.models import WorkOrder
 
@@ -66,12 +66,28 @@ def job_payload(
         data[f'machines-{i}-machine'] = row['machine'].pk
         if 'hours' in row:
             data[f'machines-{i}-hours'] = str(row['hours'])
-        # Tuny default in beside motohodiny, so most tests need only name the
-        # hours; a row naming only litres is a fill-up.
+        # Tuny default in beside motohodiny, so most tests need only name the hours.
         if 'hours' in row or 'tons' in row:
             data[f'machines-{i}-tons'] = str(row.get('tons', '5'))
+    return data
+
+
+def refuel_payload(rows, notes='', performed_on=None):
+    """POST data for the Tankování form (and its edit form). Each row: `machine`, `source`, `litres`."""
+    data = {
+        'notes': notes,
+        'performed_on': (performed_on or timezone.localdate()).isoformat(),
+        'refuels-TOTAL_FORMS': str(max(len(rows), 1)),
+        'refuels-INITIAL_FORMS': '0',
+        'refuels-MIN_NUM_FORMS': '0',
+        'refuels-MAX_NUM_FORMS': '1000',
+    }
+    for i, row in enumerate(rows):
+        for name in ('machine', 'source'):
+            if row.get(name) is not None:
+                data[f'refuels-{i}-{name}'] = row[name].pk
         if 'litres' in row:
-            data[f'machines-{i}-litres'] = str(row['litres'])
+            data[f'refuels-{i}-litres'] = str(row['litres'])
     return data
 
 
@@ -86,6 +102,8 @@ class ReviewFixtureMixin:
         self.manager = User.objects.create_user(username='manager', password='pw', role=User.Role.MANAGER)
         self.machine_a = Machine.objects.create(name='Crusher A')
         self.machine_b = Machine.objects.create(name='Excavator B')
+        self.source_tank = FuelSource.objects.create(name='Nádrž dílna')
+        self.source_station = FuelSource.objects.create(name='Čerpací stanice')
 
     def submit_job(self, user, quantity=Decimal('5'), machine_rows=None, worker_rows=None, hours='1', notes=''):
         """Record a job through the real form, as `user` would."""

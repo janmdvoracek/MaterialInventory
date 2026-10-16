@@ -1,0 +1,42 @@
+{% load static %}{% comment %}
+The row sections of an entry form, one block per `sections` entry: JOB_SECTIONS
+on the job pages, REFUEL_SECTIONS on the refuelling pages.
+
+The row buttons are real submits (add_<prefix> / remove_<prefix>) and need
+`formnovalidate`. „− odebrat řádek" is rendered `hidden` at the floor rather
+than omitted, so job_rows.js can unhide it. `data-unique-field` names the one
+picker per row whose choices job_rows.js hides once another row took them.
+
+job_rows.js and searchable_select.js are loaded here and are pure
+enhancement; they clone the row <template>.
+{% endcomment %}
+{% for section, formset in sections %}
+<h2>{{ section.title }}</h2>
+<div data-job-section data-min-rows="{{ min_rows }}" data-max-rows="{{ max_rows }}" data-unique-field="{{ formset.unique_field }}">
+    {{ formset.management_form }}
+    {% for error in formset.non_form_errors %}<p class="messages error">{{ error }}</p>{% endfor %}
+    {% for form in formset %}
+        <div class="row-block">
+            <div class="item-row">
+                {% for field in form %}<div>{{ field }}</div>{% endfor %}
+            </div>
+            {% include "workorders/_row_errors.html" %}
+        </div>
+    {% endfor %}
+    {# Clone source for „+ další řádek": built with form_kwargs, not narrowed by _hide_taken_choices. #}
+    <template data-row-template>
+        <div class="row-block">
+            <div class="item-row">
+                {% for field in formset.empty_form %}<div>{{ field }}</div>{% endfor %}
+            </div>
+        </div>
+    </template>
+    <div class="row-controls">
+        <button class="btn secondary" type="submit" name="add_{{ section.prefix }}" data-add-row formnovalidate>+ další řádek</button>
+        <button class="btn secondary" type="submit" name="remove_{{ section.prefix }}" data-remove-row formnovalidate{% if formset|length <= 1 %} hidden{% endif %}>− odebrat řádek</button>
+    </div>
+</div>
+{% endfor %}
+
+<script src="{% static 'js/job_rows.js' %}" defer></script>
+<script src="{% static 'js/searchable_select.js' %}" defer></script>

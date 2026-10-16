@@ -468,7 +468,7 @@ class JobPhotoTests(ReviewFixtureMixin, TestCase):
             'status': work_order.status,
             **{
                 f'{prefix}-{key}': value
-                for prefix in ('movements', 'machine_usages', 'machine_refuels', 'worker_hours')
+                for prefix in ('movements', 'machine_usages', 'worker_hours')
                 for key, value in (
                     ('TOTAL_FORMS', '0'),
                     ('INITIAL_FORMS', '0'),
@@ -521,14 +521,3 @@ class JobPhotoTests(ReviewFixtureMixin, TestCase):
         self._admin_post(work_order, [{'id': photo.pk, 'DELETE': 'on'}])
         self.assertFalse(work_order.photos.exists())
         self.assertFalse(default_storage.exists(photo.file.name))
-
-    def test_a_fuel_only_job_can_carry_photos(self):
-        # „Fotky" is asked of no job at all, so the one submission that answers
-        # neither „Popis" nor „Moje hodiny" may still have them.
-        self.client.force_login(self.worker)
-        payload = job_payload(
-            [], [], machine_rows=[{'machine': self.machine_a, 'litres': '40'}], description='', hours=''
-        )
-        payload['photo'] = [self._photo(), self._photo(name='druha.jpg')]
-        self.assertRedirects(self.client.post(reverse('transform_create'), payload), reverse('transform_create'))
-        self.assertEqual(WorkOrder.objects.get().photos.count(), 2)

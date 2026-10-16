@@ -50,7 +50,7 @@ Django's default, `- Select an option -`, renders in English even under `cs`. Se
 
 | Form | A blank choice means | Wording |
 |---|---|---|
-| job-form rows | it *is* the label | `Materiál`, `Stroj`, `Pracovník` |
+| job- and refuelling-form rows | it *is* the label | `Materiál`, `Stroj`, `Pracovník`, `Zdroj` |
 | filters | "don't filter" | `Všechny stroje`, `Všechny materiály`, `Všichni pracovníci`, `Všichni uživatelé`, `Všechny lokace` |
 
 Row selects sit side by side with no visible labels, so the empty option does the labelling. For the same reason, the row number boxes carry a unit placeholder (`t`, `mth`, `l`, `h`) and the full name as `title`, which is also their accessible name.

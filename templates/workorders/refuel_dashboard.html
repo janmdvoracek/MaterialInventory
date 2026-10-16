@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Přehled tankování{% endblock %}
+{% block main_class %}wide{% endblock %}
+{% block content %}
+<h1>Přehled tankování</h1>
+<p><a href="{% url 'job_dashboard' %}">← Přehled zpracování</a></p>
+<p><a class="btn" href="{% url 'refuel_create' %}">Zaznamenat tankování</a></p>
+{% if pending_count %}
+    <p class="messages error">Čeká na schválení: {{ pending_count }}</p>
+{% endif %}
+{% include "workorders/_filter_card.html" %}
+<div class="card">
+    <div class="table-scroll">
+    <table>
+        <thead>
+            <tr><th>Provedeno</th><th>Kdo</th><th>Stroje</th><th>Litry</th><th>Stav</th><th></th></tr>
+        </thead>
+        <tbody>
+        {% for refuelling in page_obj %}
+            <tr class="{% if refuelling.status == 'PENDING' %}row-pending{% endif %}">
+                <td>{{ refuelling.performed_on|date:"Y-m-d" }}</td>
+                <td>{{ refuelling.created_by.username }}</td>
+                <td>{% for fill_up in refuelling.machine_refuels.all %}{{ fill_up.machine.name }}{% if not forloop.last %}, {% endif %}{% empty %}—{% endfor %}</td>
+                <td>{{ refuelling.total_litres|default:"0"|floatformat:2 }} l</td>
+                <td><span class="status-badge {{ refuelling.status|lower }}">{{ refuelling.get_status_display }}</span></td>
+                <td><a href="{% url 'refuel_detail' refuelling.pk %}">Detail</a></td>
+            </tr>
+        {% empty %}
+            <tr><td colspan="6">Žádná tankování neodpovídají zadaným filtrům.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+{% include "workorders/_pagination.html" %}
+{% endblock %}

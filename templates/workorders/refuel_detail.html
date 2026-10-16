@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Tankování #{{ refuelling.pk }}{% endblock %}
+{% block content %}
+<h1>Tankování #{{ refuelling.pk }}</h1>
+<div class="card">
+    <p>
+        <span class="status-badge {{ refuelling.status|lower }}">{{ refuelling.get_status_display }}</span>
+    </p>
+    <table class="detail-fields">
+        <tbody>
+            <tr><th>Datum provedení</th><td>{{ refuelling.performed_on|date:"Y-m-d" }}</td></tr>
+            <tr><th>Zaznamenáno</th><td>{{ refuelling.created_at|date:"Y-m-d H:i" }}</td></tr>
+            <tr><th>Zaznamenal</th><td>{{ refuelling.created_by.username }}</td></tr>
+            <tr><th>Poznámky</th><td>{{ refuelling.notes|linebreaksbr|default:"—" }}</td></tr>
+            {% if refuelling.reviewed_at %}
+                <tr><th>Posouzeno</th><td>{{ refuelling.reviewed_at|date:"Y-m-d H:i" }}{% if refuelling.reviewed_by %} ({{ refuelling.reviewed_by.username }}){% endif %}</td></tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+
+<div class="card">
+    <h2>Tankované stroje</h2>
+    <div class="table-scroll">
+    <table>
+        <thead><tr><th>Stroj</th><th>Zdroj</th><th>Natankováno</th></tr></thead>
+        <tbody>
+        {% for fill_up in fill_ups %}
+            <tr>
+                <td>{{ fill_up.machine.name }}</td>
+                <td>{{ fill_up.source.name|default:"—" }}</td>
+                <td>{{ fill_up.litres|floatformat:2 }} l</td>
+            </tr>
+        {% empty %}
+            <tr><td colspan="3">Žádné stroje.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Akce</h2>
+    <div class="job-actions">
+        {% if not refuelling.is_approved %}
+            <form method="post" action="{% url 'refuel_approve' refuelling.pk %}">
+                {% csrf_token %}
+                <button type="submit">Schválit</button>
+            </form>
+        {% endif %}
+        <a class="btn secondary" href="{% url 'refuel_edit' refuelling.pk %}">Upravit</a>
+        <a class="btn danger" href="{% url 'refuel_delete' refuelling.pk %}">Smazat</a>
+    </div>
+</div>
+<p><a href="{% url 'refuel_dashboard' %}">← Zpět na přehled tankování</a></p>
+{% endblock %}

@@ -19,8 +19,8 @@ from accounts.models import User
 from machines.models import Machine
 from materials.models import Material
 
-from .forms import MachineFilterForm, MaterialFilterForm, TimeWorkedFilterForm, participation_filter
-from .models import MachineRefuel, MachineUsage, StockMovement, WorkerHours, WorkOrder
+from .forms import MachineFilterForm, MaterialFilterForm, RefuelFilterForm, TimeWorkedFilterForm, participation_filter
+from .models import MachineRefuel, MachineUsage, Refuelling, StockMovement, WorkerHours, WorkOrder
 
 HISTORY_PAGE_SIZE = 50
 # A worker's own recent jobs on Hodiny: a status check, not a history.
@@ -159,12 +159,12 @@ def _filtered_machine_usages(request):
 
 
 def _filtered_machine_refuels(request):
-    """Stroje's fill-up rows, approved only. `MachineFilterForm`'s lookups apply unchanged."""
-    form = MachineFilterForm(request.GET or None)
+    """Stroje's fill-up rows, from approved refuellings only, under Stroje's filter (`RefuelFilterForm`)."""
+    form = RefuelFilterForm(request.GET or None)
     refuels = (
-        MachineRefuel.objects.filter(work_order__status=WorkOrder.Status.APPROVED)
-        .select_related('machine', 'work_order', 'work_order__created_by')
-        .order_by('-work_order__performed_on', '-id')
+        MachineRefuel.objects.filter(refuelling__status=Refuelling.Status.APPROVED)
+        .select_related('machine', 'source', 'refuelling', 'refuelling__created_by')
+        .order_by('-refuelling__performed_on', '-id')
     )
     return form, form.filter(refuels)
 
@@ -374,14 +374,15 @@ def machine_refuel_detail_export(request):
     _, refuels = _filtered_machine_refuels(request)
     return _csv_response(
         'detail-tankovani',
-        ['Provedeno', 'Stroj', 'Natankováno (l)', 'Zakázka', 'Kým'],
+        ['Provedeno', 'Stroj', 'Zdroj', 'Natankováno (l)', 'Kým'],
         [
             [
-                refuel.work_order.performed_on.isoformat(),
+                refuel.refuelling.performed_on.isoformat(),
                 refuel.machine.name,
+                # Fill-ups from before sources existed have none: a blank cell.
+                refuel.source.name if refuel.source else '',
                 _csv_number(refuel.litres, 2),
-                refuel.work_order.description,
-                refuel.work_order.created_by.username,
+                refuel.refuelling.created_by.username,
             ]
             for refuel in refuels
         ],

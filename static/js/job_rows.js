@@ -2,7 +2,7 @@
  * „+ další řádek" / „− odebrat řádek" without a page load.
  *
  * Progressive enhancement only. Both buttons are real submits that the server
- * (`_job_forms`) answers by re-rendering one row bigger or smaller; this does
+ * (`_entry_forms`) answers by re-rendering one row bigger or smaller; this does
  * the same in the DOM. The tests can only see the server path, so it must keep
  * working without this file.
  *
@@ -13,8 +13,16 @@
 (function () {
     'use strict';
 
-    // Every row has exactly one <select>; the rest are number inputs.
     var ROW_SELECT = '.item-row select';
+
+    // The picker each row must choose differently (`data-unique-field`). A row
+    // may carry other pickers (a refuel's „Zdroj"), which are left alone.
+    function uniqueSelects(section) {
+        var suffix = '-' + section.dataset.uniqueField;
+        return Array.prototype.filter.call(section.querySelectorAll(ROW_SELECT), function (select) {
+            return select.name.slice(-suffix.length) === suffix;
+        });
+    }
 
     function totalInput(section) {
         return section.querySelector('input[name$="-TOTAL_FORMS"]');
@@ -25,7 +33,7 @@
      * never had the taken options in the DOM, so freeing one can't bring it back
      * there. */
     function refreshChoices(section) {
-        var selects = Array.prototype.slice.call(section.querySelectorAll(ROW_SELECT));
+        var selects = uniqueSelects(section);
         var taken = {};
         selects.forEach(function (select) {
             if (select.value) {

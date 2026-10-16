@@ -2,7 +2,7 @@
 
 Evidence zpracování materiálu. Aplikace je určená hlavně pro mobilní telefon: otevřete ji v prohlížeči na adrese od správce a přihlaste se.
 
-> Aplikace **nevede stav skladu**. Zapisují se zakázky: co se zpracovalo, kdo na tom dělal a jak běžely stroje. Jestli je materiálu dost, aplikace nehlídá.
+> Aplikace **nevede stav skladu**. Zapisují se zakázky (co se zpracovalo, kdo na tom dělal a jak běžely stroje) a zvlášť tankování strojů. Jestli je materiálu dost, aplikace nehlídá.
 
 ## Obsah
 
@@ -10,6 +10,7 @@ Evidence zpracování materiálu. Aplikace je určená hlavně pro mobilní tele
 - [Aplikace v telefonu](#aplikace-v-telefonu)
 - [Spodní menu](#spodní-menu)
 - [Zpracování](#zpracování)
+- [Tankování](#tankování)
 - [Schvalování](#schvalování)
 - [Přehled (pro vedoucí)](#přehled-pro-vedoucí)
 - [Stroje](#stroje)
@@ -38,14 +39,15 @@ Bez signálu ukáže aplikace stránku **Bez připojení**. Zakázku bez připoj
 | Tlačítko | K čemu | Kdo vidí |
 |---|---|---|
 | **Zpracování** | zápis zakázky (otevře se po přihlášení i po klepnutí na logo) | všichni |
+| **Tankování** | zápis tankování | pracovníci (vedoucí ho najde v Přehledu → Přehled tankování) |
 | **Hodiny** | odpracované hodiny | všichni |
-| **Přehled** | všechny zakázky, schvalování | vedoucí |
+| **Přehled** | všechny zakázky a tankování, schvalování | vedoucí |
 | **Stroje** | motohodiny, tuny, ceny, tankování | vedoucí |
 | **Materiál** | spotřeba a výroba po materiálech | vedoucí |
 
 ## Zpracování
 
-Použijte, když se **z jednoho materiálu stane jiný** (drcení, třídění, řezání), nebo když jste jen tankovali.
+Použijte, když se **z jednoho materiálu stane jiný** (drcení, třídění, řezání). Tankování se sem nepíše, má [vlastní formulář](#tankování).
 
 ### Základní údaje
 
@@ -71,18 +73,13 @@ V každém řádku vyberte **Pracovníka** a zapište jeho **Hodiny**. Sebe sem 
 
 ### Stroje
 
-Řádek má čtyři pole: **Stroj**, **Stav motohodin** (mth), **Natankováno** (l) a **Tuny** (t).
+Řádek má tři pole: **Stroj**, **Stav motohodin** (mth) a **Tuny** (t).
 
 - Do motohodin pište **stav počítadla** stroje (např. 12345), ne kolik hodin běžel. To si aplikace spočítá sama.
 - **Povinný je jen stroj.** Motohodiny i tuny vyplňte, pokud je znáte. Napsaná **0** znamená totéž co prázdné pole.
-- **Stroj + litry** (bez motohodin a tun) = jen se tankovalo. Stroj s motohodinami nebo tunami a litry = běžel i se tankoval.
 - Číslo bez vybraného stroje aplikace odmítne.
-- Každý stroj uveďte **jen jednou**. Běžel-li víckrát, sečtěte tuny i litry a u motohodin napište poslední stav.
+- Každý stroj uveďte **jen jednou**. Běžel-li víckrát, sečtěte tuny a u motohodin napište poslední stav.
 - Tuny u strojů se do kontroly součtů **nepočítají**: když materiál projde třemi stroji, projde každým stejné množství.
-
-### Jen tankování
-
-Když jste jen tankovali, stačí řádky *Stroj + Natankováno*. Spotřebu, výrobu, Lokaci, Popis ani Moje hodiny vyplňovat nemusíte. Hodiny se u takové zakázky nezapíšou. Jakmile přidáte stroj bez litrů nebo materiál, je to běžná zakázka a povinná pole se vrátí.
 
 ### Řádky navíc
 
@@ -106,17 +103,30 @@ Vedoucí má pole **Zapsat za**. Když vyberete pracovníka, zakázka bude **jeh
 
 Celá zakázka se ukládá najednou. Po uložení se ukáže zelená zpráva a formulář se vyprázdní.
 
+## Tankování
+
+Použijte, kdykoli jste natankovali jeden nebo více strojů. Je to samostatný zápis, se zakázkou nijak nesouvisí.
+
+- **Poznámky**: nepovinné.
+- **Datum provedení**: předvyplněný je dnešek, nesmí být v budoucnosti.
+- **Tankované stroje**: v každém řádku vyberte **Stroj**, **Zdroj** (odkud nafta je, např. nádrž nebo čerpací stanice) a zapište **litry**. Řádek vyplňte celý, nebo ho nechte prázdný. Musí být aspoň jeden.
+- Každý stroj uveďte **jen jednou**. Z jednoho zdroje můžete natankovat víc strojů. Tankoval-li jeden stroj ze dvou zdrojů, zapište to jako dvě tankování.
+- Litry pište **s tečkou** (`45.5`), nejvýš 2000. Řádky přidáte a odeberete stejně jako u zakázky.
+- Chybí-li zdroj v seznamu, řekněte vedoucímu, přidá ho správce.
+
+Pod formulářem jsou **Moje poslední tankování**: pět posledních, se stavem. **Tankování pracovníka musí schválit vedoucí**, do té doby se nepočítá do Strojů. Tankování vedoucího je schválené rovnou.
+
 ## Schvalování
 
-**Zakázku pracovníka musí schválit vedoucí.** Do té doby se nepočítá do Hodin, Strojů ani Materiálu, proto tam své hodiny hned neuvidíte. Zakázka vedoucího je schválená rovnou.
+**Zakázku i tankování pracovníka musí schválit vedoucí.** Do té doby se nepočítají do Hodin, Strojů ani Materiálu, proto tam své hodiny hned neuvidíte. Zápis vedoucího je schválený rovnou.
 
-Chybu opraví vedoucí přímo v zakázce, nebo zakázku smaže. Vy ji opravit nemůžete a zpátky se neposílá. Víte-li o chybě, řekněte vedoucímu, jak to bylo. Stav svých zakázek uvidíte v [Hodinách](#hodiny).
+Chybu opraví vedoucí přímo v zápisu, nebo ho smaže. Vy ho opravit nemůžete a zpátky se neposílá. Víte-li o chybě, řekněte vedoucímu, jak to bylo. Stav svých zakázek uvidíte v [Hodinách](#hodiny), stav tankování pod formulářem [Tankování](#tankování).
 
 ## Přehled (pro vedoucí)
 
 Seznam všech zakázek: datum, autor, lokace, popis, hodiny a stav. Čekající jsou **žluté** a nahoře je jejich počet. Filtrovat lze podle autora, lokace, stavu a data.
 
-**Detail** ukáže vše z formuláře včetně tankování a fotek (odkazy **Fotka 1**, **Fotka 2**…). Fotka se otevře uvnitř aplikace; mezi fotkami listujete tlačítky pod ní a odkazem **Zpět na zpracování** se vrátíte do detailu. Akce:
+**Detail** ukáže vše z formuláře včetně fotek (odkazy **Fotka 1**, **Fotka 2**…). Fotka se otevře uvnitř aplikace; mezi fotkami listujete tlačítky pod ní a odkazem **Zpět na zpracování** se vrátíte do detailu. Akce:
 
 | Akce | Co udělá |
 |---|---|
@@ -124,12 +134,16 @@ Seznam všech zakázek: datum, autor, lokace, popis, hodiny a stav. Čekající 
 | **Upravit** | Stejný formulář, předvyplněný. Platí stejná pravidla (součty). **Úprava neschvaluje**, po opravě je třeba schválit. Pole s hodinami patří autorovi zakázky. Nové fotky se přidají. Uloženou fotku odstraníte zaškrtnutím **Odebrat**, a to nevratně. |
 | **Smazat** | Nevratně smaže zakázku se vším, co k ní patří. |
 
+### Přehled tankování
+
+Odkaz **Přehled tankování** je pod nadpisem Přehledu, u něj počet tankování, která čekají na schválení. Seznam ukazuje datum, autora, stroje, litry a stav; filtrovat lze podle autora, stavu a data. Tlačítko **Zaznamenat tankování** otevře formulář. **Detail** tankování nabízí stejné akce jako zakázka: **Schválit**, **Upravit** (neschvaluje) a **Smazat**. U tankování zapsaných před zavedením zdrojů je zdroj prázdný; při úpravě ho doplňte.
+
 ## Stroje
 
-Tabulky pod jedním filtrem (stroj, autor, datum), počítají se jen **schválené** zakázky:
+Tabulky pod jedním filtrem (stroj, autor, datum), počítají se jen **schválené** zakázky a tankování:
 
 - **Stav strojů**: souhrn po strojích.
-- **Tankování** a **Detail tankování**: litry a jednotlivá tankování.
+- **Tankování** a **Detail tankování**: litry a jednotlivá tankování, se zdrojem a odkazem na celý zápis.
 - **Detail používání strojů**: jednotlivé záznamy.
 
 Bez filtru jsou vidět všechny stroje. Stroj s **0 h** v daném období neběžel.
@@ -151,7 +165,7 @@ Bez filtru jsou vidět všechny stroje. Stroj s **0 h** v daném období neběž
 
 Nevyplněná sazba znamená „takhle se stroj neúčtuje", ne „zdarma". **Celkem** je pomlčka, když se cena spočítat nedá: stroj nemá sazbu, nebo je naceněný po tunách a tuny chybí. Naceněný stroj, který neběžel, má **0,00**.
 
-**Tankování** se bere jen z pole *Natankováno*. Tady pomlčka není, **0,00 l** znamená, že se netankovalo. Obě detailní tabulky se stránkují zvlášť.
+**Tankování** se bere z formuláře [Tankování](#tankování). Tady pomlčka není, **0,00 l** znamená, že se netankovalo. Obě detailní tabulky se stránkují zvlášť.
 
 ## Materiál
 
@@ -209,13 +223,16 @@ Rozepsaný řádek. Doplňte ho, nebo vymažte. Totéž u spolupracovníků.
 **„Přidejte alespoň jednu položku spotřeby a jednu položku výroby."** / **„Celkové množství spotřeby a výroby se musí rovnat."**
 Viz [Spotřeba a výroba](#spotřeba-a-výroba). V závorce hlášky jsou oba součty.
 
-**Zakázku nevidím v Hodinách.**
+**„Vyplňte stroj, zdroj i litry, nebo řádek nechte prázdný."**
+Rozepsaný řádek tankování. Doplňte ho, nebo vymažte.
+
+**Zakázku nevidím v Hodinách** / **tankování nevidím ve Strojích.**
 Čeká na schválení.
 
 **Nevidím Přehled, Stroje ani Materiál** / **nevidím záznamy kolegů.**
 Jsou jen pro vedoucí. Požádejte správce o změnu role.
 
-**V nabídce chybí materiál, stroj nebo lokace.**
+**V nabídce chybí materiál, stroj, lokace nebo zdroj.**
 Byl vyřazen. Správce ho může znovu aktivovat.
 
 **Odeslané fotky tam nejsou.**

@@ -1,5 +1,5 @@
 /*
- * Type-to-filter pickers for the job form's four row sections.
+ * Type-to-filter pickers for the row sections of the job and refuelling forms.
  *
  * Progressive enhancement: each row's <select> stays in the DOM, hidden, and is
  * still what the form posts. Without this script the rows are plain selects.
@@ -13,7 +13,7 @@
 (function () {
     'use strict';
 
-    // Every row has exactly one <select>; the rest are number inputs.
+    // Every <select> in a row gets a picker; each one's empty_label is a bare noun.
     var ROW_SELECT = '.item-row select';
 
     // Client-side only; the box posts nothing. Longer chosen labels still show whole.

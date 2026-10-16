@@ -211,8 +211,8 @@ nav.bottom a {
 }
 nav.bottom a:hover, nav.bottom a:active { color: var(--brand-green); }
 /* A row wraps rather than crushing its boxes. Number boxes are three
-   characters wide (placeholders are bare units) and the picker takes the rest,
-   so even the four-field machines row fits a phone. .tons, .mth and .hours are
+   characters wide (placeholders are bare units) and the pickers take the rest,
+   so even the machines row and the two-picker refuel row fit a phone. .tons, .mth and .hours are
    five characters (five-digit values; .hours only to line up with the tonnes
    boxes), and the picker's basis is one character narrower to compensate.
    Spin buttons are removed: they would eat the box. */

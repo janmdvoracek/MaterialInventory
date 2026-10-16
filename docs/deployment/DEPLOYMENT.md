@@ -165,13 +165,13 @@ dcp exec web python manage.py migrate
 ## 10. Load the catalog and staff accounts
 
 - `materials.example.csv` and `machines.example.csv` already hold the real catalog and rates. Copy them and spot-check.
-- `users.example.csv` and `locations.example.csv` are placeholders. Rewrite them with real staff and sites. **At least one location must exist before anyone records a job**, because every non-fuel job requires one.
+- `users.example.csv`, `locations.example.csv` and `fuel_sources.example.csv` are placeholders. Rewrite them with real staff, sites and fuel sources (tanks, stations). **At least one location must exist before anyone records a job, and one fuel source before anyone records a refuelling**, because every row requires one.
 
 ```bash
-cp seed_data/materials.example.csv seed_data/materials.csv && cp seed_data/machines.example.csv seed_data/machines.csv && cp seed_data/locations.example.csv seed_data/locations.csv && cp seed_data/users.example.csv seed_data/users.csv
+cp seed_data/materials.example.csv seed_data/materials.csv && cp seed_data/machines.example.csv seed_data/machines.csv && cp seed_data/locations.example.csv seed_data/locations.csv && cp seed_data/fuel_sources.example.csv seed_data/fuel_sources.csv && cp seed_data/users.example.csv seed_data/users.csv
 ```
 
-Edit all four, then:
+Edit all five, then:
 
 ```bash
 dcp exec web python manage.py seed_data

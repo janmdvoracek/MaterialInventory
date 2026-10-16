@@ -34,3 +34,25 @@ class Machine(models.Model):
 
     def __str__(self):
         return self.name
+
+
+SOURCE_RETIRE_HELP_TEXT = (
+    'Odškrtnutím zdroj vyřadíte místo smazání — zmizí z nabídky ve formuláři '
+    'Tankování, ale historie zůstane zachována. Smazání je zablokováno, jakmile '
+    'zdroj nese nějaké tankování, právě proto, aby historie nemohla zmizet.'
+)
+
+
+class FuelSource(models.Model):
+    """Where a fill-up's fuel came from. A label on the row, like `Location` on a job; nothing is balanced per source."""
+
+    name = models.CharField(max_length=100, unique=True, verbose_name='název')
+    is_active = models.BooleanField(default=True, help_text=SOURCE_RETIRE_HELP_TEXT, verbose_name='aktivní')
+
+    class Meta:
+        ordering = ['name']
+        verbose_name = 'zdroj paliva'
+        verbose_name_plural = 'zdroje paliva'
+
+    def __str__(self):
+        return self.name

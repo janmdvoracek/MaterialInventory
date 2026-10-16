@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Upravit tankování #{{ refuelling.pk }}{% endblock %}
+{% block content %}
+<div class="card">
+    <h1>Upravit tankování #{{ refuelling.pk }}</h1>
+    <p class="muted">
+        Zaznamenal {{ refuelling.created_by.username }}, {{ refuelling.created_at|date:"Y-m-d H:i" }}.
+        Úprava tankování neschvaluje — schválit ho je potřeba zvlášť.
+    </p>
+    <form method="post">
+        {% csrf_token %}
+        {# Decoy submit: Enter uses the first submit button, which would otherwise be „+ další řádek". #}
+        <button class="visually-hidden" type="submit" tabindex="-1" aria-hidden="true">Uložit změny</button>
+        {% include "workorders/_refuel_form_fields.html" %}
+
+        <button type="submit">Uložit změny</button>
+    </form>
+    <a class="btn secondary" href="{% url 'refuel_detail' refuelling.pk %}">Zpět bez uložení</a>
+</div>
+{% endblock %}

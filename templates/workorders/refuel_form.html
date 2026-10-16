@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Zaznamenat tankování{% endblock %}
+{% block content %}
+<div class="card">
+    <h1>Zaznamenat tankování</h1>
+    <form method="post">
+        {% csrf_token %}
+        {# Decoy submit: Enter uses the first submit button, which would otherwise be „+ další řádek". #}
+        <button class="visually-hidden" type="submit" tabindex="-1" aria-hidden="true">Zaznamenat tankování</button>
+        {% include "workorders/_refuel_form_fields.html" %}
+
+        <button type="submit">Zaznamenat tankování</button>
+    </form>
+</div>
+{% if my_refuellings %}
+<div class="card">
+    <h2>Moje poslední tankování</h2>
+    <p class="muted">Tankování se do Strojů započítá až po schválení vedoucím. Opravu i smazání provádí vedoucí — pokud je něco špatně, dejte mu vědět.</p>
+    <div class="table-scroll">
+    <table>
+        <thead><tr><th>Provedeno</th><th>Strojů</th><th>Litry</th><th>Stav</th></tr></thead>
+        <tbody>
+        {% for refuelling in my_refuellings %}
+            <tr class="{% if refuelling.status == 'PENDING' %}row-pending{% endif %}">
+                <td>{{ refuelling.performed_on|date:"Y-m-d" }}</td>
+                <td>{{ refuelling.machine_count }}</td>
+                <td>{{ refuelling.total_litres|default:"0"|floatformat:2 }} l</td>
+                <td><span class="status-badge {{ refuelling.status|lower }}">{{ refuelling.get_status_display }}</span></td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

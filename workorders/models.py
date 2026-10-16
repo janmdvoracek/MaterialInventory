@@ -30,6 +30,13 @@ def discard_photo(photo):
     transaction.on_commit(lambda: storage.delete(name))
 
 
+class ReviewStatus(models.TextChoices):
+    """Shared by both kinds of entry: a job and a refuelling."""
+
+    PENDING = 'PENDING', 'Čeká na schválení'
+    APPROVED = 'APPROVED', 'Schváleno'
+
+
 class WorkOrder(models.Model):
     """One transformation job.
 
@@ -37,9 +44,7 @@ class WorkOrder(models.Model):
     on the spot; a job is never handed back, only edited or deleted.
     """
 
-    class Status(models.TextChoices):
-        PENDING = 'PENDING', 'Čeká na schválení'
-        APPROVED = 'APPROVED', 'Schváleno'
+    Status = ReviewStatus
 
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='vytvořeno')
     # When the work was done; `created_at` is when it was typed in.
@@ -53,8 +58,8 @@ class WorkOrder(models.Model):
         blank=True,
         verbose_name='spolupracovníci',
     )
-    # A label, not a stock location. Null on old and fuel-only jobs; the view
-    # requires it otherwise (`WORK_FIELDS`).
+    # A label, not a stock location. Null only on jobs recorded before the
+    # column existed; the form requires it.
     location = models.ForeignKey(
         'locations.Location',
         on_delete=models.PROTECT,
@@ -178,28 +183,72 @@ class MachineUsage(models.Model):
         return f'{self.machine} - {hours}h (WorkOrder #{self.work_order_id})'
 
 
-class MachineRefuel(models.Model):
-    """Fuel put into one machine on a job, in litres.
+class Refuelling(models.Model):
+    """One refuelling entry: fuel put into one or more machines, recorded apart from any job.
 
-    Its own table because a machine can be refuelled on a job it didn't run.
+    Reviewed like a job (`ReviewStatus`); only APPROVED entries count on Stroje.
     """
 
-    work_order = models.ForeignKey(
-        WorkOrder, on_delete=models.CASCADE, related_name='machine_refuels', verbose_name='zakázka'
+    Status = ReviewStatus
+
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='vytvořeno')
+    performed_on = models.DateField(default=timezone.localdate, verbose_name='datum provedení')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='refuellings', verbose_name='vytvořil'
     )
-    machine = models.ForeignKey(
-        'machines.Machine', on_delete=models.PROTECT, related_name='refuels', verbose_name='stroj'
+    notes = models.TextField(blank=True, verbose_name='poznámky')
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING, verbose_name='stav')
+    reviewed_at = models.DateTimeField(null=True, blank=True, verbose_name='posouzeno')
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name='reviewed_refuellings',
+        null=True,
+        blank=True,
+        verbose_name='posoudil',
     )
-    # Not nullable: a refuel row exists only because someone typed a number.
-    litres = models.DecimalField(max_digits=12, decimal_places=2, verbose_name='natankované litry')
 
     class Meta:
-        ordering = ['-id']
+        ordering = ['-performed_on', '-created_at']
         verbose_name = 'tankování'
         verbose_name_plural = 'tankování'
 
     def __str__(self):
-        return f'{self.machine} - {self.litres} l (WorkOrder #{self.work_order_id})'
+        return f'Refuelling #{self.pk} ({self.performed_on})'
+
+    @property
+    def is_approved(self):
+        return self.status == self.Status.APPROVED
+
+
+class MachineRefuel(models.Model):
+    """Fuel put into one machine on a refuelling entry, in litres."""
+
+    refuelling = models.ForeignKey(
+        Refuelling, on_delete=models.CASCADE, related_name='machine_refuels', verbose_name='tankování'
+    )
+    machine = models.ForeignKey(
+        'machines.Machine', on_delete=models.PROTECT, related_name='refuels', verbose_name='stroj'
+    )
+    # Null only on fill-ups recorded before sources existed; the form requires it.
+    source = models.ForeignKey(
+        'machines.FuelSource',
+        on_delete=models.PROTECT,
+        related_name='refuels',
+        null=True,
+        blank=True,
+        verbose_name='zdroj',
+    )
+    litres = models.DecimalField(max_digits=12, decimal_places=2, verbose_name='natankované litry')
+
+    class Meta:
+        # The order the rows were typed.
+        ordering = ['id']
+        verbose_name = 'natankovaný stroj'
+        verbose_name_plural = 'natankované stroje'
+
+    def __str__(self):
+        return f'{self.machine} - {self.litres} l (Refuelling #{self.refuelling_id})'
 
 
 class JobPhoto(models.Model):

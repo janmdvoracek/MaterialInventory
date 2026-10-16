@@ -1,0 +1,19 @@
+{% comment %}
+The Tankování form body, shared by refuel_form.html and refuel_edit.html: the
+refuelling's own fields, then the REFUEL_SECTIONS rows (_row_sections.html).
+The caller supplies the <form> tag, the CSRF token, a leading decoy submit and
+the real submit button. As on the job form, every error must render here.
+{% endcomment %}
+{% for error in order_form.non_field_errors %}<p class="messages error">{{ error }}</p>{% endfor %}
+
+<label for="{{ order_form.notes.id_for_label }}">Poznámky</label>
+{{ order_form.notes }}
+{% for error in order_form.notes.errors %}<p class="messages error">{{ error }}</p>{% endfor %}
+
+<div class="date-override">
+    <label for="{{ order_form.performed_on.id_for_label }}">Datum provedení</label>
+    {{ order_form.performed_on }}
+    {% for error in order_form.performed_on.errors %}<p class="messages error">{{ error }}</p>{% endfor %}
+</div>
+
+{% include "workorders/_row_sections.html" %}

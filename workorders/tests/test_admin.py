@@ -7,9 +7,9 @@ from django.urls import reverse
 from django.utils import timezone
 
 from accounts.models import User
-from machines.models import Machine
+from machines.models import FuelSource, Machine
 from materials.models import Material
-from workorders.models import MachineRefuel, MachineUsage, StockMovement, WorkerHours, WorkOrder
+from workorders.models import MachineRefuel, MachineUsage, Refuelling, StockMovement, WorkerHours, WorkOrder
 
 from .helpers import ReviewFixtureMixin, default_location
 
@@ -41,14 +41,6 @@ class WorkOrderAdminTests(TestCase):
             'machine_usages-MAX_NUM_FORMS': '1000',
             'machine_usages-0-machine': self.machine.pk,
             'machine_usages-0-hours': '3',
-            # Fuel is its own inline, so its own management form; a missing one
-            # is a 200 with an invalid formset rather than a saved job.
-            'machine_refuels-TOTAL_FORMS': '1',
-            'machine_refuels-INITIAL_FORMS': '0',
-            'machine_refuels-MIN_NUM_FORMS': '0',
-            'machine_refuels-MAX_NUM_FORMS': '1000',
-            'machine_refuels-0-machine': self.machine.pk,
-            'machine_refuels-0-litres': '45',
             'worker_hours-TOTAL_FORMS': '1',
             'worker_hours-INITIAL_FORMS': '0',
             'worker_hours-MIN_NUM_FORMS': '0',
@@ -76,14 +68,40 @@ class WorkOrderAdminTests(TestCase):
         self.assertEqual(usage.machine, self.machine)
         self.assertEqual(usage.hours, Decimal('3'))
 
-        refuel = MachineRefuel.objects.get(work_order=work_order)
-        self.assertEqual(refuel.machine, self.machine)
-        self.assertEqual(refuel.litres, Decimal('45'))
-
         # Labour hours are correctable from the admin as well as the form.
         entry = WorkerHours.objects.get(work_order=work_order)
         self.assertEqual(entry.user, self.admin_user)
         self.assertEqual(entry.hours, Decimal('7'))
+
+    def test_can_create_a_refuelling_with_its_fill_ups_via_admin(self):
+        source = FuelSource.objects.create(name='Nádrž dílna')
+        self.client.force_login(self.admin_user)
+        data = {
+            'performed_on': timezone.localdate().isoformat(),
+            'notes': '',
+            'status': Refuelling.Status.APPROVED,
+            'machine_refuels-TOTAL_FORMS': '1',
+            'machine_refuels-INITIAL_FORMS': '0',
+            'machine_refuels-MIN_NUM_FORMS': '0',
+            'machine_refuels-MAX_NUM_FORMS': '1000',
+            'machine_refuels-0-machine': self.machine.pk,
+            'machine_refuels-0-source': source.pk,
+            'machine_refuels-0-litres': '45',
+        }
+        response = self.client.post(reverse('admin:workorders_refuelling_add'), data)
+        self.assertEqual(response.status_code, 302)
+        refuelling = Refuelling.objects.get()
+        self.assertEqual(refuelling.created_by, self.admin_user)
+        refuel = MachineRefuel.objects.get(refuelling=refuelling)
+        self.assertEqual((refuel.machine, refuel.source, refuel.litres), (self.machine, source, Decimal('45')))
+
+    def test_fuel_sources_are_managed_like_locations(self):
+        self.client.force_login(self.admin_user)
+        response = self.client.post(
+            reverse('admin:machines_fuelsource_add'), {'name': 'Čerpací stanice', 'is_active': 'on'}
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(FuelSource.objects.get(name='Čerpací stanice').is_active)
 
 
 class AdminJobDeleteTests(ReviewFixtureMixin, TestCase):

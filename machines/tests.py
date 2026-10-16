@@ -1,7 +1,7 @@
 from django.db import IntegrityError, transaction
 from django.test import TestCase
 
-from .models import Machine
+from .models import FuelSource, Machine
 
 
 class MachineModelTests(TestCase):
@@ -21,3 +21,16 @@ class MachineModelTests(TestCase):
         Machine.objects.create(name='Crusher A')
         with self.assertRaises(IntegrityError), transaction.atomic():
             Machine.objects.create(name='Crusher A')
+
+
+class FuelSourceModelTests(TestCase):
+    def test_fuel_source_str(self):
+        self.assertEqual(str(FuelSource.objects.create(name='Nádrž dílna')), 'Nádrž dílna')
+
+    def test_fuel_source_is_active_by_default(self):
+        self.assertTrue(FuelSource.objects.create(name='Nádrž dílna').is_active)
+
+    def test_fuel_source_name_unique(self):
+        FuelSource.objects.create(name='Nádrž dílna')
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            FuelSource.objects.create(name='Nádrž dílna')

@@ -212,6 +212,13 @@ class AdminIndexTests(TestCase):
         with self.assertRaises(NoReverseMatch):
             reverse('admin:workorders_stockmovement_changelist')
 
+    def test_fill_ups_have_no_section_of_their_own(self):
+        # Edited as an inline on the refuelling, like line items on the job.
+        html = self.client.get(reverse('admin:index')).content.decode()
+        self.assertNotIn('Natankované stroje', html)
+        with self.assertRaises(NoReverseMatch):
+            reverse('admin:workorders_machinerefuel_changelist')
+
     def test_groups_are_not_in_the_admin(self):
         # Permissions play no part in this app, and every account that can reach
         # the admin is a superuser, which bypasses them anyway.
@@ -288,7 +295,7 @@ class AdminCzechTests(TestCase):
 
     def test_index_lists_apps_and_models_in_czech(self):
         html = self.client.get(reverse('admin:index')).content.decode()
-        for label in ('Materiály', 'Stroje', 'Zakázky', 'Uživatelé'):
+        for label in ('Materiály', 'Stroje', 'Zdroje paliva', 'Zakázky', 'Tankování', 'Uživatelé'):
             with self.subTest(label=label):
                 self.assertIn(label, html)
 

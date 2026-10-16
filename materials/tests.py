@@ -9,7 +9,7 @@ from django.test import TestCase
 
 from accounts.models import User
 from locations.models import Location
-from machines.models import Machine
+from machines.models import FuelSource, Machine
 
 from .models import Material
 
@@ -36,12 +36,13 @@ class SeedDataCommandTests(TestCase):
         path.write_text(text)
         return str(path)
 
-    def _run(self, materials='', machines='', users='', locations=''):
+    def _run(self, materials='', machines='', users='', locations='', fuel_sources=''):
         call_command(
             'seed_data',
             materials_file=self._write_csv('materials.csv', materials),
             machines_file=self._write_csv('machines.csv', machines),
             locations_file=self._write_csv('locations.csv', locations),
+            fuel_sources_file=self._write_csv('fuel_sources.csv', fuel_sources),
             users_file=self._write_csv('users.csv', users),
         )
 
@@ -67,9 +68,29 @@ class SeedDataCommandTests(TestCase):
             materials_file=str(self.tmp_path / 'none.csv'),
             machines_file=str(self.tmp_path / 'none.csv'),
             locations_file=str(path),
+            fuel_sources_file=str(self.tmp_path / 'none.csv'),
             users_file=str(self.tmp_path / 'none.csv'),
         )
         self.assertTrue(Location.objects.exists())
+
+    def test_seed_fuel_sources_creates_and_leaves_retired_ones_retired(self):
+        FuelSource.objects.create(name='Nádrž dílna', is_active=False)
+        self._run(fuel_sources='name\nNádrž dílna\nČerpací stanice\n')
+        self.assertEqual(FuelSource.objects.count(), 2)
+        self.assertFalse(FuelSource.objects.get(name='Nádrž dílna').is_active)
+
+    def test_seed_fuel_sources_example_file_loads(self):
+        path = Path(__file__).resolve().parent.parent / 'seed_data' / 'fuel_sources.example.csv'
+        none = str(self.tmp_path / 'none.csv')
+        call_command(
+            'seed_data',
+            materials_file=none,
+            machines_file=none,
+            locations_file=none,
+            fuel_sources_file=str(path),
+            users_file=none,
+        )
+        self.assertTrue(FuelSource.objects.exists())
 
     def test_seed_materials_creates_and_updates(self):
         self._run(materials='sku,name\nSKU1,Steel Bar\n')
@@ -205,6 +226,7 @@ class SeedDataCommandTests(TestCase):
             materials_file=str(self.tmp_path / 'does-not-exist-materials.csv'),
             machines_file=str(self.tmp_path / 'does-not-exist-machines.csv'),
             locations_file=str(self.tmp_path / 'does-not-exist-locations.csv'),
+            fuel_sources_file=str(self.tmp_path / 'does-not-exist-fuel-sources.csv'),
             users_file=str(self.tmp_path / 'does-not-exist-users.csv'),
         )
         self.assertEqual(Material.objects.count(), 0)

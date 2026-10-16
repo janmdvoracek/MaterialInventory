@@ -6,7 +6,6 @@ from typing import NamedTuple
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.core.exceptions import ValidationError
 from django.core.files.storage import default_storage
 from django.db import transaction
 from django.db.models import Sum
@@ -19,64 +18,32 @@ from django.views.decorators.http import require_POST
 from accounts.decorators import REVIEWER_ROLES, role_required
 
 from .forms import JOB_SECTIONS, PHOTO_MAX_COUNT, JobFilterForm, WorkOrderForm, job_row_formset
-from .models import JobPhoto, MachineRefuel, MachineUsage, StockMovement, WorkerHours, WorkOrder
+from .models import JobPhoto, MachineUsage, Refuelling, StockMovement, WorkerHours, WorkOrder
 from .reports import _list_page_context
 
 
 class JobRows(NamedTuple):
-    """Everything one submission records, split the way the tables are.
-
-    One machines-section row can yield a usage, a refuel or both (see `MachineUsageForm`).
-    """
+    """Everything one job submission records, split the way the tables are."""
 
     consumed: list
     produced: list
     usages: list
-    refuels: list
     worker_hours: dict
 
 
+def _filled_rows(formset, field):
+    """The rows of one section that name something in `field`, as typed."""
+    return [form.cleaned_data for form in formset if form.cleaned_data.get(field)]
+
+
 def _collect_rows(formsets):
-    """The filled-in rows of each section, as typed. Duplicates were already refused."""
-
-    def filled(prefix, field):
-        return [form.cleaned_data for form in formsets[prefix] if form.cleaned_data.get(field)]
-
-    machine_rows = filled('machines', 'machine')
+    """The filled-in rows of each section. Duplicates were already refused."""
     return JobRows(
-        consumed=filled('consumed', 'material'),
-        produced=filled('produced', 'material'),
-        usages=[row for row in machine_rows if not _refuel_only(row)],
-        refuels=[row for row in machine_rows if row.get('litres') is not None],
-        worker_hours={row['user']: row['hours'] for row in filled('workers', 'user')},
+        consumed=_filled_rows(formsets['consumed'], 'material'),
+        produced=_filled_rows(formsets['produced'], 'material'),
+        usages=_filled_rows(formsets['machines'], 'machine'),
+        worker_hours={row['user']: row['hours'] for row in _filled_rows(formsets['workers'], 'user')},
     )
-
-
-def _refuel_only(row):
-    """„stroj + litry" and nothing else: a fill-up, with no usage row beside it."""
-    return row.get('litres') is not None and row.get('hours') is None and row.get('tons') is None
-
-
-def _is_fuel_only(rows):
-    """True when the submission records nothing but fill-ups.
-
-    Such a job is exempt from the mass balance and from `WORK_FIELDS`.
-    """
-    return bool(rows.refuels) and not (rows.consumed or rows.produced or rows.usages or rows.worker_hours)
-
-
-# Required on every job except a fuel-only one; see `WorkOrderForm`.
-WORK_FIELDS = ('location', 'description', 'hours')
-
-
-def _require_work_fields(order_form):
-    """Put each field's own "required" message on any of `WORK_FIELDS` left empty."""
-    for name in WORK_FIELDS:
-        if order_form.cleaned_data.get(name) in (None, ''):
-            # code='required' so `_form_error_summary` counts it with the rest.
-            order_form.add_error(
-                name, ValidationError(order_form.fields[name].error_messages['required'], code='required')
-            )
 
 
 # A banner at the top: field errors far down a phone screen are easy to miss.
@@ -85,7 +52,7 @@ FORM_ERRORS_MESSAGE = 'Formulář obsahuje chyby, opravte prosím vyznačená po
 
 
 def _form_error_summary(order_form, formsets):
-    """The banner for a refused job page: the required-field wording if any error is `required`."""
+    """The banner for a refused entry page: the required-field wording if any error is `required`."""
     forms = [order_form, *(form for formset in formsets.values() for form in formset.forms)]
     if any(error.code == 'required' for form in forms for errors in form.errors.as_data().values() for error in errors):
         return REQUIRED_FIELDS_MESSAGE
@@ -119,20 +86,16 @@ def _apply_photos(work_order, cleaned_data):
 
 
 def _write_job_rows(work_order, author, own_hours, rows):
-    """Replace the job's hours, line items, machine usage and fill-ups with the submitted rows.
+    """Replace the job's hours, line items and machine usage with the submitted rows.
 
-    Call inside `transaction.atomic()`. The rows belong to `author`, not the
-    editor. `own_hours` is None on a fuel-only job, which nobody claimed hours
-    for, and then the author gets no `WorkerHours` row at all.
+    Call inside `transaction.atomic()`. The rows belong to `author`, not the editor.
     """
     # Derived from the hours rows, so the two can't disagree.
     work_order.collaborators.set(rows.worker_hours.keys())
     work_order.worker_hours.all().delete()
-    hours_rows = list(rows.worker_hours.items())
-    if own_hours is not None:
-        hours_rows.insert(0, (author, own_hours))
     WorkerHours.objects.bulk_create(
-        WorkerHours(work_order=work_order, user=user, hours=hours) for user, hours in hours_rows
+        WorkerHours(work_order=work_order, user=user, hours=hours)
+        for user, hours in [(author, own_hours), *rows.worker_hours.items()]
     )
 
     work_order.movements.all().delete()
@@ -158,16 +121,6 @@ def _write_job_rows(work_order, author, own_hours, rows):
         for row in rows.usages
     )
 
-    # A machine that was only refuelled has a row here and none above.
-    work_order.machine_refuels.all().delete()
-    MachineRefuel.objects.bulk_create(
-        MachineRefuel(work_order=work_order, machine=row['machine'], litres=row['litres']) for row in rows.refuels
-    )
-
-
-# Only the pressed submit button is posted, so its name being present is the signal.
-ADD_ROW_BUTTONS = {f'add_{section.prefix}': section.prefix for section in JOB_SECTIONS}
-REMOVE_ROW_BUTTONS = {f'remove_{section.prefix}': section.prefix for section in JOB_SECTIONS}
 
 # Applied to every section on every rebuild, so no POST can leave one empty.
 MIN_ROWS_PER_SECTION = 1
@@ -176,14 +129,17 @@ MIN_ROWS_PER_SECTION = 1
 MAX_ROWS_PER_SECTION = 1000
 
 
-def _pressed_row_button(post_data):
-    """`(prefix, +1 or -1)` for a pressed row button, or None for a submission."""
-    for name, prefix in ADD_ROW_BUTTONS.items():
-        if name in post_data:
-            return prefix, 1
-    for name, prefix in REMOVE_ROW_BUTTONS.items():
-        if name in post_data:
-            return prefix, -1
+def _pressed_row_button(post_data, sections):
+    """`(prefix, +1 or -1)` for a pressed row button of `sections`, or None for a submission.
+
+    Only the pressed submit button is posted, so its name being present is the signal.
+    """
+    for section in sections:
+        if f'add_{section.prefix}' in post_data:
+            return section.prefix, 1
+    for section in sections:
+        if f'remove_{section.prefix}' in post_data:
+            return section.prefix, -1
     return None
 
 
@@ -232,26 +188,20 @@ def _section_form_kwargs(prefix, *, author, viewer, keep=None):
     return {'keep': (keep or {}).get(prefix, ())}
 
 
-def _job_forms(request, *, author, viewer, order_form_user=None, keep=None, initial=None, photos=None):
-    """Every form on the job page. Returns `(order_form, formsets_by_prefix, submitted)`.
+def _entry_forms(request, *, form_class, sections, order_kwargs, form_kwargs, initial=None):
+    """Every form on an entry page (a job or a refuelling). Returns `(order_form, formsets_by_prefix, submitted)`.
 
     - Row button: rebuilt *unbound* from the POST with that section resized, so
       a half-filled form comes back without errors.
     - Any other POST: bound, and `submitted` is True.
     - GET: fresh forms, pre-filled from `initial` (keyed `order` and by section prefix).
 
-    `keep` is keyed by section prefix, plus `location` for the job form's own picker.
-    `photos` is the job's stored photos on `job_edit`, which offers to remove them.
+    `form_kwargs` holds each section's row-form kwargs, keyed by prefix.
     """
-    order_kwargs = {'user': order_form_user, 'keep_location': (keep or {}).get('location', ()), 'photos': photos}
-    form_kwargs = {
-        section.prefix: _section_form_kwargs(section.prefix, author=author, viewer=viewer, keep=keep)
-        for section in JOB_SECTIONS
-    }
-    pressed = _pressed_row_button(request.POST) if request.method == 'POST' else None
+    pressed = _pressed_row_button(request.POST, sections) if request.method == 'POST' else None
     if pressed:
         pressed_prefix, delta = pressed
-        order_form = WorkOrderForm(**order_kwargs)
+        order_form = form_class(**order_kwargs)
         # Read off the form's own fields, so „Zapsat za" is carried when present;
         # every value of a multi-value one, so a ticked „Odebrat" stays ticked.
         order_form.initial = {
@@ -261,7 +211,7 @@ def _job_forms(request, *, author, viewer, order_form_user=None, keep=None, init
             for name, field in order_form.fields.items()
         }
         formsets = {}
-        for section in JOB_SECTIONS:
+        for section in sections:
             rows, blank_rows = _resized_section(
                 _submitted_rows(request.POST, section),
                 delta if section.prefix == pressed_prefix else 0,
@@ -272,60 +222,104 @@ def _job_forms(request, *, author, viewer, order_form_user=None, keep=None, init
         return order_form, formsets, False
     if request.method == 'POST':
         # request.FILES for „Fotky"; the rows carry no upload of their own.
-        order_form = WorkOrderForm(request.POST, request.FILES, **order_kwargs)
+        order_form = form_class(request.POST, request.FILES, **order_kwargs)
         formsets = {
             section.prefix: job_row_formset(section, data=request.POST, form_kwargs=form_kwargs[section.prefix])
-            for section in JOB_SECTIONS
+            for section in sections
         }
         return order_form, formsets, True
     initial = initial or {}
-    order_form = WorkOrderForm(initial=initial.get('order'), **order_kwargs)
+    order_form = form_class(initial=initial.get('order'), **order_kwargs)
     formsets = {
         section.prefix: job_row_formset(
             section, rows=initial.get(section.prefix, ()), form_kwargs=form_kwargs[section.prefix]
         )
-        for section in JOB_SECTIONS
+        for section in sections
     }
     return order_form, formsets, False
+
+
+def _job_forms(request, *, author, viewer, order_form_user=None, keep=None, initial=None, photos=None):
+    """The job page's forms (see `_entry_forms`).
+
+    `keep` is keyed by section prefix, plus `location` for the job form's own picker.
+    `photos` is the job's stored photos on `job_edit`, which offers to remove them.
+    """
+    keep = keep or {}
+    return _entry_forms(
+        request,
+        form_class=WorkOrderForm,
+        sections=JOB_SECTIONS,
+        order_kwargs={'user': order_form_user, 'keep_location': keep.get('location', ()), 'photos': photos},
+        form_kwargs={
+            section.prefix: _section_form_kwargs(section.prefix, author=author, viewer=viewer, keep=keep)
+            for section in JOB_SECTIONS
+        },
+        initial=initial,
+    )
+
+
+def _forms_valid(request, order_form, formsets):
+    """True if every form on the page validates; otherwise puts up the error banner."""
+    if order_form.is_valid() and all(formset.is_valid() for formset in formsets.values()):
+        return True
+    messages.error(request, _form_error_summary(order_form, formsets))
+    return False
 
 
 def _valid_job_rows(request, order_form, formsets):
     """The submitted rows, or None if any form is invalid or the job doesn't balance.
 
-    A fuel-only job skips both the mass balance and `WORK_FIELDS`; anything that
-    records work is held to both. The balance error has no field, so it goes on
-    `messages`, and so does a banner for any field error (`_form_error_summary`).
+    The balance error has no field, so it goes on `messages`, and so does a
+    banner for any field error (`_form_error_summary`). Valid rows are
+    balanced even when a job field failed, so both errors show at once.
     """
-    if not (order_form.is_valid() and all(formset.is_valid() for formset in formsets.values())):
+    order_valid = order_form.is_valid()
+    rows_valid = all(formset.is_valid() for formset in formsets.values())
+    if not (order_valid and rows_valid):
         messages.error(request, _form_error_summary(order_form, formsets))
+    if not rows_valid:
         return None
     rows = _collect_rows(formsets)
-    if _is_fuel_only(rows):
-        return rows
-    _require_work_fields(order_form)
-    if order_form.errors:
-        messages.error(request, _form_error_summary(order_form, formsets))
     balance_error = _balance_error(rows.consumed, rows.produced)
     if balance_error:
         messages.error(request, balance_error)
-    # add_error() has already marked the form invalid, so its errors render.
-    return None if balance_error or order_form.errors else rows
+    return rows if order_valid and not balance_error else None
 
 
-def _job_context(order_form, formsets, **extra):
-    """The job page's context: the job form, `sections` in render order, and each formset by name.
+def _entry_context(order_form, formsets, sections, **extra):
+    """An entry page's context: its form, `sections` in render order, and each formset by name.
 
     The row bounds are rendered so `job_rows.js` reads them instead of restating them.
     """
     return {
         'order_form': order_form,
-        'sections': [(section, formsets[section.prefix]) for section in JOB_SECTIONS],
+        'sections': [(section, formsets[section.prefix]) for section in sections],
         'min_rows': MIN_ROWS_PER_SECTION,
         'max_rows': MAX_ROWS_PER_SECTION,
-        'photo_max_count': PHOTO_MAX_COUNT,
-        **{section.context_name: formsets[section.prefix] for section in JOB_SECTIONS},
+        **{section.context_name: formsets[section.prefix] for section in sections},
         **extra,
     }
+
+
+def _job_context(order_form, formsets, **extra):
+    return _entry_context(order_form, formsets, JOB_SECTIONS, photo_max_count=PHOTO_MAX_COUNT, **extra)
+
+
+def _review_on_submit(submitter):
+    """A new entry's review fields. The submitter decides: a manager's entry,
+    even one typed for a worker, is approved at once; a worker's waits."""
+    if submitter.is_manager_or_admin:
+        return {'status': WorkOrder.Status.APPROVED, 'reviewed_at': timezone.now(), 'reviewed_by': submitter}
+    return {'status': WorkOrder.Status.PENDING}
+
+
+def _approve(entry, reviewer):
+    """Approve a job or a refuelling."""
+    entry.status = entry.Status.APPROVED
+    entry.reviewed_at = timezone.now()
+    entry.reviewed_by = reviewer
+    entry.save(update_fields=['status', 'reviewed_at', 'reviewed_by'])
 
 
 @login_required
@@ -338,9 +332,7 @@ def transform_create(request):
     if submitted:
         rows = _valid_job_rows(request, order_form, formsets)
         if rows is not None:
-            # The submitter decides: a manager's job, even one typed for a
-            # worker, is approved at once; a worker's waits for review.
-            approved = request.user.is_manager_or_admin
+            review = _review_on_submit(request.user)
             with transaction.atomic():
                 work_order = WorkOrder.objects.create(
                     created_by=author,
@@ -348,16 +340,14 @@ def transform_create(request):
                     description=order_form.cleaned_data['description'],
                     notes=order_form.cleaned_data['notes'],
                     performed_on=order_form.cleaned_data['performed_on'],
-                    status=WorkOrder.Status.APPROVED if approved else WorkOrder.Status.PENDING,
-                    reviewed_at=timezone.now() if approved else None,
-                    reviewed_by=request.user if approved else None,
+                    **review,
                 )
                 _write_job_rows(work_order, author, order_form.cleaned_data['hours'], rows)
                 _apply_photos(work_order, order_form.cleaned_data)
             messages.success(
                 request,
                 'Zpracování bylo zaznamenáno.'
-                if approved
+                if review['status'] == WorkOrder.Status.APPROVED
                 else 'Zpracování bylo zaznamenáno a čeká na schválení vedoucím.',
             )
             return redirect('transform_create')
@@ -407,6 +397,7 @@ def job_dashboard(request):
         {
             'form': form,
             'pending_count': WorkOrder.objects.filter(status=WorkOrder.Status.PENDING).count(),
+            'pending_refuel_count': Refuelling.objects.filter(status=Refuelling.Status.PENDING).count(),
             **_list_page_context(request, jobs),
         },
     )
@@ -437,7 +428,6 @@ def job_detail(request, pk):
             'consumed': consumed,
             'produced': produced,
             'machine_usages': work_order.machine_usages.select_related('machine'),
-            'machine_refuels': work_order.machine_refuels.select_related('machine'),
             'worker_hours': work_order.worker_hours.select_related('user'),
         },
     )
@@ -477,13 +467,11 @@ def job_edit(request, pk):
     author = work_order.created_by
     consumed, produced = _job_line_items(work_order)
     usages = list(work_order.machine_usages.all())
-    refuels = list(work_order.machine_refuels.all())
-    # Keep retired records the job names selectable; see `_offer_recorded`. A
-    # machine the job only refuelled counts, or its fill-up would be dropped.
+    # Keep retired records the job names selectable; see `_offer_recorded`.
     keep = {
         'consumed': [movement.material_id for movement in consumed],
         'produced': [movement.material_id for movement in produced],
-        'machines': [usage.machine_id for usage in usages] + [refuel.machine_id for refuel in refuels],
+        'machines': [usage.machine_id for usage in usages],
         'location': [work_order.location_id] if work_order.location_id else [],
     }
     order_form, formsets, submitted = _job_forms(
@@ -491,9 +479,7 @@ def job_edit(request, pk):
         author=author,
         viewer=request.user,
         keep=keep,
-        initial=_edit_initial(work_order, author, consumed, produced, usages, refuels)
-        if request.method == 'GET'
-        else None,
+        initial=_edit_initial(work_order, author, consumed, produced, usages) if request.method == 'GET' else None,
         photos=work_order.photos.all(),
     )
     if submitted:
@@ -514,26 +500,12 @@ def job_edit(request, pk):
     return render(request, 'workorders/job_edit.html', _job_context(order_form, formsets, work_order=work_order))
 
 
-def _machine_section_rows(usages, refuels):
-    """The machines section as the form takes it: one row per machine, usage and fuel merged.
-
-    Either table may hold a machine the other doesn't. Fill-ups are summed,
-    since only an admin edit can give one machine two of them.
-    """
-    rows = {}
-    for usage in usages:
-        rows[usage.machine_id] = {'machine': usage.machine_id, 'hours': usage.hours, 'tons': usage.tons}
-    for refuel in refuels:
-        row = rows.setdefault(refuel.machine_id, {'machine': refuel.machine_id})
-        row['litres'] = (row.get('litres') or Decimal('0')) + refuel.litres
-    # Trimmed here rather than per field, since which of them a row carries varies.
-    return [
-        {key: _trim(value) if isinstance(value, Decimal) else value for key, value in row.items()}
-        for row in rows.values()
-    ]
+def _trimmed(row):
+    """A row's Decimals passed through `_trim`; None (unknown) stays None."""
+    return {key: _trim(value) if isinstance(value, Decimal) else value for key, value in row.items()}
 
 
-def _edit_initial(work_order, author, consumed, produced, usages, refuels):
+def _edit_initial(work_order, author, consumed, produced, usages):
     """`job_edit`'s pre-fill: the job as recorded, quantities as they were typed."""
     own_hours = work_order.worker_hours.filter(user=author).first()
     return {
@@ -546,7 +518,9 @@ def _edit_initial(work_order, author, consumed, produced, usages, refuels):
         },
         'consumed': [{'material': m.material_id, 'quantity': _trim(m.typed_quantity)} for m in consumed],
         'produced': [{'material': m.material_id, 'quantity': _trim(m.typed_quantity)} for m in produced],
-        'machines': _machine_section_rows(usages, refuels),
+        'machines': [
+            _trimmed({'machine': usage.machine_id, 'hours': usage.hours, 'tons': usage.tons}) for usage in usages
+        ],
         'workers': [
             {'user': row.user_id, 'hours': _trim(row.hours)} for row in work_order.worker_hours.exclude(user=author)
         ],
@@ -557,10 +531,7 @@ def _edit_initial(work_order, author, consumed, produced, usages, refuels):
 @require_POST
 def job_approve(request, pk):
     work_order = get_object_or_404(WorkOrder, pk=pk)
-    work_order.status = WorkOrder.Status.APPROVED
-    work_order.reviewed_at = timezone.now()
-    work_order.reviewed_by = request.user
-    work_order.save(update_fields=['status', 'reviewed_at', 'reviewed_by'])
+    _approve(work_order, request.user)
     messages.success(request, 'Zpracování bylo schváleno.')
     return redirect('job_detail', pk=work_order.pk)
 
@@ -582,6 +553,5 @@ def job_delete(request, pk):
             'consumed': consumed,
             'produced': produced,
             'machine_usages': work_order.machine_usages.select_related('machine'),
-            'machine_refuels': work_order.machine_refuels.select_related('machine'),
         },
     )

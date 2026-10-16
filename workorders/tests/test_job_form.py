@@ -29,7 +29,15 @@ class EmptyLabelTests(TestCase):
 
     def test_pages_have_no_english_placeholder(self):
         self.client.force_login(self.manager)
-        for name in ('transform_create', 'machine_dashboard', 'material_dashboard', 'time_worked', 'job_dashboard'):
+        for name in (
+            'transform_create',
+            'refuel_create',
+            'refuel_dashboard',
+            'machine_dashboard',
+            'material_dashboard',
+            'time_worked',
+            'job_dashboard',
+        ):
             with self.subTest(view=name):
                 self.assertNotContains(self.client.get(reverse(name)), self.DJANGO_DEFAULT)
 

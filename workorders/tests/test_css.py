@@ -33,8 +33,9 @@ class NumberBoxWidthTests(TestCase):
         for name, css_class in wide.items():
             with self.subTest(name=name):
                 self.assertRegex(content, rf'<input(?=[^>]*name="{name}")[^>]*class="{css_class}"')
-        # The other number boxes stay three characters wide.
-        for name in ('machines-0-litres', 'machines-__prefix__-litres'):
+        # Litres stay three characters wide, or the two-picker refuel row wraps on a phone.
+        content = self.client.get(reverse('refuel_create')).content.decode()
+        for name in ('refuels-0-litres', 'refuels-__prefix__-litres'):
             with self.subTest(name=name):
                 self.assertNotRegex(content, rf'<input(?=[^>]*name="{name}")[^>]*class=')
 

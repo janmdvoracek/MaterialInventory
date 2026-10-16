@@ -1,11 +1,13 @@
 from django.urls import path
 
-from . import pwa, reports, views
+from . import pwa, refuels, reports, views
 
 urlpatterns = [
     # Zpracování is the landing page — it is what a worker opens the app to do,
     # and it is where LOGIN_REDIRECT_URL and the header logo point.
     path('', views.transform_create, name='transform_create'),
+    # Tankování: a refuelling is its own entry, not part of a job.
+    path('refuel/', refuels.refuel_create, name='refuel_create'),
     path('machines/', reports.machine_dashboard, name='machine_dashboard'),
     path('materials/', reports.material_dashboard, name='material_dashboard'),
     path('hours/', reports.time_worked, name='time_worked'),
@@ -49,4 +51,10 @@ urlpatterns = [
     path('jobs/<int:pk>/upravit/', views.job_edit, name='job_edit'),
     path('jobs/<int:pk>/schvalit/', views.job_approve, name='job_approve'),
     path('jobs/<int:pk>/smazat/', views.job_delete, name='job_delete'),
+    # Manager review of refuellings, mirroring the job pages above.
+    path('refuels/', refuels.refuel_dashboard, name='refuel_dashboard'),
+    path('refuels/<int:pk>/', refuels.refuel_detail, name='refuel_detail'),
+    path('refuels/<int:pk>/upravit/', refuels.refuel_edit, name='refuel_edit'),
+    path('refuels/<int:pk>/schvalit/', refuels.refuel_approve, name='refuel_approve'),
+    path('refuels/<int:pk>/smazat/', refuels.refuel_delete, name='refuel_delete'),
 ]

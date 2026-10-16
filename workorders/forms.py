@@ -9,10 +9,10 @@ from django.utils import timezone
 
 from accounts.models import User
 from locations.models import Location
-from machines.models import Machine
+from machines.models import FuelSource, Machine
 from materials.models import Material
 
-from .models import WorkOrder
+from .models import ReviewStatus
 from .photos import UnreadablePhoto, shrink_photo
 
 # Upper bounds for the job form's number boxes, rendered as each input's `max`.
@@ -124,37 +124,47 @@ def collaborator_queryset(user, viewer=None):
     return queryset
 
 
-class WorkOrderForm(forms.Form):
-    """The job's own fields.
+class EntryForm(forms.Form):
+    """The fields a job and a refuelling share: optional notes and a date that isn't in the future."""
 
-    „Lokace", „Popis" and „Moje hodiny" carry `required=False` and are
-    re-imposed by `_require_work_fields`, because a fuel-only job is exempt and
-    only the view can tell.
-    """
-
-    # Active locations, plus `keep_location` on `job_edit` (see `_offer_recorded`).
-    location = forms.ModelChoiceField(
-        queryset=Location.objects.filter(is_active=True),
-        required=False,
-        label='Lokace',
-        empty_label='Vyberte lokaci',
-    )
-
-    description = forms.CharField(
-        max_length=DESCRIPTION_MAX_LENGTH,
-        required=False,
-        label='Popis',
-        widget=forms.TextInput(attrs={'placeholder': 'Popis provedené práce'}),
-    )
     notes = forms.CharField(
         required=False,
         max_length=NOTES_MAX_LENGTH,
         label='Poznámky',
         widget=forms.Textarea(attrs={'rows': 4, 'placeholder': 'Doplňující poznámky (volitelné)'}),
     )
-    hours = _hours_field(
-        required=False, label='Moje hodiny', widget=forms.NumberInput(attrs={'placeholder': 'Odpracované hodiny'})
+    # `format` is required: the cs locale would render 02.09.2026, which
+    # <input type="date"> shows as blank.
+    performed_on = forms.DateField(
+        initial=timezone.localdate,
+        widget=forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
+        label='Datum provedení',
     )
+
+    def clean(self):
+        cleaned_data = super().clean()
+        performed_on = cleaned_data.get('performed_on')
+        if performed_on and performed_on > timezone.localdate():
+            self.add_error('performed_on', 'Datum provedení nemůže být v budoucnosti.')
+        return cleaned_data
+
+
+class WorkOrderForm(EntryForm):
+    """The job's own fields."""
+
+    # Active locations, plus `keep_location` on `job_edit` (see `_offer_recorded`).
+    location = forms.ModelChoiceField(
+        queryset=Location.objects.filter(is_active=True),
+        label='Lokace',
+        empty_label='Vyberte lokaci',
+    )
+
+    description = forms.CharField(
+        max_length=DESCRIPTION_MAX_LENGTH,
+        label='Popis',
+        widget=forms.TextInput(attrs={'placeholder': 'Popis provedené práce'}),
+    )
+    hours = _hours_field(label='Moje hodiny', widget=forms.NumberInput(attrs={'placeholder': 'Odpracované hodiny'}))
     # Gallery picks. Each file becomes a new `JobPhoto`; none replaces a stored one.
     # No `capture` here: it would hide the gallery.
     photo = MultipleFileField(
@@ -171,13 +181,6 @@ class WorkOrderForm(forms.Form):
         label='Vyfotit',
         widget=CameraInput(attrs={'accept': 'image/*', 'capture': 'environment'}),
         validators=[FileExtensionValidator(PHOTO_EXTENSIONS)],
-    )
-    # `format` is required: the cs locale would render 02.09.2026, which
-    # <input type="date"> shows as blank.
-    performed_on = forms.DateField(
-        initial=timezone.localdate,
-        widget=forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
-        label='Datum provedení',
     )
 
     def __init__(self, *args, user=None, keep_location=None, photos=None, **kwargs):
@@ -248,11 +251,12 @@ class WorkOrderForm(forms.Form):
 
     def clean(self):
         cleaned_data = super().clean()
-        performed_on = cleaned_data.get('performed_on')
-        if performed_on and performed_on > timezone.localdate():
-            self.add_error('performed_on', 'Datum provedení nemůže být v budoucnosti.')
         self._clean_photos(cleaned_data)
         return cleaned_data
+
+
+class RefuellingForm(EntryForm):
+    """A refuelling's own fields; its machines are the `refuels` section."""
 
 
 class UniqueChoiceFormSet(forms.BaseFormSet):
@@ -314,7 +318,15 @@ class MaterialRowFormSet(UniqueChoiceFormSet):
 
 class MachineRowFormSet(UniqueChoiceFormSet):
     unique_field = 'machine'
-    duplicate_error = 'Stroj „{name}“ je vybraný víckrát. Sečtěte motohodiny, tuny a litry do jednoho řádku.'
+    duplicate_error = 'Stroj „{name}“ je vybraný víckrát. Zapište ho jen do jednoho řádku.'
+
+
+class RefuelRowFormSet(UniqueChoiceFormSet):
+    unique_field = 'machine'
+    duplicate_error = (
+        'Stroj „{name}“ je vybraný víckrát. Sečtěte litry do jednoho řádku, '
+        'nebo tankování z jiného zdroje zapište zvlášť.'
+    )
 
 
 class WorkerRowFormSet(UniqueChoiceFormSet):
@@ -375,11 +387,10 @@ class MovementItemForm(RowForm):
 
 
 class MachineUsageForm(RowForm):
-    """One machine on a job: its usage and/or the fuel put into it.
+    """One machine on a job: its meter reading and the tonnage it processed.
 
-    Only the machine is required; a typed 0 counts as blank. A machine alone is
-    a usage row with unknown numbers. „Stroj + litry" with nothing else is a
-    `MachineRefuel` only, which is what makes fuel-only jobs possible.
+    Only the machine is required; a typed 0 counts as blank, and a machine alone
+    is a usage row with unknown numbers. Fuel is not recorded here (`RefuelRowForm`).
     """
 
     catalog_field = 'machine'
@@ -399,14 +410,6 @@ class MachineUsageForm(RowForm):
         label='Stav motohodin',
         widget=forms.NumberInput(attrs={'placeholder': 'mth', 'title': 'Stav motohodin', 'class': 'mth'}),
     )
-    litres = forms.DecimalField(
-        min_value=Decimal('0'),
-        max_value=LITRES_MAX,
-        decimal_places=2,
-        required=False,
-        label='Natankováno (l)',
-        widget=forms.NumberInput(attrs={'placeholder': 'l', 'title': 'Natankováno (l)'}),
-    )
     # Not part of the mass balance: chained machines each process the same material.
     tons = forms.DecimalField(
         min_value=Decimal('0'),
@@ -418,7 +421,7 @@ class MachineUsageForm(RowForm):
     )
 
     def _zero_is_blank(self, name):
-        """A typed 0 means "not recorded": stored as unknown, never as a zero or an empty fill-up."""
+        """A typed 0 means "not recorded": stored as unknown, never as a zero."""
         value = self.cleaned_data.get(name)
         return None if value == 0 else value
 
@@ -428,14 +431,45 @@ class MachineUsageForm(RowForm):
     def clean_tons(self):
         return self._zero_is_blank('tons')
 
-    def clean_litres(self):
-        return self._zero_is_blank('litres')
-
     def check_row(self, cleaned_data):
         machine = cleaned_data.get('machine')
-        numbers = (cleaned_data.get('hours'), cleaned_data.get('tons'), cleaned_data.get('litres'))
+        numbers = (cleaned_data.get('hours'), cleaned_data.get('tons'))
         if machine is None and any(value is not None for value in numbers):
             raise forms.ValidationError(self.missing_machine_error)
+
+
+class RefuelRowForm(RowForm):
+    """One machine on a refuelling: where the fuel came from and how much. Blank, or all three."""
+
+    catalog_field = 'machine'
+    incomplete_error = 'Vyplňte stroj, zdroj i litry, nebo řádek nechte prázdný.'
+
+    machine = forms.ModelChoiceField(
+        queryset=Machine.objects.filter(is_active=True),
+        required=False,
+        label='Stroj',
+        empty_label='Stroj',
+    )
+    # Active sources, plus `keep_source` on `refuel_edit` (see `_offer_recorded`).
+    source = forms.ModelChoiceField(
+        queryset=FuelSource.objects.filter(is_active=True),
+        required=False,
+        label='Zdroj',
+        empty_label='Zdroj',
+    )
+    litres = forms.DecimalField(
+        min_value=Decimal('0.01'),
+        max_value=LITRES_MAX,
+        decimal_places=2,
+        required=False,
+        label='Natankováno (l)',
+        # Three characters wide, unlike the tonnes boxes: two pickers share this row.
+        widget=forms.NumberInput(attrs={'placeholder': 'l', 'title': 'Natankováno (l)'}),
+    )
+
+    def __init__(self, *args, keep_source=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        _offer_recorded(self.fields['source'], keep_source)
 
 
 class WorkerHoursForm(RowForm):
@@ -462,7 +496,7 @@ class WorkerHoursForm(RowForm):
 
 @dataclass(frozen=True)
 class JobSection:
-    """One row section of the job form. `prefix` also names its row buttons (`add_<prefix>`)."""
+    """One row section of an entry form. `prefix` also names its row buttons (`add_<prefix>`)."""
 
     prefix: str
     context_name: str
@@ -478,6 +512,9 @@ JOB_SECTIONS = (
     JobSection('produced', 'produced_formset', 'Vyrobeno', MovementItemForm, MaterialRowFormSet),
     JobSection('machines', 'machine_formset', 'Použité stroje', MachineUsageForm, MachineRowFormSet),
 )
+
+# The refuelling form's one section.
+REFUEL_SECTIONS = (JobSection('refuels', 'refuel_formset', 'Tankované stroje', RefuelRowForm, RefuelRowFormSet),)
 
 
 def job_row_formset(section, *, data=None, rows=(), blank_rows=1, form_kwargs=None):
@@ -551,7 +588,7 @@ class TimeWorkedFilterForm(DateRangeFilterForm):
 
 
 class MachineFilterForm(DateRangeFilterForm):
-    """Filters Stroje's totals and usage rows. Manager-only, so nothing is hidden."""
+    """Filters Stroje's totals and usage rows (and, as `RefuelFilterForm`, its fuel). Manager-only."""
 
     field_order = ['machine', 'created_by', 'date_from', 'date_to']
     date_lookup = 'work_order__performed_on'
@@ -569,6 +606,13 @@ class MachineFilterForm(DateRangeFilterForm):
         label='Vytvořil',
         empty_label='Všichni uživatelé',
     )
+
+
+class RefuelFilterForm(MachineFilterForm):
+    """Stroje's filter applied to fill-ups, whose date and author are on the refuelling."""
+
+    date_lookup = 'refuelling__performed_on'
+    lookups = {'machine': 'machine', 'created_by': 'refuelling__created_by'}
 
 
 class MaterialFilterForm(DateRangeFilterForm):
@@ -615,7 +659,26 @@ class JobFilterForm(DateRangeFilterForm):
         empty_label='Všechny lokace',
     )
     status = forms.ChoiceField(
-        choices=[('', 'Všechny stavy')] + WorkOrder.Status.choices,
+        choices=[('', 'Všechny stavy')] + ReviewStatus.choices,
+        required=False,
+        label='Stav',
+    )
+
+
+class RefuellingFilterForm(DateRangeFilterForm):
+    """Filters the refuelling list (manager-only)."""
+
+    field_order = ['created_by', 'status', 'date_from', 'date_to']
+    lookups = {'created_by': 'created_by', 'status': 'status'}
+
+    created_by = forms.ModelChoiceField(
+        queryset=User.objects.all().order_by('username'),
+        required=False,
+        label='Vytvořil',
+        empty_label='Všichni uživatelé',
+    )
+    status = forms.ChoiceField(
+        choices=[('', 'Všechny stavy')] + ReviewStatus.choices,
         required=False,
         label='Stav',
     )

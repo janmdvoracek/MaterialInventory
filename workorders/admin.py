@@ -11,7 +11,16 @@ from .forms import (
     WORKER_HOURS_MAX,
     clean_photo_upload,
 )
-from .models import JobPhoto, MachineRefuel, MachineUsage, StockMovement, WorkerHours, WorkOrder, discard_photo
+from .models import (
+    JobPhoto,
+    MachineRefuel,
+    MachineUsage,
+    Refuelling,
+    StockMovement,
+    WorkerHours,
+    WorkOrder,
+    discard_photo,
+)
 
 
 class CappedInline(admin.TabularInline):
@@ -53,11 +62,11 @@ class MachineUsageInline(CappedInline):
     caps = {'hours': METER_READING_MAX, 'tons': TONS_MAX}
 
 
-# Like every row type of a job, edited only as an inline, never registered top-level.
+# A refuelling's rows, edited only as an inline of `RefuellingAdmin`, never registered top-level.
 class MachineRefuelInline(CappedInline):
     model = MachineRefuel
     extra = 1
-    fields = ('machine', 'litres')
+    fields = ('machine', 'source', 'litres')
     caps = {'litres': LITRES_MAX}
 
 
@@ -120,7 +129,7 @@ class WorkOrderAdmin(admin.ModelAdmin):
     # Review fields are written by `job_approve`.
     readonly_fields = ('created_by', 'reviewed_at', 'reviewed_by')
     # No `filter_horizontal` for collaborators: its JavaScript labels aren't translated to Czech.
-    inlines = [MovementInline, MachineUsageInline, MachineRefuelInline, WorkerHoursInline, JobPhotoInline]
+    inlines = [MovementInline, MachineUsageInline, WorkerHoursInline, JobPhotoInline]
 
     def save_model(self, request, obj, form, change):
         if not obj.pk and not obj.created_by_id:
@@ -142,3 +151,18 @@ class WorkOrderAdmin(admin.ModelAdmin):
         formset.save_m2m()
         for obj in formset.deleted_objects:
             obj.delete()
+
+
+@admin.register(Refuelling)
+class RefuellingAdmin(admin.ModelAdmin):
+    list_display = ('id', 'performed_on', 'created_at', 'created_by', 'status', 'reviewed_by')
+    list_filter = ('status',)
+    date_hierarchy = 'performed_on'
+    # Review fields are written by `refuel_approve`.
+    readonly_fields = ('created_by', 'reviewed_at', 'reviewed_by')
+    inlines = [MachineRefuelInline]
+
+    def save_model(self, request, obj, form, change):
+        if not obj.pk and not obj.created_by_id:
+            obj.created_by = request.user
+        super().save_model(request, obj, form, change)

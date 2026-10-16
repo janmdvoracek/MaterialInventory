@@ -4,7 +4,7 @@ Guidance for Claude Code in this repository.
 
 ## Project
 
-MaterialInventory records material **processing jobs**: what a job consumed and produced, who worked on it and for how long, which machines ran, and the fuel put into them.
+MaterialInventory records material **processing jobs** (what a job consumed and produced, who worked on it and for how long, which machines ran) and, as a separate kind of entry, **refuellings** (the fuel put into machines, and where it came from).
 
 **It does not track stock.** There are no receipts, shipments, adjustments, balances or sufficiency checks. The name is historical. Don't reintroduce inventory semantics. The one quantity rule is *inside* a single job: consumed and produced totals must match (mass balance).
 
@@ -53,10 +53,10 @@ docker compose up --build                               # dev stack only
 
 Django 6, PostgreSQL, server-rendered templates, Czech mobile-first UI, Django admin as the back office. No API, no JS framework, no build step, no `package.json`, no CDN. (`htmx`, `widget_tweaks` and `rest_framework` were removed as unused; add them back only on purpose.)
 
-**Scripts.** The app serves its own scripts from `static/` and never loads one from a third party. There are exactly three on the job form, plus `pwa.js` on every page:
+**Scripts.** The app serves its own scripts from `static/` and never loads one from a third party. There are exactly three on the job form (the refuelling form uses the first two), plus `pwa.js` on every page:
 
-- `static/js/job_rows.js`: adds and removes formset rows in the DOM.
-- `static/js/searchable_select.js`: puts a type-to-filter box in front of each row's `<select>`.
+- `static/js/job_rows.js`: adds and removes formset rows in the DOM. It hides taken choices only in the picker named by the section's `data-unique-field`.
+- `static/js/searchable_select.js`: puts a type-to-filter box in front of every `<select>` in a row.
 - `static/js/photo_picker.js`: one „Přidat fotku" button that keeps every photo picked.
 
 **All three are progressive enhancement, and that is a hard constraint.** The test suite drives views through `self.client` with no browser, so the server path must be complete on its own. Never move behaviour into a script that the server cannot perform. With every script blocked, the form must still work:
@@ -86,9 +86,9 @@ The scripts build no markup of their own. They clone server-rendered `<template>
 
 - **`accounts`**: custom `User` with `role` (`WORKER`/`MANAGER`/`ADMIN`), `is_manager_or_admin` and `has_admin_access`. `role_required(*roles)` gates views (login redirect if anonymous, 403 if wrong role), and `REVIEWER_ROLES` lives beside it. Auth uses Django's generic views with the Czech forms in `accounts/forms.py`. There is no `views.py` or `urls.py`.
 - **`materials`**: `Material` (SKU and name only; every quantity is implicitly tonnes, with the `t` hardcoded). It also hosts the `seed_data` command, which is the only place it imports `machines` or `locations`.
-- **`machines`**: `Machine` (name, `is_active`, optional `hourly_rate` and `rate_per_ton`). It stores no totals.
+- **`machines`**: `Machine` (name, `is_active`, optional `hourly_rate` and `rate_per_ton`). It stores no totals. Also `FuelSource` (name, `is_active`): the refuelling's „Zdroj", a label managed in the admin like `Location`.
 - **`locations`**: `Location` (name, `is_active`). One per job, and it is a **label**, not a stock location: nothing is summed or refused per location.
-- **`workorders`**: everything else. `views.py` records and reviews jobs; `reports.py` holds Hodiny, Stroje, Materiál, the CSV exports and the list helpers; `pwa.py` serves the PWA. All URLs are mounted at the root. Keep the reports a module of `workorders`, not a separate app (that was considered and rejected).
+- **`workorders`**: everything else. `views.py` records and reviews jobs and holds the entry-form helpers (`_entry_forms`, `_entry_context`, `_review_on_submit`, `_approve`); `refuels.py` records and reviews refuellings on top of them; `reports.py` holds Hodiny, Stroje, Materiál, the CSV exports and the list helpers; `pwa.py` serves the PWA. All URLs are mounted at the root. Keep the reports a module of `workorders`, not a separate app (that was considered and rejected).
 
 Catalog records are retired with `is_active=False` and protected from deletion by `on_delete=PROTECT`.
 
@@ -98,32 +98,29 @@ One submission writes a `WorkOrder` plus its rows, all in one `transaction.atomi
 
 - `StockMovement` line items, with a signed `quantity`: negative = `TRANSFORM_CONSUME`, positive = `TRANSFORM_PRODUCE`.
 - `WorkerHours`, one row per participant.
-- `MachineUsage` and `MachineRefuel`.
+- `MachineUsage`.
 - `JobPhoto`.
+
+Fuel is not part of a job; see **The refuelling**.
 
 `collaborators` is **derived** from the hours rows (`collaborators.set(...)`), never entered.
 
-Rows carry **no timestamp of their own**; their date is the job's `performed_on`. Every row cascades when the job is deleted. `StockMovement` and `MachineRefuel` are not registered in the admin; they are edited as inlines of `WorkOrderAdmin` (`AdminIndexTests` checks the line items).
+Rows carry **no timestamp of their own**; their date is their entry's `performed_on`. Every row cascades when its entry is deleted. `StockMovement` and `MachineRefuel` are not registered in the admin; they are edited as inlines of `WorkOrderAdmin` and `RefuellingAdmin` (`AdminIndexTests` checks both).
 
 **Mass balance.** A job needs at least one consumed row and one produced row, and `sum(consumed) == sum(produced)` must hold exactly (`Decimal`, no tolerance). It is checked in the view before the transaction. The error totals go through `formats.localize`.
 
-**Fuel-only job.** `_is_fuel_only(rows)` is true for a job with at least one fill-up and nothing else: no material rows, no usage rows, no collaborator hours. Such a job is exempt from:
-
-- the mass balance;
-- „Popis", „Lokace" and „Moje hodiny" (all three are in `WORK_FIELDS`, `required=False` on the form, and re-imposed by `_require_work_fields` with `code='required'`).
-
-The author gets no `WorkerHours` row. Otherwise it is an ordinary job. `MachineRefuelTests` covers this.
+**Required fields.** „Popis", „Lokace" and „Moje hodiny" are required on `WorkOrderForm` itself; there is no exemption (the old fuel-only job is gone). Valid rows are still balance-checked when a job field fails, so both errors show (`ErrorBannerTests`).
 
 **No duplicates per section.** Each section may name the same material, machine or person only once. `UniqueChoiceFormSet` handles this in two ways:
 
 - **On submit**, `clean()` puts the error on the repeated row.
 - **On unbound renders only**, `_hide_taken_choices()` drops other rows' picks from each dropdown. Doing it on a bound formset would turn the real error into „Vyberte platnou možnost.". Each row keeps its own choice.
 
-The rule is per section, so one material may be both consumed and produced. Server-rendered rows have taken options excluded from the DOM, while script-added rows carry the full catalog. That asymmetry is expected; don't remove the server-side narrowing. `DuplicateRowTests` covers this.
+The rule is per section, so one material may be both consumed and produced. `unique_field` names the one picker the rule is about; a refuel row's „Zdroj" is not unique. Server-rendered rows have taken options excluded from the DOM, while script-added rows carry the full catalog. That asymmetry is expected; don't remove the server-side narrowing. `DuplicateRowTests` covers this.
 
 **Text fields.**
 
-- `description` („Popis") is required on work jobs. It is capped at `DESCRIPTION_MAX_LENGTH` (40) on the form, against `max_length=255` on the model.
+- `description` („Popis") is required. It is capped at `DESCRIPTION_MAX_LENGTH` (40) on the form, against `max_length=255` on the model.
 - `notes` („Poznámky") is an optional `TextField`, capped at `NOTES_MAX_LENGTH` (2000). It appears only on `job_detail`.
 - A form tighter than its model is fine and needs no migration.
 - `WorkOrderAdminForm` repeats the description cap so admin-saved jobs remain editable on `job_edit`.
@@ -137,24 +134,16 @@ The rule is per section, so one material may be both consumed and produced. Serv
 | `WORKER_HOURS_MAX` | 24 | worker hours |
 | `METER_READING_MAX` | 99 999 | motohodiny |
 | `TONS_MAX` | 99 999 | tonnage |
-| `LITRES_MAX` | 2 000 | litres |
+| `LITRES_MAX` | 2 000 | litres (Tankování) |
 
 - The limits are whole numbers because Django's error message prints them unlocalised.
 - `CappedInline` in `admin.py` repeats them.
 
 `ValueLimitTests` covers this.
 
-**Machine row** (stroj, motohodiny, natankováno, tuny). Only the machine is required; `MachineUsageForm.check_row` refuses a number with no machine. A typed `0` in any number box counts as blank (`_zero_is_blank`). The row splits as follows:
+**Machine row** (stroj, motohodiny, tuny). Only the machine is required; `MachineUsageForm.check_row` refuses a number with no machine. A typed `0` in either box counts as blank (`_zero_is_blank`). A machine row always writes a `MachineUsage`, with blank numbers as `NULL` (unknown).
 
-| What the row holds | What is written |
-|---|---|
-| A machine, with or without hours/tons | A `MachineUsage` (blank numbers are `NULL`, meaning unknown) |
-| Machine + litres only | A `MachineRefuel` and no usage row |
-| Machine + hours/tons + litres | Both |
-
-`MachineUsage.hours` is the **hour-meter reading** („Stav motohodin"), not time run. `MachineUsage.tons` is not part of the mass balance, because chained machines each process the same material. `litres` is not nullable.
-
-On `job_edit`, `_machine_section_rows` merges the two tables back into one row per machine.
+`MachineUsage.hours` is the **hour-meter reading** („Stav motohodin"), not time run. `MachineUsage.tons` is not part of the mass balance, because chained machines each process the same material.
 
 **Four unrelated numbers.** Never derive one from another:
 
@@ -188,10 +177,10 @@ Easy to break:
 - Lists order by `[-performed_on, -created_at]`. The exception is `my_jobs`, which orders by `-created_at` because it is a list of recent submissions.
 - `created_at` is "when typed in".
 
-**Approval.** A worker's job is saved `PENDING`; a manager's or admin's own job is saved `APPROVED` with themselves as reviewer. **Every report counts only `APPROVED` jobs.**
+**Approval.** A worker's job or refuelling is saved `PENDING`; a manager's or admin's own is saved `APPROVED` with themselves as reviewer. **Every report counts only `APPROVED` entries.**
 
 - **Review actions.** There are exactly three: approve, edit, delete. There is no "returned" status. Editing does not approve.
-- **Worker feedback.** `my_jobs` (`_my_recent_jobs`, top of Hodiny, last `MY_JOBS_LIMIT` = 5) is a worker's only view of review status. It is scoped by `created_by` only, ignores the filter form, and is empty for managers.
+- **Worker feedback.** `my_jobs` (`_my_recent_jobs`, top of Hodiny, last `MY_JOBS_LIMIT` = 5) is a worker's only view of a job's review status. It is scoped by `created_by` only, ignores the filter form, and is empty for managers. `my_refuellings` does the same for refuellings, under the Tankování form.
 
 **Recording for someone else.** Managers and admins get an `author` field („Zapsat za"). The job then belongs to the author, but approval follows the submitter. `_submitted_author` resolves the author before any formset is built.
 
@@ -202,11 +191,22 @@ Easy to break:
 
 **Editing (`job_edit`).** It reuses the submission helpers (`_job_forms`, `_valid_job_rows`, `_write_job_rows`), so corrections are mass-balanced too. Rows are written as the author, and the collaborator list uses (author, editing manager).
 
-It must also widen the catalog pickers to the retired records the job already names. Otherwise a row renders blank and saving silently deletes it. The mechanism: `keep` goes through `_section_form_kwargs` into `_offer_recorded`; `keep_location` does the same for the location. The machine `keep` comes from both usage and refuel rows. `RetiredCatalogOnEditTests` covers this.
+It must also widen the catalog pickers to the retired records the job already names. Otherwise a row renders blank and saving silently deletes it. The mechanism: `keep` goes through `_section_form_kwargs` into `_offer_recorded`; `keep_location` does the same for the location. `RetiredCatalogOnEditTests` covers this.
+
+## The refuelling
+
+`Refuelling` is its own entry, not part of a job: optional `notes`, `performed_on` (same `EntryForm` field and rules as the job's) and `MachineRefuel` rows (machine, `source` → `FuelSource`, `litres`), written in one `transaction.atomic()` by `refuel_create` (`/refuel/`).
+
+- **Rows** are all three fields or blank (`RefuelRowForm`), at least one row, one row per machine (`RefuelRowFormSet`). `litres` is 0,01 to `LITRES_MAX` and not nullable. `source` is required on the form but nullable in the column: fill-ups migrated from jobs have none, and editing one asks for it.
+- **Same machinery as the job form.** `_entry_forms` builds the page (row buttons, unbound rebuild, error banner), `_row_sections.html` renders the section. No photos, no „Zapsat za".
+- **Review** is the job's: `ReviewStatus`, saved by `_review_on_submit`, approved by `_approve`, three actions (approve, edit, delete) under `/refuels/`, all `role_required(MANAGER, ADMIN)`. `refuel_edit` widens its pickers with `keep` (machines) and `keep_source`. Only approved refuellings count on Stroje.
+- **Migration `0010_move_fill_ups`** moved each job's fill-ups onto a refuelling with the job's date, author and status. Emptied fuel-only jobs were deleted, except ones with photos.
+
+`RefuellingFormTests`, `RefuellingReviewTests` and `MachineRefuelReportTests` cover this.
 
 ## The job form
 
-`_job_form_fields.html` holds the whole form body: job fields plus the four sections from `JOB_SECTIONS`. Both `transform_form.html` and `job_edit.html` include it. Only the heading, the submit button, the cancel link, the `<form>` tag and the CSRF token stay in the callers.
+`_job_form_fields.html` holds the whole form body: job fields plus the four sections from `JOB_SECTIONS`. Both `transform_form.html` and `job_edit.html` include it. Only the heading, the submit button, the cancel link, the `<form>` tag and the CSRF token stay in the callers. The section loop (and the two row scripts) is `_row_sections.html`, shared with the refuelling form's `_refuel_form_fields.html`; everything below applies to both forms.
 
 - „Zapsat za" is behind `{% if order_form.author %}`.
 - The hours label is read off the form (`job_edit` sets „Hodiny – <author>").
@@ -219,7 +219,7 @@ It must also widen the catalog pickers to the retired records the job already na
 
 `ErrorBannerTests` covers this.
 
-**Row buttons.** `_job_forms` checks `_pressed_row_button` before treating the POST as a submission, then rebuilds every form **unbound** from the raw POST, with that section one row bigger or smaller. Unbound means no errors and no balance check on a half-filled form.
+**Row buttons.** `_entry_forms` checks `_pressed_row_button` before treating the POST as a submission, then rebuilds every form **unbound** from the raw POST, with that section one row bigger or smaller. Unbound means no errors and no balance check on a half-filled form.
 
 - Removing takes the **last** row.
 - Sections are clamped between `MIN_ROWS_PER_SECTION` (1) and `MAX_ROWS_PER_SECTION`, and `TOTAL_FORMS` from the POST is untrusted.
@@ -238,12 +238,12 @@ Hodiny, Stroje and Materiál each have a filter card, a summary table, and the d
   - Per machine: latest reading (`Max`), hours run, tonnage, both rates, and three money columns from `_machine_costs`. That makes `_machine_summary` a list rather than a queryset.
   - **Motohodiny are readings, never summed.** `_with_run_hours` computes each row's run time as its reading minus the previous approved reading of that machine. "Previous" is by value with a pk tie-break, the baseline is all approved rows (not just filtered ones), and a first or blank reading is `None`. „Cena za hodiny" prices the summed run hours. `MachineReadingTests` covers this.
   - **Unknown is not zero.** An unset rate or unknown tonnage is „—"; a priced machine that didn't run costs `0,00`. „Celkem" is unknown if any priced side is (`filtered_usages` tells the two cases apart).
-  - The fuel card (`_refuel_summary`) stays a queryset, because its zeros are real.
+  - The fuel card (`_refuel_summary`) stays a queryset, because its zeros are real. It reads approved refuellings through `RefuelFilterForm` (Stroje's filter, dated and authored by the refuelling). „Detail tankování" shows each fill-up's source and links to its refuelling.
   - Every active machine is listed; naming one in the filter narrows the table to it.
   - The two tables paginate independently (`_paginated(request, rows, param)`). `MachineRefuelReportTests` covers this.
 - **Materiál** (`material_dashboard`): a manager page; the only place line items are read across jobs. It annotates consumed (`Abs`), produced and net (`Coalesce`); zeros are real. Its filter has `location` but no `created_by`.
 - **Hodiny** (`time_worked`): any user. It sums `WorkerHours` per person. It re-queries by `pk__in` before aggregating, because the collaborator join would otherwise multiply the `Sum`. Workers see only their own rows (see Access).
-- **Přehled** (`job_dashboard` and the `/jobs/` pages): a manager page. Location is shown and filtered only here and on Materiál.
+- **Přehled** (`job_dashboard` and the `/jobs/` pages): a manager page. Location is shown and filtered only here and on Materiál. It links to **Přehled tankování** (`refuel_dashboard`) with the pending refuelling count.
 
 **CSV exports** sit at `<page>/export/`:
 
@@ -261,7 +261,7 @@ Rules:
 
 ## Access
 
-- **The nav** (in `base.html`, hardcoded): workers see Zpracování and Hodiny; Přehled, Stroje and Materiál sit inside `{% if user.is_manager_or_admin %}`. Hiding a link is not access control: those views are also gated with `role_required(MANAGER, ADMIN)`. Keep nav labels short, since a manager has five entries.
+- **The nav** (in `base.html`, hardcoded): workers see Zpracování, Tankování and Hodiny; managers see Zpracování, Přehled, Hodiny, Stroje and Materiál. Hiding a link is not access control: the manager views are also gated with `role_required(MANAGER, ADMIN)`. A sixth manager entry wraps on a phone, so managers reach Tankování from Přehled tankování; keep nav labels short.
 - **Worker scoping** happens in the queryset, not by hiding fields. Only `time_worked` needs it. It applies `participation_filter`, and it also filters the summary rows to the requesting user. Deleting the `worker` filter field is cosmetic (`test_worker_cannot_bypass_restriction_via_worker_param`). Don't add scoping to `role_required` views.
 - **Filter forms** subclass `DateRangeFilterForm` and declare `lookups` / `date_lookup`; views call `form.filter(qs)`. Unbound shows everything; **invalid returns `.none()`**.
 - **List pages.** A filtered page needs `**_list_page_context(request, rows)` (`page_obj`, `querystring`, `date_presets`) plus the `_filter_card.html` and `_pagination.html` includes. Date presets are plain links.
@@ -280,7 +280,7 @@ UI copy is **hardcoded Czech**, not `gettext`. Don't introduce `{% trans %}`. `L
 - **Templates render `12,50`**; tests asserting on rendered numbers need the comma. Form inputs stay unlocalised (`localize=False` keeps `type="number"` and the numeric keypad). Code outside templates must localise itself (`localize`, `number_format`).
 - **An unbound date field with a `date` initial** renders `dd.mm.yyyy`, which `<input type="date">` shows as blank. Give it `format='%Y-%m-%d'`.
 - **Every `ModelChoiceField` needs an explicit `empty_label`.** Django's default is untranslated English.
-  - Row pickers use the bare noun (`Materiál`, `Stroj`, `Pracovník`).
+  - Row pickers use the bare noun (`Materiál`, `Stroj`, `Pracovník`, `Zdroj`).
   - Filters use an "all" phrase (`Všechny stroje`, …).
   - Row number boxes use a unit placeholder plus `title`.
   - `EmptyLabelTests` covers this.

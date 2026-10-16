@@ -66,19 +66,20 @@
     <div class="table-scroll">
     <table>
         <thead>
-            <tr><th>Provedeno</th><th>Stroj</th><th>Litry</th><th>Zakázka</th><th>Kým</th></tr>
+            <tr><th>Provedeno</th><th>Stroj</th><th>Zdroj</th><th>Litry</th><th>Kým</th><th></th></tr>
         </thead>
         <tbody>
         {% for refuel in fuel_page.page_obj %}
             <tr>
-                <td>{{ refuel.work_order.performed_on|date:"Y-m-d" }}</td>
+                <td>{{ refuel.refuelling.performed_on|date:"Y-m-d" }}</td>
                 <td>{{ refuel.machine.name }}</td>
+                <td>{{ refuel.source.name|default:"—" }}</td>
                 <td>{{ refuel.litres|floatformat:2 }} l</td>
-                <td>{{ refuel.work_order.description|default:"—" }}</td>
-                <td>{{ refuel.work_order.created_by.username }}</td>
+                <td>{{ refuel.refuelling.created_by.username }}</td>
+                <td><a href="{% url 'refuel_detail' refuel.refuelling_id %}">Detail</a></td>
             </tr>
         {% empty %}
-            <tr><td colspan="5">Žádné záznamy neodpovídají zadaným filtrům.</td></tr>
+            <tr><td colspan="6">Žádné záznamy neodpovídají zadaným filtrům.</td></tr>
         {% endfor %}
         </tbody>
     </table>
