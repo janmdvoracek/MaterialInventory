@@ -8,14 +8,14 @@
     <p class="messages error">Čeká na schválení: {{ pending_count }}</p>
 {% endif %}
 {% include "workorders/_filter_card.html" %}
-<div class="card">
+<div class="card" id="{{ tables.refuellings.anchor }}">
     <div class="table-scroll">
     <table>
         <thead>
             <tr><th>Provedeno</th><th>Kdo</th><th>Stroje</th><th>Litry</th><th>Stav</th><th></th></tr>
         </thead>
         <tbody>
-        {% for refuelling in page_obj %}
+        {% for refuelling in tables.refuellings.rows %}
             <tr class="{% if refuelling.status == 'PENDING' %}row-pending{% endif %}">
                 <td>{{ refuelling.performed_on|date:"Y-m-d" }}</td>
                 <td>{{ refuelling.created_by.username }}</td>
@@ -30,6 +30,7 @@
         </tbody>
     </table>
     </div>
+    {% include "workorders/_show_all.html" with table=tables.refuellings %}
 </div>
-{% include "workorders/_pagination.html" %}
+{% if tables.refuellings.expanded %}{% include "workorders/_pagination.html" %}{% endif %}
 {% endblock %}

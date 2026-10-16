@@ -6,7 +6,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 from django.contrib.auth.decorators import login_required
-from django.core.paginator import Page, Paginator
+from django.core.paginator import Paginator
 from django.db.models import Count, F, Max, OuterRef, Q, Subquery, Sum
 from django.db.models.functions import Abs, Coalesce
 from django.http import HttpResponse
@@ -48,6 +48,7 @@ def machine_dashboard(request):
     """Stroje: one filter over per-machine totals, usage rows and fill-ups (two paginators)."""
     form, usages = _filtered_machine_usages(request.GET or None)
     _, refuels = _filtered_machine_refuels(request.GET or None)
+    listing = _list_page_context(request, usages)
     context = {
         'form': form,
         'machines': _machine_summary(usages, form),
@@ -55,14 +56,14 @@ def machine_dashboard(request):
         # No fill-ups is a real zero.
         'refuel_total_litres': refuels.aggregate(total=Sum('litres'))['total'] or Decimal('0'),
         'fuel_page': _paginated(request, refuels, FUEL_PAGE_PARAM),
-        **_list_page_context(request, usages),
+        **listing,
     }
     context['tables'] = _previews(
         request,
         machines=context['machines'],
         refuels=context['refuel_machines'],
-        refuel_rows=context['fuel_page']['page_obj'],
-        usages=context['page_obj'],
+        refuel_rows=context['fuel_page'],
+        usages=listing,
     )
     return render(request, 'workorders/machine_dashboard.html', context)
 
@@ -194,12 +195,9 @@ def _refuel_summary(refuels, form):
 def material_dashboard(request):
     """Materiál: the filter, per-material tonnage, and the line items behind it."""
     form, movements = _filtered_material_movements(request)
-    context = {
-        'form': form,
-        'materials': _material_summary(movements, form),
-        **_list_page_context(request, form.detail_rows(movements)),
-    }
-    context['tables'] = _previews(request, materials=context['materials'], movements=context['page_obj'])
+    listing = _list_page_context(request, form.detail_rows(movements))
+    context = {'form': form, 'materials': _material_summary(movements, form), **listing}
+    context['tables'] = _previews(request, materials=context['materials'], movements=listing)
     return render(request, 'workorders/material_dashboard.html', context)
 
 
@@ -253,8 +251,9 @@ def _paginated(request, rows, param=PAGE_PARAM):
     }
 
 
-# A report table shows its first PREVIEW_ROWS rows until its „Zobrazit vše" link
-# adds the table's key to EXPAND_PARAM. Exports ignore both and hold every row.
+# A report or list table shows its first PREVIEW_ROWS rows until its „Zobrazit
+# vše" link adds the table's key to EXPAND_PARAM; „Zobrazit méně" takes it out.
+# Exports ignore both and hold every row.
 PREVIEW_ROWS = 5
 EXPAND_PARAM = 'vse'
 
@@ -265,27 +264,37 @@ def _previews(request, **tables):
 
 
 def _preview(request, key, rows):
-    """One report table's `rows`, cut to PREVIEW_ROWS until the table is expanded.
+    """One table's `rows`, cut to PREVIEW_ROWS until the table is expanded.
 
-    `rows` is a list, a queryset or a `Page`. `total` is every row the expanded
-    table holds, across all its pages; a paginated table shows its page links
-    only once expanded. The link keeps the filters, the page params and the
-    other tables already expanded, and jumps back to this table (`anchor`).
+    `rows` is a list, a queryset, or a paginated table as `_paginated` returns
+    it. `total` is every row the expanded table holds, across all its pages; a
+    paginated table shows its page links only once expanded. Both links keep
+    the filters and the other tables' state, and jump back to this table
+    (`anchor`). Collapsing also drops the table's own page param, so expanding
+    it again starts on page one.
     """
     expanded = key in request.GET.getlist(EXPAND_PARAM)
-    if isinstance(rows, Page):
-        total, items = rows.paginator.count, rows.object_list
+    page_param = None
+    if isinstance(rows, dict):
+        page_param, page = rows['page_param'], rows['page_obj']
+        total, items = page.paginator.count, page.object_list
     else:
         total, items = len(rows), rows
     shown = items if expanded else list(items[:PREVIEW_ROWS])
-    params = request.GET.copy()
-    params.appendlist(EXPAND_PARAM, key)
+    expand = request.GET.copy()
+    expand.appendlist(EXPAND_PARAM, key)
+    collapse = request.GET.copy()
+    collapse.setlist(EXPAND_PARAM, [value for value in collapse.getlist(EXPAND_PARAM) if value != key])
+    if page_param:
+        collapse.pop(page_param, None)
     return {
         'rows': shown,
         'expanded': expanded,
         'total': total,
         'has_more': not expanded and total > len(shown),
-        'expand_querystring': params.urlencode(),
+        'can_collapse': expanded and total > PREVIEW_ROWS,
+        'expand_querystring': expand.urlencode(),
+        'collapse_querystring': collapse.urlencode(),
         'anchor': f'tabulka-{key}',
     }
 
@@ -551,6 +560,7 @@ def time_worked(request):
         .prefetch_related('collaborators', 'worker_hours__user')
         .order_by('-performed_on', '-created_at')
     )
+    listing = _list_page_context(request, detail)
     context = {
         'form': form,
         'summary': summary,
@@ -558,9 +568,9 @@ def time_worked(request):
         'my_jobs': _my_recent_jobs(request.user),
         # Managers have the same numbers, with more, on Stroje.
         'fleet': None if request.user.is_manager_or_admin else _fleet_totals(request),
-        **_list_page_context(request, detail),
+        **listing,
     }
-    tables = {'hours': summary, 'jobs': context['page_obj']}
+    tables = {'hours': summary, 'jobs': listing}
     if context['fleet']:
         tables.update(machines=context['fleet']['machines'], refuels=context['fleet']['refuel_machines'])
     context['tables'] = _previews(request, **tables)

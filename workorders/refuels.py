@@ -17,7 +17,7 @@ from accounts.decorators import REVIEWER_ROLES, role_required
 
 from .forms import REFUEL_SECTIONS, RefuellingFilterForm, RefuellingForm
 from .models import MachineRefuel, Refuelling
-from .reports import MY_JOBS_LIMIT, _list_page_context
+from .reports import MY_JOBS_LIMIT, _list_page_context, _previews
 from .views import _approve, _entry_context, _entry_forms, _filled_rows, _forms_valid, _review_on_submit, _trimmed
 
 NO_ROWS_ERROR = 'Přidejte alespoň jeden natankovaný stroj.'
@@ -109,13 +109,15 @@ def refuel_dashboard(request):
         .prefetch_related('machine_refuels__machine')
         .order_by('-performed_on', '-created_at')
     )
+    listing = _list_page_context(request, form.filter(refuellings))
     return render(
         request,
         'workorders/refuel_dashboard.html',
         {
             'form': form,
             'pending_count': Refuelling.objects.filter(status=Refuelling.Status.PENDING).count(),
-            **_list_page_context(request, form.filter(refuellings)),
+            'tables': _previews(request, refuellings=listing),
+            **listing,
         },
     )
 

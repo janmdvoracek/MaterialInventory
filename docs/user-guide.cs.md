@@ -204,7 +204,7 @@ Obě tabulky řídí jen datum ve filtru. Vedoucí je tu nemá, stejná čísla 
 
 Nahoře je pět zakázek, které jste naposledy **zapsali vy**, seřazené podle času zápisu. Ukazují stav: žluté *Čeká na schválení*, nebo *Schváleno*. Tady zjistíte, proč vám hodiny zatím chybí. Smazaná zakázka zmizí. Zakázky, kde jste jen spolupracovník, tu nejsou, objeví se vám po schválení v Odpracovaných hodinách. Filtry tuto tabulku neovlivňují. Vedoucí ji nemá.
 
-> **Zobrazit vše:** tabulky v Souhrnu, Strojích a Materiálu ukazují nejdřív **pět řádků**. Je-li jich víc, je pod tabulkou tlačítko **Zobrazit vše** s jejich počtem. Filtry zůstanou. Export do Excelu obsahuje vždy všechny řádky.
+> **Zobrazit vše:** tabulky v Souhrnu, Strojích, Materiálu i v Přehledu ukazují nejdřív **pět řádků**. Je-li jich víc, je pod tabulkou tlačítko **Zobrazit vše** s jejich počtem. **Zobrazit méně** tabulku zase zkrátí. Filtry zůstanou. Export do Excelu obsahuje vždy všechny řádky.
 
 > **Rychlé období:** nad každým filtrem jsou tlačítka **Vše**, **Posledních 7 dní**, **Posledních 30 dní** a **Minulý měsíc**. Ostatní filtry zůstanou. **Vše** filtr data zruší.
 

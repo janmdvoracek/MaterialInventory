@@ -1080,6 +1080,38 @@ class ShowAllTests(TestCase):
         # The page links carry the expansion, so page two is expanded too.
         self.assertContains(response, f'href="?{EXPAND_PARAM}=usages&page=2">Další</a>')
 
+    def test_an_expanded_table_offers_to_collapse(self):
+        response, tables = self._tables('time_worked', self.worker, {EXPAND_PARAM: ['jobs', 'machines']})
+        table = tables['jobs']
+        self.assertTrue(table['can_collapse'])
+        self.assertContains(response, 'Zobrazit méně')
+        # Collapsing takes out only this table's key.
+        self.assertEqual(table['collapse_querystring'], f'{EXPAND_PARAM}=machines')
+        _, tables = self._tables('time_worked', self.worker, table['collapse_querystring'])
+        self.assertEqual(len(tables['jobs']['rows']), PREVIEW_ROWS)
+        self.assertTrue(tables['machines']['expanded'])
+
+    def test_collapsing_a_paginated_table_drops_its_page_but_not_the_other(self):
+        params = f'{EXPAND_PARAM}=refuel_rows&{EXPAND_PARAM}=usages&page=1&fuel_page=1'
+        _, tables = self._tables('machine_dashboard', self.manager, params)
+        self.assertEqual(tables['usages']['collapse_querystring'], f'{EXPAND_PARAM}=refuel_rows&fuel_page=1')
+        self.assertEqual(tables['refuel_rows']['collapse_querystring'], f'{EXPAND_PARAM}=usages&page=1')
+
+    def test_a_short_expanded_table_has_no_collapse_button(self):
+        response, tables = self._tables('material_dashboard', self.manager, {EXPAND_PARAM: 'materials'})
+        self.assertFalse(tables['materials']['can_collapse'])
+        self.assertNotContains(response, 'Zobrazit méně')
+
+    def test_prehled_lists_start_cut_and_expand(self):
+        for url_name, key in (('job_dashboard', 'jobs'), ('refuel_dashboard', 'refuellings')):
+            with self.subTest(page=url_name):
+                response, tables = self._tables(url_name, self.manager)
+                self.assertEqual(len(tables[key]['rows']), PREVIEW_ROWS)
+                self.assertContains(response, f'Zobrazit vše ({self.MANY})')
+                response, tables = self._tables(url_name, self.manager, {EXPAND_PARAM: key})
+                self.assertEqual(len(tables[key]['rows']), self.MANY)
+                self.assertContains(response, 'Zobrazit méně')
+
     def test_exports_hold_every_row(self):
         self.client.force_login(self.manager)
         for url_name in ('machine_dashboard_export', 'machine_usage_detail_export', 'machine_refuel_detail_export'):

@@ -9,14 +9,14 @@
 {# Refuellings are reviewed on their own list. #}
 <p><a href="{% url 'refuel_dashboard' %}">Přehled tankování →</a>{% if pending_refuel_count %} (čeká na schválení: {{ pending_refuel_count }}){% endif %}</p>
 {% include "workorders/_filter_card.html" %}
-<div class="card">
+<div class="card" id="{{ tables.jobs.anchor }}">
     <div class="table-scroll">
     <table>
         <thead>
             <tr><th>Provedeno</th><th>Kdo</th><th>Lokace</th><th>Popis</th><th>Hodiny</th><th>Stav</th><th></th></tr>
         </thead>
         <tbody>
-        {% for order in page_obj %}
+        {% for order in tables.jobs.rows %}
             <tr class="{% if order.status == 'PENDING' %}row-pending{% endif %}">
                 <td>{{ order.performed_on|date:"Y-m-d" }}</td>
                 <td>{{ order.created_by.username }}</td>
@@ -32,6 +32,7 @@
         </tbody>
     </table>
     </div>
+    {% include "workorders/_show_all.html" with table=tables.jobs %}
 </div>
-{% include "workorders/_pagination.html" %}
+{% if tables.jobs.expanded %}{% include "workorders/_pagination.html" %}{% endif %}
 {% endblock %}

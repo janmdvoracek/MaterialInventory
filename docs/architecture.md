@@ -344,11 +344,12 @@ Service workers need HTTPS or `localhost`. To test on Android against the dev se
 
 Souhrn, Stroje and Materiál share one shape: a filter, a summary table, and the detail rows the summary is made of. One dataset at two zoom levels, under one filter. Every summary is built from the filtered rows (`<rel>__in=rows.values('pk')`), so the two tables can't disagree.
 
-**Tables start short.** Every report table shows its first `PREVIEW_ROWS` (5) rows, so a phone gets all the cards on one screen. Below a cut table, „Zobrazit vše (n)" (`_show_all.html`) shows the rest:
+**Tables start short.** Every report table, and the Přehled and Přehled tankování lists, shows its first `PREVIEW_ROWS` (5) rows, so a phone gets all the cards on one screen. Below a cut table, „Zobrazit vše (n)" (`_show_all.html`) shows the rest, and once it is expanded „Zobrazit méně" cuts it again:
 
 - It is a plain link, not a script, like the date presets. It appends the table's key to `?vse=` (`EXPAND_PARAM`), keeps every other parameter (filters, page numbers, tables already expanded), and ends in `#tabulka-<key>` so the page lands back on that card.
-- `_previews(request, key=rows, …)` builds `tables` in the context; each entry has `rows`, `total`, `has_more`, `expanded`, `expand_querystring` and `anchor`. Templates loop over `tables.<key>.rows`. The raw context (`machines`, `summary`, `page_obj`, …) is unchanged.
-- A paginated detail table, once expanded, is the usual 50-row page with its page links; collapsed, it shows no page links. `total` counts all its pages.
+- „Zobrazit méně" removes only its own key from `vse`, plus that table's page param (`page` or `fuel_page`), so the next expansion starts on page one. It shows only when there is something to hide (more than 5 rows).
+- `_previews(request, key=rows, …)` builds `tables` in the context; each entry has `rows`, `total`, `has_more`, `can_collapse`, `expanded`, `expand_querystring`, `collapse_querystring` and `anchor`. A paginated table is passed as its `_paginated` dict (`page_obj` + `page_param`), not the bare page. Templates loop over `tables.<key>.rows`. The raw context (`machines`, `summary`, `page_obj`, …) is unchanged.
+- A paginated table, once expanded, is the usual 50-row page with its page links; collapsed, it shows no page links. `total` counts all its pages.
 - Submitting the filter form drops `vse`, so a new filter starts collapsed.
 - **Exports are unaffected**: they never read `vse` and always hold every filtered row.
 

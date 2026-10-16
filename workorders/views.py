@@ -19,7 +19,7 @@ from accounts.decorators import REVIEWER_ROLES, role_required
 
 from .forms import JOB_SECTIONS, PHOTO_MAX_COUNT, JobFilterForm, WorkOrderForm, job_row_formset
 from .models import JobPhoto, MachineUsage, Refuelling, StockMovement, WorkerHours, WorkOrder
-from .reports import _list_page_context
+from .reports import _list_page_context, _previews
 
 
 class JobRows(NamedTuple):
@@ -463,7 +463,7 @@ def job_dashboard(request):
         .prefetch_related('worker_hours__user')
         .order_by('-performed_on', '-created_at')
     )
-    jobs = form.filter(jobs)
+    listing = _list_page_context(request, form.filter(jobs))
     return render(
         request,
         'workorders/job_dashboard.html',
@@ -471,7 +471,8 @@ def job_dashboard(request):
             'form': form,
             'pending_count': WorkOrder.objects.filter(status=WorkOrder.Status.PENDING).count(),
             'pending_refuel_count': Refuelling.objects.filter(status=Refuelling.Status.PENDING).count(),
-            **_list_page_context(request, jobs),
+            'tables': _previews(request, jobs=listing),
+            **listing,
         },
     )
 
