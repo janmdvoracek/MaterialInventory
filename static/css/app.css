@@ -330,8 +330,29 @@ tr.row-pending > td { background: var(--row-pending-bg); }
 .stored-photos { list-style: none; margin: 0 0 1rem; padding: 0; }
 .stored-photos li { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.35rem 0; }
 .stored-photos label { display: inline-flex; align-items: center; gap: 0.4rem; margin: 0; font-weight: normal; }
-/* One photo on job_photo, fitted to the card. */
-.job-photo { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+/* A photo (job_photo, and the desktop panel) in a fixed-height frame, so
+   „Předchozí fotka" / „Další fotka" stay put between photos of any shape. */
+.photo-frame { display: block; height: min(55vh, 32rem); cursor: zoom-in; }
+.photo-frame img { display: block; width: 100%; height: 100%; object-fit: contain; }
+/* Two equal halves: a lone button keeps its own side. */
+.photo-nav { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; margin-top: 0.75rem; }
+.photo-nav .btn { margin: 0; }
+.photo-nav .photo-previous { grid-column: 1; }
+.photo-nav .photo-next { grid-column: 2; }
+/* Full size, while it is the :target; scrolls both ways over the whole page. */
+.photo-full {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    overflow: auto;
+    background: var(--bg);
+}
+.photo-full:target { display: block; }
+.photo-full img { display: block; max-width: none; cursor: zoom-out; }
+.photo-full .btn { position: sticky; top: 0.5rem; left: 0.5rem; width: auto; margin: 0.5rem; padding: 0.6rem 1rem; }
+/* The pinned panel and the links into it are desktop only (below). */
+.photo-panel, .photo-panel-link { display: none; }
 
 /* Desktop layout: the same markup, rearranged from 900px up. Below that
    everything above applies unchanged (phones, portrait tablets). The bottom
@@ -353,4 +374,28 @@ tr.row-pending > td { background: var(--row-pending-bg); }
     .filter-form > .errorlist { grid-column: 1 / -1; margin-bottom: 0; }
     .filter-form button { margin-top: 0.75rem; }
     .quick-filters .btn { flex: 0 1 auto; }
+    /* job_detail and job_edit with photos: the photos pinned at the right,
+       fixed (not sticky, so a #fotka-<n> jump never scrolls the page), between
+       the header and the bottom nav; the page sits beside them. */
+    main.with-photo-panel { margin-right: calc(min(45vw, 760px) + 2rem); }
+    .photo-panel {
+        display: block;
+        position: fixed;
+        top: 5rem;
+        bottom: 4rem;
+        right: 1rem;
+        width: min(45vw, 760px);
+        padding: 1rem;
+        background: var(--surface);
+        border-radius: 8px;
+        box-shadow: 0 1px 3px var(--shadow);
+    }
+    /* The first photo, until a link targets another. */
+    .photo-slide { display: none; height: 100%; flex-direction: column; }
+    .photo-slide:first-child, .photo-slide:target { display: flex; }
+    .photo-panel:has(.photo-slide:target) .photo-slide:not(:target) { display: none; }
+    .photo-caption { margin: 0 0 0.5rem; font-weight: 700; }
+    .photo-panel .photo-frame { flex: 1 1 auto; min-height: 0; height: auto; }
+    .photo-page-link { display: none; }
+    .photo-panel-link { display: inline; }
 }

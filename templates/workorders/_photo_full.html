@@ -1,0 +1,5 @@
+{# Full size, over the whole page; shown by CSS while it is the URL's :target, so no script and no bare file. #}
+<div class="photo-full" id="fotka-{{ number }}-plna">
+    <a class="btn secondary" href="#fotka-{{ number }}">Zavřít</a>
+    <a href="#fotka-{{ number }}"><img src="{{ photo.file.url }}" alt="Fotka {{ number }} v plné velikosti" loading="lazy"></a>
+</div>

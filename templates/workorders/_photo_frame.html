@@ -1,0 +1,4 @@
+{# One photo in a fixed-height frame, so the buttons under it never move. Tapping it opens `_photo_full.html`. #}
+<a class="photo-frame" href="#fotka-{{ number }}-plna" title="Zobrazit v plné velikosti">
+    <img src="{{ photo.file.url }}" alt="Fotka {{ number }} – zpracování #{{ work_order.pk }}"{% if lazy %} loading="lazy"{% endif %}>
+</a>

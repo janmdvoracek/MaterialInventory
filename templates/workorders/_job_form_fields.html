@@ -52,7 +52,7 @@ an unrendered error looks like a button that did nothing.
         <ul class="stored-photos">
             {% for choice in order_form.remove_photos %}
                 <li>
-                    <a href="{% url 'job_photo' choice.data.value.instance.work_order_id forloop.counter %}">Fotka {{ forloop.counter }}</a>
+                    {% include "workorders/_photo_links.html" with number=forloop.counter %}
                     <label for="{{ choice.id_for_label }}">{{ choice.tag }} Odebrat</label>
                 </li>
             {% endfor %}

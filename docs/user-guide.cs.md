@@ -134,7 +134,7 @@ Chybu opraví vedoucí přímo v zápisu, nebo ho smaže. Vy ho opravit nemůže
 
 Seznam všech zakázek: datum, autor, lokace, popis, hodiny a stav. Čekající jsou **žluté** a nahoře je jejich počet. Filtrovat lze podle autora, lokace, stavu a data.
 
-**Detail** ukáže vše z formuláře včetně fotek (odkazy **Fotka 1**, **Fotka 2**…). Fotka se otevře uvnitř aplikace; mezi fotkami listujete tlačítky pod ní a odkazem **Zpět na zpracování** se vrátíte do detailu. Akce:
+**Detail** ukáže vše z formuláře včetně fotek (odkazy **Fotka 1**, **Fotka 2**…). Na telefonu se fotka otevře uvnitř aplikace; mezi fotkami listujete tlačítky **Předchozí fotka** a **Další fotka** a odkazem **Zpět na zpracování** se vrátíte do detailu. Na počítači jsou fotky v detailu i v úpravě připnuté vpravo a zůstávají na místě, když stránkou posouváte, takže údaje porovnáte s fotkou vedle sebe. Klepnutím na fotku ji zobrazíte v plné velikosti, **Zavřít** ji vrátí. Akce:
 
 | Akce | Co udělá |
 |---|---|

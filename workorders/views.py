@@ -570,7 +570,11 @@ def job_edit(request, pk):
             return redirect('job_detail', pk=work_order.pk)
     # Set on every path, since an invalid POST re-renders too.
     order_form.fields['hours'].label = f'Hodiny – {author.username}'
-    return render(request, 'workorders/job_edit.html', _job_context(order_form, formsets, work_order=work_order))
+    return render(
+        request,
+        'workorders/job_edit.html',
+        _job_context(order_form, formsets, work_order=work_order, photos=list(work_order.photos.all())),
+    )
 
 
 def _trimmed(row):

@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Zpracování #{{ work_order.pk }}{% endblock %}
+{% block main_class %}{% if photos %}with-photo-panel{% endif %}{% endblock %}
 {% block content %}
 {# Repeated at the bottom: after approving, the page reloads at the top. #}
 <p><a href="{% url 'job_dashboard' %}">← Zpět na přehled</a></p>
@@ -26,10 +27,9 @@
 {% if photos %}
 <div class="card">
     <h2>Fotky</h2>
-    {# Links, not <img>s, to `job_photo`, which keeps the app's chrome and a way back. #}
     <ul class="stored-photos">
         {% for photo in photos %}
-            <li><a href="{% url 'job_photo' work_order.pk forloop.counter %}">Fotka {{ forloop.counter }}</a></li>
+            <li>{% include "workorders/_photo_links.html" with number=forloop.counter %}</li>
         {% endfor %}
     </ul>
 </div>
@@ -125,3 +125,4 @@
 </div>
 <p><a href="{% url 'job_dashboard' %}">← Zpět na přehled</a></p>
 {% endblock %}
+{% block aside %}{% if photos %}{% include "workorders/_photo_panel.html" %}{% endif %}{% endblock %}

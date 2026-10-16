@@ -1,0 +1,3 @@
+{# „Fotka <number>" twice, one shown per width: phones open `job_photo`, desktop shows it in the pinned panel. #}
+<a class="photo-page-link" href="{% url 'job_photo' work_order.pk number %}">Fotka {{ number }}</a>
+<a class="photo-panel-link" href="#fotka-{{ number }}">Fotka {{ number }}</a>

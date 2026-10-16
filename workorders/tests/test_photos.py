@@ -251,17 +251,63 @@ class JobPhotoTests(ReviewFixtureMixin, TestCase):
         self.assertContains(response, 'Fotky jsou dohromady příliš velké')
         self.assertNotContains(response, 'Soubor se nepodařilo otevřít')
 
-    def test_the_job_page_links_every_photo_without_rendering_any(self):
-        # Links, not <img>s: each photo is one tap away, not part of the page.
-        # To the photo page, never the bare file, which strands an installed app.
+    def test_the_job_page_links_every_photo_to_its_page_and_into_the_panel(self):
+        # Phones follow the first link to the photo page, never the bare file,
+        # which strands an installed app; desktop follows the second into the panel.
         work_order = self._job_with_photos(2)
         self.client.force_login(self.manager)
         response = self.client.get(reverse('job_detail', args=[work_order.pk]))
-        for number, photo in enumerate(work_order.photos.all(), start=1):
+        for number in (1, 2):
             with self.subTest(number=number):
                 photo_url = reverse('job_photo', args=[work_order.pk, number])
-                self.assertContains(response, f'<a href="{photo_url}">Fotka {number}</a>', html=True)
-                self.assertNotContains(response, photo.file.url)
+                self.assertContains(
+                    response, f'<a class="photo-page-link" href="{photo_url}">Fotka {number}</a>', html=True
+                )
+                self.assertContains(
+                    response, f'<a class="photo-panel-link" href="#fotka-{number}">Fotka {number}</a>', html=True
+                )
+
+    def test_the_job_pages_pin_every_photo_in_a_panel(self):
+        # Every photo is in the panel, lazily loaded, so only the one shown is
+        # fetched; the buttons switch by anchor, without a script or a reload.
+        work_order = self._job_with_photos(3)
+        photos = list(work_order.photos.all())
+        self.client.force_login(self.manager)
+        for name in ('job_detail', 'job_edit'):
+            with self.subTest(page=name):
+                response = self.client.get(reverse(name, args=[work_order.pk]))
+                self.assertContains(response, '<main class="with-photo-panel">')
+                self.assertContains(response, '<aside class="photo-panel"', count=1)
+                # `{# #}` is single-line only; a multi-line one renders as text.
+                self.assertNotContains(response, '{#')
+                for number, photo in enumerate(photos, start=1):
+                    self.assertContains(response, f'id="fotka-{number}"', count=1)
+                    self.assertContains(response, f'<img src="{photo.file.url}"', count=2)
+                self.assertContains(response, 'loading="lazy"', count=6)
+                self.assertContains(response, 'href="#fotka-2">Předchozí fotka</a>', count=1)
+                self.assertContains(response, 'href="#fotka-2">Další fotka</a>', count=1)
+                self.assertNotContains(response, 'href="#fotka-0"')
+                self.assertNotContains(response, 'href="#fotka-4"')
+
+    def test_no_panel_without_photos(self):
+        work_order = self.submit_job(self.worker)
+        self.client.force_login(self.manager)
+        for name in ('job_detail', 'job_edit'):
+            with self.subTest(page=name):
+                response = self.client.get(reverse(name, args=[work_order.pk]))
+                self.assertNotContains(response, 'photo-panel')
+                self.assertContains(response, '<main class="">')
+
+    def test_a_photo_opens_full_size_without_leaving_the_app(self):
+        # A link to an in-page overlay, not to the bare file.
+        work_order = self._job_with_photos(1)
+        photo = work_order.photos.get()
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('job_photo', args=[work_order.pk, 1]))
+        self.assertContains(response, '<a class="photo-frame" href="#fotka-1-plna"')
+        self.assertContains(response, '<div class="photo-full" id="fotka-1-plna">')
+        self.assertContains(response, '<a class="btn secondary" href="#fotka-1">Zavřít</a>', html=True)
+        self.assertNotContains(response, f'href="{photo.file.url}"')
 
     def test_the_photo_page_shows_the_photo_with_a_way_back(self):
         work_order = self._job_with_photos(3)
@@ -278,10 +324,17 @@ class JobPhotoTests(ReviewFixtureMixin, TestCase):
         self.client.force_login(self.manager)
         first = self.client.get(reverse('job_photo', args=[work_order.pk, 1]))
         self.assertNotContains(first, f'href="{reverse("job_photo", args=[work_order.pk, 0])}"')
-        self.assertContains(first, 'Fotka 2 →')
+        self.assertNotContains(first, 'Předchozí fotka')
+        self.assertContains(first, 'class="btn secondary photo-next"')
         last = self.client.get(reverse('job_photo', args=[work_order.pk, 2]))
-        self.assertContains(last, '← Fotka 1')
-        self.assertNotContains(last, 'Fotka 3')
+        self.assertContains(last, 'class="btn secondary photo-previous"')
+        self.assertNotContains(last, 'Další fotka')
+
+    def test_a_lone_photo_has_no_buttons(self):
+        work_order = self._job_with_photos(1)
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('job_photo', args=[work_order.pk, 1]))
+        self.assertNotContains(response, 'photo-nav')
 
     def test_a_photo_number_the_job_does_not_have_is_a_404(self):
         work_order = self._job_with_photos(1)
@@ -413,7 +466,12 @@ class JobPhotoTests(ReviewFixtureMixin, TestCase):
         for number, photo in enumerate(work_order.photos.all(), start=1):
             with self.subTest(number=number):
                 photo_url = reverse('job_photo', args=[work_order.pk, number])
-                self.assertContains(response, f'<a href="{photo_url}">Fotka {number}</a>', html=True)
+                self.assertContains(
+                    response, f'<a class="photo-page-link" href="{photo_url}">Fotka {number}</a>', html=True
+                )
+                self.assertContains(
+                    response, f'<a class="photo-panel-link" href="#fotka-{number}">Fotka {number}</a>', html=True
+                )
                 self.assertContains(response, f'name="remove_photos" value="{photo.pk}"')
 
     def test_no_removal_box_where_there_is_nothing_to_remove(self):

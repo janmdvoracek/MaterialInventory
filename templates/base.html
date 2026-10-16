@@ -39,6 +39,7 @@
         {% endif %}
         {% block content %}{% endblock %}
     </main>
+    {% block aside %}{% endblock %}
     {% if user.is_authenticated %}
     <nav class="bottom">
         <a href="{% url 'transform_create' %}">Zpracování</a>

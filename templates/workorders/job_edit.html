@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Upravit zpracování #{{ work_order.pk }}{% endblock %}
+{% block main_class %}{% if photos %}with-photo-panel{% endif %}{% endblock %}
 {% block content %}
 <div class="card">
     <h1>Upravit zpracování #{{ work_order.pk }}</h1>
@@ -18,3 +19,4 @@
     <a class="btn secondary" href="{% url 'job_detail' work_order.pk %}">Zpět bez uložení</a>
 </div>
 {% endblock %}
+{% block aside %}{% if photos %}{% include "workorders/_photo_panel.html" %}{% endif %}{% endblock %}

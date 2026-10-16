@@ -1,0 +1,29 @@
+{% comment %}
+Desktop only: the job's photos pinned at the right, beside the job they corroborate.
+Every photo is here; CSS shows the first, or the one the URL's #fotka-<n> targets, so
+switching needs neither a script nor a reload (which would lose job_edit's input).
+Phones hide the panel and use `job_photo` instead.
+{% endcomment %}
+<aside class="photo-panel" aria-label="Fotky">
+    {% for photo in photos %}
+        {% with number=forloop.counter %}
+            <section class="photo-slide" id="fotka-{{ number }}">
+                <p class="photo-caption">Fotka {{ number }} z {{ photos|length }}</p>
+                {% include "workorders/_photo_frame.html" with lazy=True %}
+                {% if not forloop.first or not forloop.last %}
+                    <div class="photo-nav">
+                        {% if not forloop.first %}
+                            <a class="btn secondary photo-previous" href="#fotka-{{ number|add:-1 }}">Předchozí fotka</a>
+                        {% endif %}
+                        {% if not forloop.last %}
+                            <a class="btn secondary photo-next" href="#fotka-{{ number|add:1 }}">Další fotka</a>
+                        {% endif %}
+                    </div>
+                {% endif %}
+            </section>
+        {% endwith %}
+    {% endfor %}
+    {% for photo in photos %}
+        {% include "workorders/_photo_full.html" with number=forloop.counter %}
+    {% endfor %}
+</aside>

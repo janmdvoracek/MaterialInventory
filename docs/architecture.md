@@ -142,9 +142,12 @@ It is shown and filtered on Přehled and Materiál only, plus `job_detail` and t
 
 ### Photos
 
-`JobPhoto` rows are optional evidence. No report, filter or export reads them, and they appear only on `job_detail` (and `job_edit`), as „Fotka 1", „Fotka 2", … links.
+`JobPhoto` rows are optional evidence. No report, filter or export reads them, and they appear only on `job_detail` (and `job_edit`), as „Fotka 1", „Fotka 2", … links and, on desktop, in a pinned panel.
 
-- **The links go to `job_photo`, never to the file.** The bare file is a page with no app chrome, and an installed app has no address bar (and an iPhone no back gesture), so it was a dead end. `job_photo` (`/jobs/<pk>/fotky/<n>/`) renders the one photo as an `<img>` inside `base.html`, with „← Zpět na zpracování" and previous/next links. `n` is the 1-based position the job pages label it with; one the job doesn't have is a 404. `job_detail` itself still renders no `<img>`.
+- **Never a link to the file.** The bare file is a page with no app chrome, and an installed app has no address bar (and an iPhone no back gesture), so it was a dead end.
+- **Phones: `job_photo`.** `/jobs/<pk>/fotky/<n>/` renders the one photo inside `base.html`, with „← Zpět na zpracování" and „Předchozí fotka" / „Další fotka" buttons. `n` is the 1-based position the job pages label it with; one the job doesn't have is a 404.
+- **Desktop: the photo panel.** From 900px, `job_detail` and `job_edit` with photos pin `_photo_panel.html` at the right (`{% block aside %}`, `main.with-photo-panel`), so a reviewer checks the entry against its photos side by side. It holds every photo as a `#fotka-<n>` section with `loading="lazy"`; CSS shows the first, or whichever is the URL's `:target`, and the buttons are anchor links. That switches photos without a script and without a reload, which on `job_edit` would throw away what the manager has typed. The panel is `position: fixed`, not `sticky`: a jump to a sticky element scrolls the page back to it. Each „Fotka n" is rendered twice (`_photo_links.html`), a `job_photo` link for phones and a `#fotka-<n>` link for desktop, one hidden per width.
+- **Fixed-height frame, full size on tap.** Both viewers put the photo in `.photo-frame`, a fixed-height box with `object-fit: contain`, so the buttons don't move between photos. A lone button keeps its half (a two-column grid). Tapping the photo opens `_photo_full.html`, a full-screen overlay at natural size, shown while it is the `:target` (`#fotka-<n>-plna`) and closed by „Zavřít".
 
 - **Always added, never replaced.** Every upload, on a new job or on `job_edit`, becomes a new row. A photo goes only via a ticked „Odebrat" box on `job_edit`, or with its job.
 - **Shrunk before storing**, because the disk is 20 GB and a phone photo is 2–6 MB. `clean_photo_upload` checks the extension (`PHOTO_EXTENSIONS`) and `PHOTO_MAX_BYTES` (10 MB), then `photos.shrink_photo` takes over:
@@ -430,7 +433,7 @@ All URLs are in `workorders/urls.py`, mounted at the root. Login and password ch
 | `/materials/` | `material_dashboard` | Materiál |
 | `/jobs/` | `job_dashboard` | Přehled: every job, pending ones highlighted |
 | `/jobs/<pk>/` | `job_detail` | One job, with review actions |
-| `/jobs/<pk>/fotky/<n>/` | `job_photo` | „Fotka n" of the job, with back and previous/next links |
+| `/jobs/<pk>/fotky/<n>/` | `job_photo` | „Fotka n" of the job, with back and previous/next buttons (the phone viewer) |
 | `/jobs/<pk>/upravit/` | `job_edit` | Correct a job |
 | `/jobs/<pk>/schvalit/` | `job_approve` | POST only |
 | `/jobs/<pk>/smazat/` | `job_delete` | GET confirms, POST deletes |
@@ -463,6 +466,7 @@ Phones and desktops get the same HTML. The phone layout is the default; one `@me
 - The bottom nav is the same on every width; it was tried as a top bar on desktop and deliberately kept at the bottom.
 - `main` widens from 480px to 640px, which is enough for the job form and `job_detail`. A page that holds tables opts into 1200px with `{% block main_class %}wide{% endblock %}`: today Přehled, Přehled tankování, Hodiny, Stroje and Materiál. A class set by the template, rather than `body.page-<url_name>`, so renaming a URL can't drop it.
 - The filter card's form (`.filter-form`) lays its fields side by side, with any errorlist on a row of its own.
+- `job_detail` and `job_edit` with photos pin the photo panel at the right (see [Photos](#photos)), and `main.with-photo-panel` sits beside it.
 
 Separate desktop templates chosen by user agent were considered and rejected: the user agent is unreliable (iPads report as Macs), and every page and error path would need rendering and testing twice.
 
