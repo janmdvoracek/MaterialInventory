@@ -1,4 +1,4 @@
-"""The report pages (Hodiny, Stroje, Materiál), their CSV exports, and the
+"""The report pages (Souhrn, Stroje, Materiál), their CSV exports, and the
 list-page helpers Přehled shares with them."""
 
 import csv
@@ -23,7 +23,7 @@ from .forms import MachineFilterForm, MaterialFilterForm, RefuelFilterForm, Time
 from .models import MachineRefuel, MachineUsage, Refuelling, StockMovement, WorkerHours, WorkOrder
 
 HISTORY_PAGE_SIZE = 50
-# A worker's own recent jobs on Hodiny: a status check, not a history.
+# A worker's own recent jobs on Souhrn: a status check, not a history.
 MY_JOBS_LIMIT = 5
 
 
@@ -46,8 +46,8 @@ DATE_PRESETS = (
 @role_required(*REVIEWER_ROLES)
 def machine_dashboard(request):
     """Stroje: one filter over per-machine totals, usage rows and fill-ups (two paginators)."""
-    form, usages = _filtered_machine_usages(request)
-    _, refuels = _filtered_machine_refuels(request)
+    form, usages = _filtered_machine_usages(request.GET or None)
+    _, refuels = _filtered_machine_refuels(request.GET or None)
     return render(
         request,
         'workorders/machine_dashboard.html',
@@ -147,9 +147,9 @@ def _with_run_hours(usages):
     return usages.annotate(previous_hours=Subquery(previous), run_hours=F('hours') - F('previous_hours'))
 
 
-def _filtered_machine_usages(request):
-    # Approved jobs only. No per-user scoping: the page is manager-only.
-    form = MachineFilterForm(request.GET or None)
+def _filtered_machine_usages(data):
+    # Approved jobs only. No per-user scoping: Stroje is manager-only, and Souhrn's fleet tables are deliberately shared.
+    form = MachineFilterForm(data)
     usages = (
         MachineUsage.objects.filter(work_order__status=WorkOrder.Status.APPROVED)
         .select_related('machine', 'work_order', 'work_order__created_by')
@@ -158,9 +158,9 @@ def _filtered_machine_usages(request):
     return form, form.filter(_with_run_hours(usages))
 
 
-def _filtered_machine_refuels(request):
+def _filtered_machine_refuels(data):
     """Stroje's fill-up rows, from approved refuellings only, under Stroje's filter (`RefuelFilterForm`)."""
-    form = RefuelFilterForm(request.GET or None)
+    form = RefuelFilterForm(data)
     refuels = (
         MachineRefuel.objects.filter(refuelling__status=Refuelling.Status.APPROVED)
         .select_related('machine', 'source', 'refuelling', 'refuelling__created_by')
@@ -323,7 +323,7 @@ def _csv_response(stem, header, rows):
 @role_required(*REVIEWER_ROLES)
 def machine_dashboard_export(request):
     """„Stav strojů" as a CSV, built from the same helpers as the page."""
-    form, usages = _filtered_machine_usages(request)
+    form, usages = _filtered_machine_usages(request.GET or None)
     return _csv_response(
         'stav-stroju',
         [
@@ -357,7 +357,7 @@ def machine_dashboard_export(request):
 @role_required(*REVIEWER_ROLES)
 def machine_refuel_export(request):
     """„Tankování" as a CSV, built from the same helpers as the card."""
-    form, refuels = _filtered_machine_refuels(request)
+    form, refuels = _filtered_machine_refuels(request.GET or None)
     return _csv_response(
         'tankovani',
         ['Stroj', 'Počet tankování', 'Natankováno (l)'],
@@ -371,7 +371,7 @@ def machine_refuel_export(request):
 @role_required(*REVIEWER_ROLES)
 def machine_refuel_detail_export(request):
     """„Detail tankování" as a CSV: every filtered fill-up, not just the page on screen."""
-    _, refuels = _filtered_machine_refuels(request)
+    _, refuels = _filtered_machine_refuels(request.GET or None)
     return _csv_response(
         'detail-tankovani',
         ['Provedeno', 'Stroj', 'Zdroj', 'Natankováno (l)', 'Kým'],
@@ -392,7 +392,7 @@ def machine_refuel_detail_export(request):
 @role_required(*REVIEWER_ROLES)
 def machine_usage_detail_export(request):
     """„Detail používání strojů" as a CSV: every filtered usage row, not just the page on screen."""
-    _, usages = _filtered_machine_usages(request)
+    _, usages = _filtered_machine_usages(request.GET or None)
     return _csv_response(
         'detail-pouzivani-stroju',
         ['Provedeno', 'Stroj', 'Hodin na zakázce', 'Tuny', 'Zakázka', 'Kým'],
@@ -458,7 +458,7 @@ def material_detail_export(request):
 
 @login_required
 def time_worked_export(request):
-    """Hodiny's „Souhrn" as a CSV, scoped exactly like the page."""
+    """Souhrn's „Odpracované hodiny" as a CSV, scoped exactly like the page."""
     _, _, summary = _time_worked_scope(request)
     return _csv_response(
         'souhrn-hodin',
@@ -485,7 +485,7 @@ def _time_worked_summary(work_orders):
 
 
 def _time_worked_scope(request):
-    """Hodiny's filter form, scoped jobs and summary — shared with its export so both scope alike."""
+    """Souhrn's filter form, scoped jobs and hours summary — shared with its export so both scope alike."""
     form = TimeWorkedFilterForm(request.GET or None, user=request.user)
     work_orders = WorkOrder.objects.filter(status=WorkOrder.Status.APPROVED)
     if not request.user.is_manager_or_admin:
@@ -520,9 +520,28 @@ def time_worked(request):
             'summary': summary,
             'total_hours': sum((row['hours'] for row in summary), Decimal('0')),
             'my_jobs': _my_recent_jobs(request.user),
+            # Managers have the same numbers, with more, on Stroje.
+            'fleet': None if request.user.is_manager_or_admin else _fleet_totals(request),
             **_list_page_context(request, detail),
         },
     )
+
+
+def _fleet_totals(request):
+    """Souhrn's machine tables: hours run, tonnage and fuel per machine, from everyone's approved entries.
+
+    Not scoped to the worker, by design: these are the machines' totals, not the
+    worker's. Only the page's dates apply; Stroje's machine and author filters
+    are not on this page, so anything else in the querystring is ignored.
+    """
+    dates = {key: request.GET[key] for key in ('date_from', 'date_to') if key in request.GET} or None
+    usage_form, usages = _filtered_machine_usages(dates)
+    refuel_form, refuels = _filtered_machine_refuels(dates)
+    return {
+        'machines': _machine_summary(usages, usage_form),
+        'refuel_machines': _refuel_summary(refuels, refuel_form),
+        'total_litres': refuels.aggregate(total=Sum('litres'))['total'] or Decimal('0'),
+    }
 
 
 def _my_recent_jobs(user):

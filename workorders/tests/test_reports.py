@@ -1,4 +1,4 @@
-"""Hodiny, Stroje and Materiál, and the filters above them."""
+"""Souhrn, Stroje and Materiál, and the filters above them."""
 
 from datetime import date, timedelta
 from decimal import Decimal
@@ -10,7 +10,7 @@ from django.utils import timezone
 from accounts.models import User
 from machines.models import Machine
 from materials.models import Material
-from workorders.models import MachineUsage, StockMovement, WorkerHours, WorkOrder
+from workorders.models import MachineRefuel, MachineUsage, Refuelling, StockMovement, WorkerHours, WorkOrder
 from workorders.reports import _last_month
 
 from .helpers import ReviewFixtureMixin, job_payload
@@ -715,7 +715,7 @@ class TimeWorkedTests(TestCase):
         self, creator, hours, collaborators=(), machine_hours=None, machine=None, status=WorkOrder.Status.APPROVED
     ):
         """A job with `hours` of labour by `creator`, plus `(user, hours)` collaborator pairs. `machine_hours` is
-        machine runtime and must not reach Hodiny. Approved by default.
+        machine runtime and must not reach the hours summary. Approved by default.
         """
         work_order = WorkOrder.objects.create(created_by=creator, description='job', status=status)
         if hours is not None:
@@ -880,6 +880,109 @@ class TimeWorkedTests(TestCase):
         self.client.force_login(self.worker)
         response = self.client.get(reverse('time_worked'))
         self.assertEqual([o.pk for o in response.context['page_obj'].object_list], [own.pk])
+
+
+class SouhrnFleetTests(TestCase):
+    """Souhrn's machine and fuel tables: the fleet's totals for a worker, not the worker's own."""
+
+    def setUp(self):
+        self.worker = User.objects.create_user(username='worker', password='pw', role=User.Role.WORKER)
+        self.other_worker = User.objects.create_user(username='other', password='pw', role=User.Role.WORKER)
+        self.manager = User.objects.create_user(username='manager', password='pw', role=User.Role.MANAGER)
+        self.machine = Machine.objects.create(name='Crusher A')
+        self.client.force_login(self.worker)
+
+    def _usage(self, creator, reading, tons, status=WorkOrder.Status.APPROVED, days_ago=0):
+        work_order = WorkOrder.objects.create(
+            created_by=creator,
+            description='job',
+            status=status,
+            performed_on=date.today() - timedelta(days=days_ago),
+        )
+        return MachineUsage.objects.create(work_order=work_order, machine=self.machine, hours=reading, tons=tons)
+
+    def _refuel(self, creator, litres, status=Refuelling.Status.APPROVED, days_ago=0):
+        refuelling = Refuelling.objects.create(
+            created_by=creator, status=status, performed_on=date.today() - timedelta(days=days_ago)
+        )
+        return MachineRefuel.objects.create(refuelling=refuelling, machine=self.machine, litres=litres)
+
+    def _fleet(self, params=None):
+        return self.client.get(reverse('time_worked'), params or {}).context['fleet']
+
+    def test_machine_totals_include_other_peoples_jobs(self):
+        self._usage(self.other_worker, Decimal('100'), Decimal('10'))
+        self._usage(self.other_worker, Decimal('104'), Decimal('6'))
+        machine = self._fleet()['machines'][0]
+        self.assertEqual(machine.filtered_hours, Decimal('4.00'))
+        self.assertEqual(machine.filtered_tons, Decimal('16.00'))
+
+    def test_fuel_totals_include_other_peoples_refuellings(self):
+        self._refuel(self.other_worker, Decimal('50'))
+        self._refuel(self.worker, Decimal('20'))
+        fleet = self._fleet()
+        self.assertEqual(fleet['refuel_machines'][0].filtered_litres, Decimal('70.00'))
+        self.assertEqual(fleet['total_litres'], Decimal('70.00'))
+
+    def test_hours_stay_the_workers_own(self):
+        # The fleet tables are shared; the labour summary beside them is not.
+        self._usage(self.other_worker, Decimal('100'), Decimal('10'))
+        WorkerHours.objects.create(work_order=WorkOrder.objects.get(), user=self.other_worker, hours=Decimal('8'))
+        response = self.client.get(reverse('time_worked'))
+        self.assertEqual(response.context['summary'], [])
+        self.assertEqual(len(response.context['page_obj'].object_list), 0)
+        self.assertEqual(response.context['fleet']['machines'][0].filtered_tons, Decimal('10.00'))
+
+    def test_pending_entries_are_not_counted(self):
+        self._usage(self.other_worker, Decimal('100'), Decimal('10'), status=WorkOrder.Status.PENDING)
+        self._refuel(self.other_worker, Decimal('50'), status=Refuelling.Status.PENDING)
+        fleet = self._fleet()
+        self.assertIsNone(fleet['machines'][0].filtered_tons)
+        self.assertEqual(fleet['total_litres'], Decimal('0'))
+
+    def test_totals_follow_the_date_filter(self):
+        self._usage(self.other_worker, Decimal('100'), Decimal('10'), days_ago=40)
+        self._usage(self.other_worker, Decimal('103'), Decimal('6'))
+        self._refuel(self.other_worker, Decimal('50'), days_ago=40)
+        self._refuel(self.other_worker, Decimal('20'))
+        fleet = self._fleet({'date_from': (date.today() - timedelta(days=7)).isoformat()})
+        self.assertEqual(fleet['machines'][0].filtered_tons, Decimal('6.00'))
+        self.assertEqual(fleet['machines'][0].filtered_hours, Decimal('3.00'))
+        self.assertEqual(fleet['total_litres'], Decimal('20.00'))
+
+    def test_only_the_dates_apply(self):
+        # Stroje's machine and author filters are not on this page; passing them changes nothing.
+        other_machine = Machine.objects.create(name='Screener B')
+        self._usage(self.other_worker, Decimal('100'), Decimal('10'))
+        fleet = self._fleet({'machine': other_machine.pk, 'created_by': self.worker.pk})
+        self.assertEqual([m.name for m in fleet['machines']], ['Crusher A', 'Screener B'])
+        self.assertEqual(fleet['machines'][0].filtered_tons, Decimal('10.00'))
+
+    def test_an_invalid_filter_shows_no_machines(self):
+        self._usage(self.other_worker, Decimal('100'), Decimal('10'))
+        fleet = self._fleet({'date_from': 'not-a-date'})
+        self.assertEqual(list(fleet['machines']), [])
+        self.assertEqual(list(fleet['refuel_machines']), [])
+
+    def test_page_shows_both_tables(self):
+        self._usage(self.other_worker, Decimal('100'), Decimal('12.5'))
+        response = self.client.get(reverse('time_worked'))
+        self.assertContains(response, '<h1>Souhrn</h1>', html=True)
+        self.assertContains(response, 'Natankováno (l)')
+        self.assertContains(response, '12,50')
+        # No prices for workers.
+        self.assertNotContains(response, 'Kč')
+
+    def test_managers_do_not_get_the_tables(self):
+        # They have the same numbers, and more, on Stroje.
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('time_worked'))
+        self.assertIsNone(response.context['fleet'])
+        self.assertNotContains(response, 'Natankováno (l)')
+
+    def test_nav_names_the_page_souhrn(self):
+        response = self.client.get(reverse('transform_create'))
+        self.assertContains(response, f'<a href="{reverse("time_worked")}">Souhrn</a>', html=True)
 
 
 class DatePresetTests(ReviewFixtureMixin, TestCase):

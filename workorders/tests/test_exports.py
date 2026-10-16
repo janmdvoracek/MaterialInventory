@@ -208,7 +208,7 @@ class TableExportTests(TestCase):
 
     def test_hours_export_is_scoped_to_the_worker_downloading_it(self):
         # The one export a plain worker can reach, so it must be scoped exactly
-        # like their Hodiny page — not the depot's hours.
+        # like their Souhrn page — not the depot's hours.
         self._job(hours=[(self.worker, Decimal('2'))])
         self._job(hours=[(self.other_worker, Decimal('8'))])
         self.client.force_login(self.worker)

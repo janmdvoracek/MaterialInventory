@@ -138,7 +138,7 @@ class JobReviewTests(ReviewFixtureMixin, TestCase):
 
 
 class MyJobsTests(ReviewFixtureMixin, TestCase):
-    """A worker's recent submissions at the top of Hodiny: their only feedback on review."""
+    """A worker's recent submissions at the top of Souhrn: their only feedback on review."""
 
     def test_author_sees_their_own_pending_job(self):
         work_order = self.submit_job(self.worker)
@@ -153,7 +153,7 @@ class MyJobsTests(ReviewFixtureMixin, TestCase):
         self.assertNotContains(response, 'Moje poslední zápisy')
 
     def test_a_manager_is_not_shown_the_list(self):
-        # Hodiny is the whole depot's report for them, and Přehled already
+        # Souhrn is the whole depot's report for them, and Přehled already
         # lists every job with its status.
         self.submit_job(self.manager)
         response = self.client.get(reverse('time_worked'))

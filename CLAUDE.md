@@ -88,7 +88,7 @@ The scripts build no markup of their own. They clone server-rendered `<template>
 - **`materials`**: `Material` (SKU and name only; every quantity is implicitly tonnes, with the `t` hardcoded). It also hosts the `seed_data` command, which is the only place it imports `machines` or `locations`.
 - **`machines`**: `Machine` (name, `is_active`, optional `hourly_rate` and `rate_per_ton`). It stores no totals. Also `FuelSource` (name, `is_active`): the refuelling's „Zdroj", a label managed in the admin like `Location`.
 - **`locations`**: `Location` (name, `is_active`). One per job, and it is a **label**, not a stock location: nothing is summed or refused per location.
-- **`workorders`**: everything else. `views.py` records and reviews jobs and holds the entry-form helpers (`_entry_forms`, `_entry_context`, `_review_on_submit`, `_approve`); `refuels.py` records and reviews refuellings on top of them; `reports.py` holds Hodiny, Stroje, Materiál, the CSV exports and the list helpers; `pwa.py` serves the PWA. All URLs are mounted at the root. Keep the reports a module of `workorders`, not a separate app (that was considered and rejected).
+- **`workorders`**: everything else. `views.py` records and reviews jobs and holds the entry-form helpers (`_entry_forms`, `_entry_context`, `_review_on_submit`, `_approve`); `refuels.py` records and reviews refuellings on top of them; `reports.py` holds Souhrn, Stroje, Materiál, the CSV exports and the list helpers; `pwa.py` serves the PWA. All URLs are mounted at the root. Keep the reports a module of `workorders`, not a separate app (that was considered and rejected).
 
 Catalog records are retired with `is_active=False` and protected from deletion by `on_delete=PROTECT`.
 
@@ -181,7 +181,7 @@ Easy to break:
 **Approval.** A worker's job or refuelling is saved `PENDING`; a manager's or admin's own is saved `APPROVED` with themselves as reviewer. **Every report counts only `APPROVED` entries.**
 
 - **Review actions.** There are exactly three: approve, edit, delete. There is no "returned" status. Editing does not approve.
-- **Worker feedback.** `my_jobs` (`_my_recent_jobs`, top of Hodiny, last `MY_JOBS_LIMIT` = 5) is a worker's only view of a job's review status. It is scoped by `created_by` only, ignores the filter form, and is empty for managers. `my_refuellings` does the same for refuellings, under the Tankování form.
+- **Worker feedback.** `my_jobs` (`_my_recent_jobs`, top of Souhrn, last `MY_JOBS_LIMIT` = 5) is a worker's only view of a job's review status. It is scoped by `created_by` only, ignores the filter form, and is empty for managers. `my_refuellings` does the same for refuellings, under the Tankování form.
 
 **Recording for someone else.** Managers and admins get an `author` field („Zapsat za"). The job then belongs to the author, but approval follows the submitter. `_submitted_author` resolves the author before any formset is built.
 
@@ -237,7 +237,7 @@ It must also widen the catalog pickers to the retired records the job already na
 
 ## Reports
 
-Hodiny, Stroje and Materiál each have a filter card, a summary table, and the detail rows behind it. Stroje has two summary/detail pairs: usage and fuel.
+Souhrn, Stroje and Materiál each have a filter card, a summary table, and the detail rows behind it. Stroje has two summary/detail pairs: usage and fuel.
 
 - **Stroje** (`machine_dashboard`): a manager page.
   - Per machine: latest reading (`Max`), hours run, tonnage, both rates, and three money columns from `_machine_costs`. That makes `_machine_summary` a list rather than a queryset.
@@ -247,7 +247,9 @@ Hodiny, Stroje and Materiál each have a filter card, a summary table, and the d
   - Every active machine is listed; naming one in the filter narrows the table to it.
   - The two tables paginate independently (`_paginated(request, rows, param)`). `MachineRefuelReportTests` covers this.
 - **Materiál** (`material_dashboard`): a manager page; the only place line items are read across jobs. It annotates consumed (`Abs`), produced and net (`Coalesce`); zeros are real. Its filter has `location` but no `created_by`. Its „Druh pohybu" (`movement_type`) narrows only Detail položek and its export (`MaterialFilterForm.detail_rows`), never the summary, whose columns already split the two directions.
-- **Hodiny** (`time_worked`): any user. It sums `WorkerHours` per person. It re-queries by `pk__in` before aggregating, because the collaborator join would otherwise multiply the `Sum`. Workers see only their own rows (see Access).
+- **Souhrn** (`time_worked`, nav „Souhrn", URL still `/hours/`): any user.
+  - **Odpracované hodiny** sums `WorkerHours` per person. It re-queries by `pk__in` before aggregating, because the collaborator join would otherwise multiply the `Sum`. Workers see only their own rows (see Access).
+  - **Stroje** („Hodin za období", „Tun") and **Tankování** (`_fleet_totals`) are for workers only (`fleet` is `None` for managers, who have Stroje). They are **deliberately unscoped**: every approved entry counts. They reuse Stroje's helpers, take only the page's dates (`machine`/`created_by` in the querystring are ignored), and have no export. `SouhrnFleetTests` covers this.
 - **Přehled** (`job_dashboard` and the `/jobs/` pages): a manager page. Location is shown and filtered only here and on Materiál. It links to **Přehled tankování** (`refuel_dashboard`) with the pending refuelling count.
 
 **CSV exports** sit at `<page>/export/`:
@@ -266,8 +268,8 @@ Rules:
 
 ## Access
 
-- **The nav** (in `base.html`, hardcoded): everyone sees Zpracování, Tankování and Hodiny; Přehled, Stroje and Materiál sit inside `{% if user.is_manager_or_admin %}`. Hiding a link is not access control: those views are also gated with `role_required(MANAGER, ADMIN)`. Keep nav labels short, since a manager has six entries.
-- **Worker scoping** happens in the queryset, not by hiding fields. Only `time_worked` needs it. It applies `participation_filter`, and it also filters the summary rows to the requesting user. Deleting the `worker` filter field is cosmetic (`test_worker_cannot_bypass_restriction_via_worker_param`). Don't add scoping to `role_required` views.
+- **The nav** (in `base.html`, hardcoded): everyone sees Zpracování, Tankování and Souhrn; Přehled, Stroje and Materiál sit inside `{% if user.is_manager_or_admin %}`. Hiding a link is not access control: those views are also gated with `role_required(MANAGER, ADMIN)`. Keep nav labels short, since a manager has six entries.
+- **Worker scoping** happens in the queryset, not by hiding fields. Only `time_worked`'s labour tables need it (its fleet tables are shared on purpose). It applies `participation_filter`, and it also filters the summary rows to the requesting user. Deleting the `worker` filter field is cosmetic (`test_worker_cannot_bypass_restriction_via_worker_param`). Don't add scoping to `role_required` views.
 - **Filter forms** subclass `DateRangeFilterForm` and declare `lookups` / `date_lookup`; views call `form.filter(qs)`. Unbound shows everything; **invalid returns `.none()`**.
 - **List pages.** A filtered page needs `**_list_page_context(request, rows)` (`page_obj`, `querystring`, `date_presets`) plus the `_filter_card.html` and `_pagination.html` includes. Date presets are plain links.
 - **The `/admin/` gate.** `AdminSessionRequiredMiddleware` returns **404** for everything under the admin prefix unless `has_admin_access` (`is_active and is_staff and (is_superuser or role == ADMIN)`). That covers `/admin/login/` too, because the server is public. Details:

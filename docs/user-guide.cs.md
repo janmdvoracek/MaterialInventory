@@ -15,7 +15,7 @@ Evidence zpracování materiálu. Aplikace je určená hlavně pro mobilní tele
 - [Přehled (pro vedoucí)](#přehled-pro-vedoucí)
 - [Stroje](#stroje)
 - [Materiál](#materiál)
-- [Hodiny](#hodiny)
+- [Souhrn](#souhrn)
 - [Stažení do Excelu](#stažení-do-excelu)
 - [Časté potíže](#časté-potíže)
 
@@ -40,7 +40,7 @@ Bez signálu ukáže aplikace stránku **Bez připojení**. Zakázku bez připoj
 |---|---|---|
 | **Zpracování** | zápis zakázky (otevře se po přihlášení i po klepnutí na logo) | všichni |
 | **Tankování** | zápis tankování | všichni |
-| **Hodiny** | odpracované hodiny | všichni |
+| **Souhrn** | odpracované hodiny; pracovník navíc tuny, hodiny a tankování strojů | všichni |
 | **Přehled** | všechny zakázky a tankování, schvalování | vedoucí |
 | **Stroje** | motohodiny, tuny, ceny, tankování | vedoucí |
 | **Materiál** | spotřeba a výroba po materiálech | vedoucí |
@@ -107,7 +107,7 @@ Vidíte-li místo tlačítka dvě pole (**Vyfoťte fotku** a **Vyberte fotky**),
 
 ### Zapsat za někoho jiného (vedoucí)
 
-Vedoucí má pole **Zapsat za**. Když vyberete pracovníka, zakázka bude **jeho**: jeho jméno, jeho hodiny, objeví se mu v Hodinách. Je rovnou schválená, posuzovatelem jste vy. Mezi spolupracovníky pak můžete uvést i sebe.
+Vedoucí má pole **Zapsat za**. Když vyberete pracovníka, zakázka bude **jeho**: jeho jméno, jeho hodiny, objeví se mu v Souhrnu. Je rovnou schválená, posuzovatelem jste vy. Mezi spolupracovníky pak můžete uvést i sebe.
 
 Celá zakázka se ukládá najednou. Po uložení se ukáže zelená zpráva a formulář se vyprázdní.
 
@@ -122,13 +122,13 @@ Použijte, kdykoli jste natankovali jeden nebo více strojů. Je to samostatný 
 - Litry pište **s tečkou** (`45.5`), nejvýš 2000. Řádky přidáte a odeberete stejně jako u zakázky.
 - Chybí-li zdroj v seznamu, řekněte vedoucímu, přidá ho správce.
 
-Pod formulářem jsou **Moje poslední tankování**: pět posledních, se stavem. **Tankování pracovníka musí schválit vedoucí**, do té doby se nepočítá do Strojů. Tankování vedoucího je schválené rovnou.
+Pod formulářem jsou **Moje poslední tankování**: pět posledních, se stavem. **Tankování pracovníka musí schválit vedoucí**, do té doby se nepočítá do Souhrnu ani Strojů. Tankování vedoucího je schválené rovnou.
 
 ## Schvalování
 
-**Zakázku i tankování pracovníka musí schválit vedoucí.** Do té doby se nepočítají do Hodin, Strojů ani Materiálu, proto tam své hodiny hned neuvidíte. Zápis vedoucího je schválený rovnou.
+**Zakázku i tankování pracovníka musí schválit vedoucí.** Do té doby se nepočítají do Souhrnu, Strojů ani Materiálu, proto tam své hodiny hned neuvidíte. Zápis vedoucího je schválený rovnou.
 
-Chybu opraví vedoucí přímo v zápisu, nebo ho smaže. Vy ho opravit nemůžete a zpátky se neposílá. Víte-li o chybě, řekněte vedoucímu, jak to bylo. Stav svých zakázek uvidíte v [Hodinách](#hodiny), stav tankování pod formulářem [Tankování](#tankování).
+Chybu opraví vedoucí přímo v zápisu, nebo ho smaže. Vy ho opravit nemůžete a zpátky se neposílá. Víte-li o chybě, řekněte vedoucímu, jak to bylo. Stav svých zakázek uvidíte v [Souhrnu](#souhrn), stav tankování pod formulářem [Tankování](#tankování).
 
 ## Přehled (pro vedoucí)
 
@@ -189,13 +189,20 @@ Filtr: materiál, druh pohybu, lokace, datum. Nabízí i vyřazené materiály, 
 
 Příklad: „kolik frakce 8/16 minulý měsíc?" → **Minulý měsíc**, vyberte materiál, čtěte **Vyrobeno**.
 
-## Hodiny
+## Souhrn
 
-Souhrn odpracovaných hodin po lidech a seznam zakázek. Počítají se **hodiny, které si každý zapsal sám** (ne motohodiny). Pracovník vidí jen své, vedoucí všechny a může filtrovat podle pracovníka.
+**Odpracované hodiny** po lidech a pod nimi **Detail zakázek**. Počítají se **hodiny, které si každý zapsal sám** (ne motohodiny). Pracovník vidí jen své, vedoucí všechny a může filtrovat podle pracovníka.
+
+Pracovník tu má navíc dvě tabulky za **všechny stroje a všechny lidi**, ne jen za sebe:
+
+- **Stroje**: kolik každý stroj v období odběhl (**Hodin za období**) a kolik **tun** zpracoval. Stejná čísla jako u vedoucího ve [Strojích](#stroje), jen bez cen.
+- **Tankování**: kolikrát a kolik litrů se do každého stroje natankovalo, dole celkem.
+
+Obě tabulky řídí jen datum ve filtru. Vedoucí je tu nemá, stejná čísla vidí ve Strojích.
 
 ### Moje poslední zápisy
 
-Nahoře je pět zakázek, které jste naposledy **zapsali vy**, seřazené podle času zápisu. Ukazují stav: žluté *Čeká na schválení*, nebo *Schváleno*. Tady zjistíte, proč vám hodiny v souhrnu zatím chybí. Smazaná zakázka zmizí. Zakázky, kde jste jen spolupracovník, tu nejsou, objeví se vám po schválení v souhrnu. Filtry tuto tabulku neovlivňují. Vedoucí ji nemá.
+Nahoře je pět zakázek, které jste naposledy **zapsali vy**, seřazené podle času zápisu. Ukazují stav: žluté *Čeká na schválení*, nebo *Schváleno*. Tady zjistíte, proč vám hodiny zatím chybí. Smazaná zakázka zmizí. Zakázky, kde jste jen spolupracovník, tu nejsou, objeví se vám po schválení v Odpracovaných hodinách. Filtry tuto tabulku neovlivňují. Vedoucí ji nemá.
 
 > **Rychlé období:** nad každým filtrem jsou tlačítka **Vše**, **Posledních 7 dní**, **Posledních 30 dní** a **Minulý měsíc**. Ostatní filtry zůstanou. **Vše** filtr data zruší.
 
@@ -205,7 +212,7 @@ Pod tabulkami je tlačítko **Stáhnout do CSV / Excelu**. Stáhne se tabulka **
 
 | Stránka | Tabulka |
 |---|---|
-| Hodiny | Souhrn |
+| Souhrn | Odpracované hodiny |
 | Stroje | Stav strojů, Tankování, Detail tankování, Detail používání strojů |
 | Materiál | Souhrn materiálů, Detail položek |
 
@@ -234,10 +241,10 @@ Viz [Spotřeba a výroba](#spotřeba-a-výroba). V závorce hlášky jsou oba so
 **„Vyplňte stroj i litry, nebo řádek nechte prázdný."**
 Rozepsaný řádek tankování. Doplňte ho, nebo vymažte.
 
-**Zakázku nevidím v Hodinách** / **tankování nevidím ve Strojích.**
+**Zakázku nevidím v Souhrnu** / **tankování nevidím ve Strojích.**
 Čeká na schválení.
 
-**Nevidím Přehled, Stroje ani Materiál** / **nevidím záznamy kolegů.**
+**Nevidím Přehled, Stroje ani Materiál** / **nevidím hodiny ani zakázky kolegů.**
 Jsou jen pro vedoucí. Požádejte správce o změnu role.
 
 **V nabídce chybí materiál, stroj, lokace nebo zdroj.**

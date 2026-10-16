@@ -1,12 +1,12 @@
 {% extends "base.html" %}
-{% block title %}Odpracované hodiny{% endblock %}
+{% block title %}Souhrn{% endblock %}
 {% block main_class %}wide{% endblock %}
 {% block content %}
-<h1>Odpracované hodiny</h1>
+<h1>Souhrn</h1>
 {% if my_jobs %}
 <div class="card">
     <h2>Moje poslední zápisy</h2>
-    <p class="muted">Zápis se do Hodin a Strojů započítá až po schválení vedoucím. Opravu i smazání provádí vedoucí — pokud je něco špatně, dejte mu vědět.</p>
+    <p class="muted">Zápis se do Souhrnu započítá až po schválení vedoucím. Opravu i smazání provádí vedoucí — pokud je něco špatně, dejte mu vědět.</p>
     <div class="table-scroll">
     <table>
         <thead><tr><th>Provedeno</th><th>Popis</th><th>Moje hodiny</th><th>Stav</th></tr></thead>
@@ -26,7 +26,7 @@
 {% endif %}
 {% include "workorders/_filter_card.html" %}
 <div class="card">
-    <h2>Souhrn</h2>
+    <h2>Odpracované hodiny</h2>
     <div class="table-scroll">
     <table>
         <thead>
@@ -48,6 +48,54 @@
     {# The filter goes with the download, so the file is the table above it. #}
     <a class="btn" href="{% url 'time_worked_export' %}?{{ querystring }}">Stáhnout do CSV / Excelu</a>
 </div>
+{% if fleet %}
+{# Every approved entry, not just this worker's: the machines' totals — see _fleet_totals. #}
+<div class="card">
+    <h2>Stroje</h2>
+    <div class="table-scroll">
+    <table>
+        <thead>
+            <tr><th>Stroj</th><th>Hodin za období</th><th>Tun</th></tr>
+        </thead>
+        <tbody>
+        {% for machine in fleet.machines %}
+            <tr>
+                <td>{{ machine.name }}</td>
+                <td>{% if machine.filtered_hours is None %}—{% else %}{{ machine.filtered_hours|floatformat:1 }} h{% endif %}</td>
+                <td>{{ machine.filtered_tons|floatformat:2|default:"—" }}</td>
+            </tr>
+        {% empty %}
+            <tr><td colspan="3">Žádné stroje neodpovídají zadaným filtrům.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+<div class="card">
+    <h2>Tankování</h2>
+    <div class="table-scroll">
+    <table>
+        <thead>
+            <tr><th>Stroj</th><th>Počet tankování</th><th>Natankováno (l)</th></tr>
+        </thead>
+        <tbody>
+        {% for machine in fleet.refuel_machines %}
+            <tr>
+                <td>{{ machine.name }}</td>
+                <td>{{ machine.filtered_refuels }}</td>
+                <td>{{ machine.filtered_litres|floatformat:2 }} l</td>
+            </tr>
+        {% empty %}
+            <tr><td colspan="3">Žádné stroje neodpovídají zadaným filtrům.</td></tr>
+        {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr><th>Celkem</th><th></th><th>{{ fleet.total_litres|floatformat:2 }} l</th></tr>
+        </tfoot>
+    </table>
+    </div>
+</div>
+{% endif %}
 <div class="card">
     <h2>Detail zakázek</h2>
     <div class="table-scroll">

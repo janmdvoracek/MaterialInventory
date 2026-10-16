@@ -185,13 +185,13 @@ It is shown and filtered on Přehled and Materiál only, plus `job_detail` and t
 
 `WorkOrder.status` and `Refuelling.status` are both `ReviewStatus`: `PENDING` or `APPROVED`, with `reviewed_at` and `reviewed_by`.
 
-**An entry counts only once approved.** Hodiny, Stroje and Materiál report approved jobs and refuellings only. A worker's submission is saved `PENDING`; a manager's or admin's own is saved `APPROVED` with themselves as reviewer, since there's nobody above them (`_review_on_submit`).
+**An entry counts only once approved.** Souhrn, Stroje and Materiál report approved jobs and refuellings only. A worker's submission is saved `PENDING`; a manager's or admin's own is saved `APPROVED` with themselves as reviewer, since there's nobody above them (`_review_on_submit`).
 
 The review pages under `/jobs/` and `/refuels/` are all `role_required(MANAGER, ADMIN)` and offer three actions: **approve, edit, delete** (`_approve` is shared). An entry is never handed back to its author, and editing does not approve. Přehled links to the refuelling list („Přehled tankování") with its pending count, and Stroje's „Detail tankování" links each fill-up to its refuelling.
 
 ### What a worker sees
 
-A pending job is invisible in every report, so `my_jobs` is the only feedback. It sits at the top of Hodiny and shows the worker's last `MY_JOBS_LIMIT` (5) submissions with a status badge and their own hours.
+A pending job is invisible in every report, so `my_jobs` is the only feedback. It sits at the top of Souhrn and shows the worker's last `MY_JOBS_LIMIT` (5) submissions with a status badge and their own hours.
 
 - It is scoped by `created_by` only. Being named on someone else's job is not recording one.
 - It ignores the filter form, which scopes the approved-hours report.
@@ -342,7 +342,7 @@ Service workers need HTTPS or `localhost`. To test on Android against the dev se
 
 ## Reports
 
-Hodiny, Stroje and Materiál share one shape: a filter, a summary table, and the detail rows the summary is made of. One dataset at two zoom levels, under one filter. Every summary is built from the filtered rows (`<rel>__in=rows.values('pk')`), so the two tables can't disagree.
+Souhrn, Stroje and Materiál share one shape: a filter, a summary table, and the detail rows the summary is made of. One dataset at two zoom levels, under one filter. Every summary is built from the filtered rows (`<rel>__in=rows.values('pk')`), so the two tables can't disagree.
 
 ### Stroje
 
@@ -395,17 +395,21 @@ Zeros are real here (`0,00 t`). Every active material is listed, and naming one 
 
 „Druh pohybu" (`movement_type`: Spotřeba, Výroba) narrows **Detail položek and its CSV only**, through `MaterialFilterForm.detail_rows`; it is not in `lookups`, so the summary ignores it. That is the one exception to "every summary is built from the filtered rows": the summary already shows each direction in its own column, and narrowing it would zero one column and make „Rozdíl" meaningless. An unknown value is an invalid filter like any other, so both tables show nothing.
 
-### Hodiny
+### Souhrn
 
-`time_worked` (any logged-in user) sums `WorkerHours.hours` per person. It re-queries the scoped jobs by `pk__in` before aggregating, because the collaborator join would otherwise multiply the `Sum`.
+`time_worked` (any logged-in user; the nav says „Souhrn", the URL is still `/hours/`) has two halves with opposite scoping.
 
-A worker sees only their own row, scoped twice: the queryset through `participation_filter`, and then the summary rows filtered to `request.user`. That second pass stops a collaborated job from showing the creator's hours. Hodiny has no fixed relationship to the motohodiny on Stroje.
+**Odpracované hodiny** and **Detail zakázek** are labour. `time_worked` `WorkerHours.hours` per person. It re-queries the scoped jobs by `pk__in` before aggregating, because the collaborator join would otherwise multiply the `Sum`.
+
+A worker sees only their own row, scoped twice: the queryset through `participation_filter`, and then the summary rows filtered to `request.user`. That second pass stops a collaborated job from showing the creator's hours. These hours have no fixed relationship to the motohodiny on Stroje.
+
+**Stroje** and **Tankování** (`_fleet_totals`, workers only) are the fleet's totals, so a worker can see how many tonnes and hours the machines did in a period. They are **deliberately not scoped to the worker**: every approved job and refuelling counts. They reuse Stroje's helpers (`_filtered_machine_usages` + `_machine_summary`, `_filtered_machine_refuels` + `_refuel_summary`), so the numbers equal Stroje's, but show only „Hodin za období" and „Tun" (no reading, rates or prices), and the fuel summary without its detail. Only the page's `date_from`/`date_to` reach them; a hand-typed `?machine=` or `?created_by=` is ignored. They have no CSV export. Managers and admins don't get them (`fleet` is `None`), because Stroje already shows the same and more.
 
 ### CSV exports
 
 | Export | URL name | Built from |
 |---|---|---|
-| Hodiny „Souhrn" | `time_worked_export` | `_time_worked_scope` |
+| Souhrn „Odpracované hodiny" | `time_worked_export` | `_time_worked_scope` |
 | Stroje „Stav strojů" | `machine_dashboard_export` | `_filtered_machine_usages` + `_machine_summary` |
 | Stroje „Tankování" | `machine_refuel_export` | `_filtered_machine_refuels` + `_refuel_summary` |
 | Stroje „Detail tankování" | `machine_refuel_detail_export` | `_filtered_machine_refuels` |
@@ -430,7 +434,7 @@ All URLs are in `workorders/urls.py`, mounted at the root. Login and password ch
 | URL | Name | What |
 |---|---|---|
 | `/` | `transform_create` | Zpracování: the job form and landing page |
-| `/hours/` | `time_worked` | Hodiny |
+| `/hours/` | `time_worked` | Souhrn |
 | `/machines/` | `machine_dashboard` | Stroje |
 | `/materials/` | `material_dashboard` | Materiál |
 | `/jobs/` | `job_dashboard` | Přehled: every job, pending ones highlighted |
@@ -459,14 +463,14 @@ All URLs are in `workorders/urls.py`, mounted at the root. Login and password ch
 
 The reports stay a module rather than a separate app: they aggregate only `workorders` models, and a separate app would need shared helpers moved out to avoid a circular import, for no behaviour change.
 
-The bottom nav is hardcoded in `base.html`. Everyone gets Zpracování, Tankování and Hodiny; managers also get Přehled, Stroje and Materiál. `<body class="page-{{ url_name }}">` enables page-scoped CSS, so renaming a URL name drops that page's styles.
+The bottom nav is hardcoded in `base.html`. Everyone gets Zpracování, Tankování and Souhrn; managers also get Přehled, Stroje and Materiál. `<body class="page-{{ url_name }}">` enables page-scoped CSS, so renaming a URL name drops that page's styles.
 
 ### Desktop layout
 
 Phones and desktops get the same HTML. The phone layout is the default; one `@media (min-width: 900px)` block at the end of `app.css` rearranges it for wide screens, so no device is detected and a resized window or rotated tablet just reflows:
 
 - The bottom nav is the same on every width; it was tried as a top bar on desktop and deliberately kept at the bottom.
-- `main` widens from 480px to 640px, which is enough for the job form and `job_detail`. A page that holds tables opts into 1200px with `{% block main_class %}wide{% endblock %}`: today Přehled, Přehled tankování, Hodiny, Stroje and Materiál. A class set by the template, rather than `body.page-<url_name>`, so renaming a URL can't drop it.
+- `main` widens from 480px to 640px, which is enough for the job form and `job_detail`. A page that holds tables opts into 1200px with `{% block main_class %}wide{% endblock %}`: today Přehled, Přehled tankování, Souhrn, Stroje and Materiál. A class set by the template, rather than `body.page-<url_name>`, so renaming a URL can't drop it.
 - The filter card's form (`.filter-form`) lays its fields side by side, with any errorlist on a row of its own.
 - `job_detail` and `job_edit` with photos pin the photo panel at the right (see [Photos](#photos)), and `main.with-photo-panel` sits beside it.
 
@@ -476,7 +480,7 @@ Separate desktop templates chosen by user agent were considered and rejected: th
 
 | Role | `is_staff` / `is_superuser` | Access |
 |---|---|---|
-| `WORKER` | no | Zpracování and Hodiny; own records only; submissions await approval |
+| `WORKER` | no | Zpracování, Tankování and Souhrn; own records only, plus the fleet's machine and fuel totals on Souhrn; submissions await approval |
 | `MANAGER` | no | adds Přehled, Stroje, Materiál and everyone's records |
 | `ADMIN` | yes / yes | adds the Django admin |
 
@@ -522,7 +526,7 @@ Every filter form subclasses `DateRangeFilterForm`. It holds `date_from`/`date_t
 
 Returning everything for a bad filter, under a "filtered results" heading, would look like an answer. A subclass declares `lookups` (field name to ORM lookup, or to a callable returning a `Q`) and `date_lookup` (`performed_on`, or `work_order__performed_on` for row-level pages), plus a `field_order` so the dates render last.
 
-**Worker scoping** is done in the queryset, never by hiding fields. Only `time_worked` needs it, being the only filtered page a worker can open. `TimeWorkedFilterForm` deleting its `worker` field for a worker is cosmetic; the queryset filter is what makes `?worker=<someone>` a no-op (`test_worker_cannot_bypass_restriction_via_worker_param`). Don't add scoping to `role_required` views.
+**Worker scoping** is done in the queryset, never by hiding fields. Only `time_worked` needs it, being the only filtered page a worker can open, and only for its labour tables: its machine and fuel tables are shared on purpose (see [Souhrn](#souhrn)). `TimeWorkedFilterForm` deleting its `worker` field for a worker is cosmetic; the queryset filter is what makes `?worker=<someone>` a no-op (`test_worker_cannot_bypass_restriction_via_worker_param`). Don't add scoping to `role_required` views.
 
 **Quick date ranges.** Vše, posledních 7 dní, posledních 30 dní and minulý měsíc come from `DATE_PRESETS` / `_date_preset_links`. They are plain links that set `date_from`/`date_to`, keep the other parameters and drop the page parameters. The spans include today, and the active one is highlighted.
 

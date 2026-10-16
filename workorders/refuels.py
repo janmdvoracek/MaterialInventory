@@ -64,7 +64,7 @@ def _with_totals(refuellings):
 def _my_recent_refuellings(user):
     """A worker's latest refuellings with their status — the only review feedback they get.
 
-    Like Hodiny's `_my_recent_jobs`: by entry time, and empty for managers.
+    Like Souhrn's `_my_recent_jobs`: by entry time, and empty for managers.
     """
     if user.is_manager_or_admin:
         return Refuelling.objects.none()
