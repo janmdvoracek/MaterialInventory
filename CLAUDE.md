@@ -232,6 +232,8 @@ It must also widen the catalog pickers to the retired records the job already na
 
 **Sum button („= součet výstupů", `sum_consumed`).** Screening jobs weigh only what comes out, so Spotřebováno gets a button that fills its row's quantity with the Vyrobeno total. It shows only while the section has exactly one row (`hidden` otherwise, like „− odebrat řádek"). It is declared on the section (`JobSection.sum_from` / `sum_field`) and takes the row-button path: a `formnovalidate` submit answered by the same unbound rebuild, with `_summed_rows` filling the row. Unparsable values are skipped, and the total is written with `format(..., 'f')`, never as an exponent. `job_rows.js` sums in hundredths in the DOM. `SumButtonTests` covers this.
 
+**Tonnage mirror.** Each machine row's „Tuny" defaults to the Spotřebováno total (`JobSection.mirror_from` / `mirror_source` / `mirror_field`), only on rows that name a machine. It is a default, not a derivation; a typed value is kept. The server fills blank boxes on every unbound rebuild (`_mirrored_rows`, after any sum), never on a real submission. `job_rows.js` does it live, following a box while it is blank or still holds the last copied total. `TonnageMirrorTests` covers this.
+
 ## Reports
 
 Hodiny, Stroje and Materiál each have a filter card, a summary table, and the detail rows behind it. Stroje has two summary/detail pairs: usage and fuel.

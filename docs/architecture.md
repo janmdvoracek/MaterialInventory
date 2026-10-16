@@ -265,6 +265,17 @@ A screening job takes one input material and splits it into several outputs, and
 
 `SumButtonTests` covers this.
 
+### Tonnage follows the consumed total
+
+The machines usually process exactly what the job consumed, so each Použité stroje row's „Tuny" is filled with the Spotřebováno total by default. It is a default, not a derivation: the user can type over it, and `MachineUsage.tons` stays its own number on save.
+
+- **Declared on the section.** `JobSection.mirror_from` names the source section, `mirror_source` the field summed there and `mirror_field` the field filled. Only Použité stroje sets them.
+- **Only rows naming a machine.** A tonnage with no machine is refused (`check_row`), so a spare row is never filled.
+- **Server: on every rebuild.** Any row or sum button rebuilds the forms unbound, and `_mirrored_rows` fills each blank tonnage from the rebuilt consumed rows (after the sum, so a summed row counts). A typed value is kept. A real submission is never filled in: a blank box stays unknown.
+- **Script: live.** `job_rows.js` keeps a box in step while it is blank or still holds the last total it copied in; anything else counts as typed. Picking a machine fills its blank box, and clearing the machine empties a box that held only the total.
+
+`TonnageMirrorTests` covers the server path.
+
 ### The three scripts
 
 `job_rows.js` and `searchable_select.js` come with `_row_sections.html`, so they also run on the refuelling form; `photo_picker.js` is the job form's alone. All three are **progressive enhancement**. The test suite has no browser, so the server path must be complete by itself, and with any script blocked the form still works. Each script builds no markup of its own and reads everything off the server-rendered page. The tests cover the contract they read, not their behaviour.
@@ -278,6 +289,7 @@ A screening job takes one input material and splits it into several outputs, and
   - each row and its errors share a `.row-block`;
   - duplicates are only hidden or disabled, and only in the picker named by the section's `data-unique-field` (a refuel row's „Zdroj" is left alone).
 - It also handles „= součet výstupů": it sums `data-sum-field` across the `data-sum-from` section, in hundredths so float error never shows, and hides the button unless the section has exactly one row.
+- It keeps machine tonnage in step with the consumed total: `data-mirror-field` on each row naming a machine follows the `data-mirror-source` total of the `data-mirror-from` section (see above).
 
 Tests: `RowTemplateTests`.
 

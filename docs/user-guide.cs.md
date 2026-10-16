@@ -79,6 +79,7 @@ V každém řádku vyberte **Pracovníka** a zapište jeho **Hodiny**. Sebe sem 
 - **Povinný je jen stroj.** Motohodiny i tuny vyplňte, pokud je znáte. Napsaná **0** znamená totéž co prázdné pole.
 - Číslo bez vybraného stroje aplikace odmítne.
 - Každý stroj uveďte **jen jednou**. Běžel-li víckrát, sečtěte tuny a u motohodin napište poslední stav.
+- **Tuny se vyplní samy** součtem řádků Spotřebováno, u každého řádku s vybraným strojem, a mění se s ním. Když stroj zpracoval jiné množství, číslo přepište; co napíšete sami, už se nemění.
 - Tuny u strojů se do kontroly součtů **nepočítají**: když materiál projde třemi stroji, projde každým stejné množství.
 
 ### Řádky navíc

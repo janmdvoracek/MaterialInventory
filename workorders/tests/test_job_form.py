@@ -633,6 +633,72 @@ class SumButtonTests(ReviewFixtureMixin, TestCase):
         self.assertNotContains(self.client.get(reverse('refuel_create')), 'name="sum_')
 
 
+class TonnageMirrorTests(ReviewFixtureMixin, TestCase):
+    """A machine row's „Tuny" follows the consumed total, since the machines
+    usually process exactly what the job consumed. Server path of
+    `job_rows.js`'s mirror: every unbound rebuild fills a blank box."""
+
+    def _rebuild(self, consumed, machine_rows, button='add_produced', url=None):
+        data = job_payload(consumed, [{'material': self.material_finished, 'quantity': '1'}], machine_rows=machine_rows)
+        data[button] = ''
+        return self.client.post(url or reverse('transform_create'), data)
+
+    def _consumed(self, *quantities):
+        materials = (self.material_raw, self.material_finished)
+        return [{'material': m, 'quantity': q} for m, q in zip(materials, quantities, strict=False)]
+
+    def _tons(self, response):
+        return [form.initial.get('tons') for form in response.context['machine_formset'].forms]
+
+    def test_every_named_machine_gets_the_summed_consumed_total(self):
+        self.client.force_login(self.worker)
+        machines = [{'machine': self.machine_a, 'tons': ''}, {'machine': self.machine_b, 'tons': ''}]
+        response = self._rebuild(self._consumed('12.5', '3'), machines)
+        self.assertEqual(self._tons(response)[:2], ['15.5', '15.5'])
+        self.assertContains(response, 'name="machines-1-tons" value="15.5"')
+
+    def test_a_typed_tonnage_is_kept(self):
+        self.client.force_login(self.worker)
+        response = self._rebuild(self._consumed('10'), [{'machine': self.machine_a, 'tons': '7'}])
+        self.assertEqual(self._tons(response)[0], '7')
+
+    def test_a_row_without_a_machine_stays_blank(self):
+        """A number with no machine is refused, so a spare row is never filled."""
+        self.client.force_login(self.worker)
+        response = self._rebuild(self._consumed('10'), [], button='add_machines')
+        self.assertEqual(self._tons(response), ['', None])
+
+    def test_nothing_consumed_leaves_the_rows_alone(self):
+        self.client.force_login(self.worker)
+        response = self._rebuild(self._consumed('', 'abc'), [{'machine': self.machine_a, 'tons': ''}])
+        self.assertEqual(self._tons(response)[0], '')
+
+    def test_the_sum_button_reaches_the_machines(self):
+        self.client.force_login(self.worker)
+        data = job_payload(
+            [{'material': self.material_raw, 'quantity': ''}],
+            [{'material': self.material_finished, 'quantity': '4'}, {'material': self.material_raw, 'quantity': '5'}],
+            machine_rows=[{'machine': self.machine_a, 'tons': ''}],
+        )
+        data['sum_consumed'] = ''
+        response = self.client.post(reverse('transform_create'), data)
+        self.assertEqual(self._tons(response)[0], '9')
+
+    def test_a_submission_is_not_filled_in(self):
+        """Only a rebuild fills the box; a submitted blank stays unknown."""
+        self.submit_job(self.worker, machine_rows=[{'machine': self.machine_a}])
+        self.assertIsNone(MachineUsage.objects.get().tons)
+
+    def test_job_edit_mirrors_the_same_way(self):
+        work_order = self.submit_job(self.manager)
+        response = self._rebuild(
+            self._consumed('6'),
+            [{'machine': self.machine_a, 'tons': ''}],
+            url=reverse('job_edit', args=[work_order.pk]),
+        )
+        self.assertEqual(self._tons(response)[0], '6')
+
+
 class RowErrorVisibilityTests(ReviewFixtureMixin, TestCase):
     """Nothing is written unless every form validates, so an error with nowhere
     to render is a submission that vanishes without a word."""

@@ -510,6 +510,10 @@ class JobSection:
     `sum_from` names another section whose `sum_field` total this section's
     single row can be filled with (the `sum_<prefix>` button): a screening job
     weighs only what comes out.
+
+    `mirror_from` names another section whose `mirror_source` total is copied
+    into this section's `mirror_field` on every row that names its catalog
+    record: the machines usually process exactly what the job consumed.
     """
 
     prefix: str
@@ -519,6 +523,9 @@ class JobSection:
     formset_class: type
     sum_from: str = ''
     sum_field: str = ''
+    mirror_from: str = ''
+    mirror_source: str = ''
+    mirror_field: str = ''
 
 
 # In render order. A new section only needs adding here.
@@ -534,7 +541,16 @@ JOB_SECTIONS = (
         sum_field='quantity',
     ),
     JobSection('produced', 'produced_formset', 'Vyrobeno', MovementItemForm, MaterialRowFormSet),
-    JobSection('machines', 'machine_formset', 'Použité stroje', MachineUsageForm, MachineRowFormSet),
+    JobSection(
+        'machines',
+        'machine_formset',
+        'Použité stroje',
+        MachineUsageForm,
+        MachineRowFormSet,
+        mirror_from='consumed',
+        mirror_source='quantity',
+        mirror_field='tons',
+    ),
 )
 
 # The refuelling form's one section.

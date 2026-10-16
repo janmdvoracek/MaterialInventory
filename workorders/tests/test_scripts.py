@@ -59,6 +59,16 @@ class RowTemplateTests(ReviewFixtureMixin, TestCase):
         self.assertContains(response, 'data-sum-from="produced" data-sum-field="quantity"', count=1)
         self.assertContains(response, 'data-sum-rows', count=1)
 
+    def test_the_tonnage_mirror_names_its_source_and_field(self):
+        """job_rows.js copies the `data-mirror-from` section's `data-mirror-source`
+        total into each machine row's `data-mirror-field`, as `_mirrored_rows` does."""
+        response = self._page()
+        self.assertContains(
+            response, 'data-mirror-from="consumed" data-mirror-source="quantity" data-mirror-field="tons"', count=1
+        )
+        self.client.force_login(self.manager)
+        self.assertNotContains(self.client.get(reverse('refuel_create')), 'data-mirror-')
+
     def test_the_template_row_is_not_narrowed_by_the_hiding(self):
         """`_hide_taken_choices` touches `formset.forms` and must not reach
         `empty_form`: a row the script adds has to offer the whole catalog, and

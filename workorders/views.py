@@ -151,27 +151,54 @@ def _pressed_sum_button(post_data, sections):
     return None
 
 
-def _summed_rows(rows, section, source_rows):
-    """`rows` with its single row's `sum_field` set to the total of `source_rows`.
+def _rows_total(rows, field):
+    """The total of `field` across raw POST `rows`, or None if none is readable.
 
-    Only a section of exactly one row is filled; the button is hidden otherwise.
     Unparsable values are skipped, since the rebuilt form is unbound and the
-    real submission reports them. Nothing typed leaves the row as it was.
+    real submission reports them.
     """
-    if len(rows) != 1:
-        return rows
     total = None
-    for row in source_rows:
+    for row in rows:
         try:
-            value = Decimal(row.get(section.sum_field, '').strip())
+            value = Decimal(row.get(field, '').strip())
         except InvalidOperation:
             continue
         if value.is_finite():
             total = value + (total or 0)
+    return total
+
+
+def _summed_rows(rows, section, source_rows):
+    """`rows` with its single row's `sum_field` set to the total of `source_rows`.
+
+    Only a section of exactly one row is filled; the button is hidden otherwise.
+    Nothing typed leaves the row as it was.
+    """
+    if len(rows) != 1:
+        return rows
+    total = _rows_total(source_rows, section.sum_field)
     if total is None:
         return rows
     # 'f', or a sum like 1E+3 would come back in a form <input type="number"> refuses.
     return [{**rows[0], section.sum_field: format(total, 'f')}]
+
+
+def _mirrored_rows(rows, section, source_rows):
+    """`rows` with each blank `mirror_field` set to the `mirror_source` total of `source_rows`.
+
+    Only rows that name their catalog record (a machine) are filled, since a
+    number on an otherwise blank row is refused. A typed value is kept.
+    """
+    total = _rows_total(source_rows, section.mirror_source)
+    if total is None:
+        return rows
+    picker = section.formset_class.unique_field
+    return [
+        {**row, section.mirror_field: format(total, 'f')}
+        if row.get(picker) and not row.get(section.mirror_field, '').strip()
+        else row
+        for row in rows
+    ]
 
 
 def _submitted_rows(post_data, section):
@@ -226,6 +253,8 @@ def _entry_forms(request, *, form_class, sections, order_kwargs, form_kwargs, in
       a half-filled form comes back without errors.
     - Sum button: rebuilt the same way, with that section's single row filled
       in from its `sum_from` section (`_summed_rows`).
+    - Either way, a blank `mirror_field` is filled from its `mirror_from`
+      section's total (`_mirrored_rows`), as job_rows.js does live.
     - Any other POST: bound, and `submitted` is True.
     - GET: fresh forms, pre-filled from `initial` (keyed `order` and by section prefix).
 
@@ -244,7 +273,7 @@ def _entry_forms(request, *, form_class, sections, order_kwargs, form_kwargs, in
             else request.POST.get(name, '')
             for name, field in order_form.fields.items()
         }
-        formsets = {}
+        rebuilt = {}
         for section in sections:
             rows, blank_rows = _resized_section(
                 _submitted_rows(request.POST, section),
@@ -253,6 +282,13 @@ def _entry_forms(request, *, form_class, sections, order_kwargs, form_kwargs, in
             if section is summed:
                 source = next(other for other in sections if other.prefix == section.sum_from)
                 rows = _summed_rows(rows, section, _submitted_rows(request.POST, source))
+            rebuilt[section.prefix] = rows, blank_rows
+        formsets = {}
+        for section in sections:
+            rows, blank_rows = rebuilt[section.prefix]
+            if section.mirror_from:
+                # From the rebuilt rows, so a summed consumed row reaches the machines too.
+                rows = _mirrored_rows(rows, section, rebuilt[section.mirror_from][0])
             formsets[section.prefix] = job_row_formset(
                 section, rows=rows, blank_rows=blank_rows, form_kwargs=form_kwargs[section.prefix]
             )

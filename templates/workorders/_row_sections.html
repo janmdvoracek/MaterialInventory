@@ -12,12 +12,16 @@ A section with `sum_from` (Spotřebováno) also gets „= součet výstupů"
 section's total: a screening job weighs only what comes out. It is `hidden` unless the section has exactly
 one row, and job_rows.js does the same sum in the DOM.
 
+A section with `mirror_from` (Použité stroje) has its `mirror_field` (tuny)
+kept equal to the other section's `mirror_source` total on every row that
+names a machine: job_rows.js live, the view on each rebuild (_mirrored_rows).
+
 job_rows.js and searchable_select.js are loaded here and are pure
 enhancement; they clone the row <template>.
 {% endcomment %}
 {% for section, formset in sections %}
 <h2>{{ section.title }}</h2>
-<div data-job-section data-min-rows="{{ min_rows }}" data-max-rows="{{ max_rows }}" data-unique-field="{{ formset.unique_field }}"{% if section.sum_from %} data-sum-from="{{ section.sum_from }}" data-sum-field="{{ section.sum_field }}"{% endif %}>
+<div data-job-section data-min-rows="{{ min_rows }}" data-max-rows="{{ max_rows }}" data-unique-field="{{ formset.unique_field }}"{% if section.sum_from %} data-sum-from="{{ section.sum_from }}" data-sum-field="{{ section.sum_field }}"{% endif %}{% if section.mirror_from %} data-mirror-from="{{ section.mirror_from }}" data-mirror-source="{{ section.mirror_source }}" data-mirror-field="{{ section.mirror_field }}"{% endif %}>
     {{ formset.management_form }}
     {% for error in formset.non_form_errors %}<p class="messages error">{{ error }}</p>{% endfor %}
     {% for form in formset %}
