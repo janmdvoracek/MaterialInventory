@@ -1,7 +1,7 @@
 """Recording a job (Zpracování), reviewing it (Přehled and the job pages), and
 serving the photos attached to one."""
 
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import NamedTuple
 
 from django.contrib import messages
@@ -143,6 +143,37 @@ def _pressed_row_button(post_data, sections):
     return None
 
 
+def _pressed_sum_button(post_data, sections):
+    """The section whose sum button (`sum_<prefix>`) was pressed, or None."""
+    for section in sections:
+        if section.sum_from and f'sum_{section.prefix}' in post_data:
+            return section
+    return None
+
+
+def _summed_rows(rows, section, source_rows):
+    """`rows` with its single row's `sum_field` set to the total of `source_rows`.
+
+    Only a section of exactly one row is filled; the button is hidden otherwise.
+    Unparsable values are skipped, since the rebuilt form is unbound and the
+    real submission reports them. Nothing typed leaves the row as it was.
+    """
+    if len(rows) != 1:
+        return rows
+    total = None
+    for row in source_rows:
+        try:
+            value = Decimal(row.get(section.sum_field, '').strip())
+        except InvalidOperation:
+            continue
+        if value.is_finite():
+            total = value + (total or 0)
+    if total is None:
+        return rows
+    # 'f', or a sum like 1E+3 would come back in a form <input type="number"> refuses.
+    return [{**rows[0], section.sum_field: format(total, 'f')}]
+
+
 def _submitted_rows(post_data, section):
     """One section's rows as the raw POST strings, for the unbound rebuild."""
     prefix = section.prefix
@@ -193,14 +224,17 @@ def _entry_forms(request, *, form_class, sections, order_kwargs, form_kwargs, in
 
     - Row button: rebuilt *unbound* from the POST with that section resized, so
       a half-filled form comes back without errors.
+    - Sum button: rebuilt the same way, with that section's single row filled
+      in from its `sum_from` section (`_summed_rows`).
     - Any other POST: bound, and `submitted` is True.
     - GET: fresh forms, pre-filled from `initial` (keyed `order` and by section prefix).
 
     `form_kwargs` holds each section's row-form kwargs, keyed by prefix.
     """
     pressed = _pressed_row_button(request.POST, sections) if request.method == 'POST' else None
-    if pressed:
-        pressed_prefix, delta = pressed
+    summed = _pressed_sum_button(request.POST, sections) if request.method == 'POST' else None
+    if pressed or summed:
+        pressed_prefix, delta = pressed or (None, 0)
         order_form = form_class(**order_kwargs)
         # Read off the form's own fields, so „Zapsat za" is carried when present;
         # every value of a multi-value one, so a ticked „Odebrat" stays ticked.
@@ -216,6 +250,9 @@ def _entry_forms(request, *, form_class, sections, order_kwargs, form_kwargs, in
                 _submitted_rows(request.POST, section),
                 delta if section.prefix == pressed_prefix else 0,
             )
+            if section is summed:
+                source = next(other for other in sections if other.prefix == section.sum_from)
+                rows = _summed_rows(rows, section, _submitted_rows(request.POST, source))
             formsets[section.prefix] = job_row_formset(
                 section, rows=rows, blank_rows=blank_rows, form_kwargs=form_kwargs[section.prefix]
             )

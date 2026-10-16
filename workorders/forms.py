@@ -505,19 +505,34 @@ class WorkerHoursForm(RowForm):
 
 @dataclass(frozen=True)
 class JobSection:
-    """One row section of an entry form. `prefix` also names its row buttons (`add_<prefix>`)."""
+    """One row section of an entry form. `prefix` also names its row buttons (`add_<prefix>`).
+
+    `sum_from` names another section whose `sum_field` total this section's
+    single row can be filled with (the `sum_<prefix>` button): a screening job
+    weighs only what comes out.
+    """
 
     prefix: str
     context_name: str
     title: str
     row_form: type
     formset_class: type
+    sum_from: str = ''
+    sum_field: str = ''
 
 
 # In render order. A new section only needs adding here.
 JOB_SECTIONS = (
     JobSection('workers', 'worker_formset', 'Spolupracovníci', WorkerHoursForm, WorkerRowFormSet),
-    JobSection('consumed', 'consumed_formset', 'Spotřebováno', MovementItemForm, MaterialRowFormSet),
+    JobSection(
+        'consumed',
+        'consumed_formset',
+        'Spotřebováno',
+        MovementItemForm,
+        MaterialRowFormSet,
+        sum_from='produced',
+        sum_field='quantity',
+    ),
     JobSection('produced', 'produced_formset', 'Vyrobeno', MovementItemForm, MaterialRowFormSet),
     JobSection('machines', 'machine_formset', 'Použité stroje', MachineUsageForm, MachineRowFormSet),
 )

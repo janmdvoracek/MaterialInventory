@@ -61,7 +61,7 @@ Django 6, PostgreSQL, server-rendered templates, Czech mobile-first UI, Django a
 
 **All three are progressive enhancement, and that is a hard constraint.** The test suite drives views through `self.client` with no browser, so the server path must be complete on its own. Never move behaviour into a script that the server cannot perform. With every script blocked, the form must still work:
 
-- The row buttons are real submits (`add_<prefix>` / `remove_<prefix>`), and the server answers them by re-rendering.
+- The row buttons are real submits (`add_<prefix>` / `remove_<prefix>`, and „= součet výstupů" `sum_consumed`), and the server answers them by re-rendering.
 - The hidden `<select>` is still what gets posted. The search box has an `id` (`<select id>-search`) but **never a `name`**, and is capped at 40 characters on the client.
 - Each file input works on its own.
 
@@ -229,6 +229,8 @@ It must also widen the catalog pickers to the retired records the job already na
 - Each `<form>` opens with an off-screen decoy submit, so Enter saves instead of adding a row.
 
 `RowButtonTests` covers this.
+
+**Sum button („= součet výstupů", `sum_consumed`).** Screening jobs weigh only what comes out, so Spotřebováno gets a button that fills its row's quantity with the Vyrobeno total. It shows only while the section has exactly one row (`hidden` otherwise, like „− odebrat řádek"). It is declared on the section (`JobSection.sum_from` / `sum_field`) and takes the row-button path: a `formnovalidate` submit answered by the same unbound rebuild, with `_summed_rows` filling the row. Unparsable values are skipped, and the total is written with `format(..., 'f')`, never as an exponent. `job_rows.js` sums in hundredths in the DOM. `SumButtonTests` covers this.
 
 ## Reports
 

@@ -52,6 +52,13 @@ class RowTemplateTests(ReviewFixtureMixin, TestCase):
             count=len(JOB_SECTIONS),
         )
 
+    def test_the_sum_button_names_its_source_and_field(self):
+        """job_rows.js sums `data-sum-field` across the `data-sum-from` section
+        into the section's own single row, as `_summed_rows` does."""
+        response = self._page()
+        self.assertContains(response, 'data-sum-from="produced" data-sum-field="quantity"', count=1)
+        self.assertContains(response, 'data-sum-rows', count=1)
+
     def test_the_template_row_is_not_narrowed_by_the_hiding(self):
         """`_hide_taken_choices` touches `formset.forms` and must not reach
         `empty_form`: a row the script adds has to offer the whole catalog, and

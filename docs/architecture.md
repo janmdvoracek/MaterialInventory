@@ -254,6 +254,17 @@ Each section has „+ další řádek" (`add_<prefix>`) and „− odebrat řád
 
 `RowButtonTests` covers this.
 
+### Summing the outputs into the input (server)
+
+A screening job takes one input material and splits it into several outputs, and only the outputs get weighed. So Spotřebováno has a third button, „= součet výstupů" (`sum_consumed`), which fills its row's quantity with the total of the Vyrobeno quantities. The job still has to balance on save; the button just saves the arithmetic.
+
+- **Declared on the section.** `JobSection.sum_from` names the source section and `sum_field` the field summed and filled. Only Spotřebováno sets them, so the refuelling form has no such button.
+- **Same path as the row buttons.** It is a `formnovalidate` submit. `_entry_forms` checks `_pressed_sum_button` and rebuilds every form unbound from the POST, with `_summed_rows` filling the section's row. Nothing is saved and nothing is validated.
+- **Only for a single row.** With more consumed rows there is nothing sensible to fill, so the server leaves them alone and the template renders the button `hidden`.
+- **Lenient input.** Blank or unparsable outputs are skipped, since the real submission reports them. If nothing is typed, the row keeps what it had. A typed consumed amount is replaced. The total is written with `format(..., 'f')`, so `<input type="number">` never gets an exponent.
+
+`SumButtonTests` covers this.
+
 ### The three scripts
 
 `job_rows.js` and `searchable_select.js` come with `_row_sections.html`, so they also run on the refuelling form; `photo_picker.js` is the job form's alone. All three are **progressive enhancement**. The test suite has no browser, so the server path must be complete by itself, and with any script blocked the form still works. Each script builds no markup of its own and reads everything off the server-rendered page. The tests cover the contract they read, not their behaviour.
@@ -266,6 +277,7 @@ Each section has „+ další řádek" (`add_<prefix>`) and „− odebrat řád
   - the bounds are read from `data-min-rows`/`data-max-rows`;
   - each row and its errors share a `.row-block`;
   - duplicates are only hidden or disabled, and only in the picker named by the section's `data-unique-field` (a refuel row's „Zdroj" is left alone).
+- It also handles „= součet výstupů": it sums `data-sum-field` across the `data-sum-from` section, in hundredths so float error never shows, and hides the button unless the section has exactly one row.
 
 Tests: `RowTemplateTests`.
 

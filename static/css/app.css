@@ -275,6 +275,8 @@ tr.row-pending > td { background: var(--row-pending-bg); }
     padding: 0.5rem 0.9rem;
     font-size: 0.9rem;
 }
+/* „= součet výstupů" (sum the produced rows) sits at the right, under the quantity box it fills. */
+.row-controls .sum-rows { margin-left: auto; }
 /* Off-screen but submittable: the decoy that makes Enter save the job form. */
 .visually-hidden {
     position: absolute;

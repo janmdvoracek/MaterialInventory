@@ -9,6 +9,11 @@
  * A new row is the section's <template> (Django's `empty_form`) with
  * `__prefix__` replaced. The row bounds come from data attributes rendered by
  * the view.
+ *
+ * A section with `data-sum-from` also has „= součet výstupů" (`sum_<prefix>`),
+ * which the server answers by filling the section's single row from the other
+ * section's total (`_summed_rows`); this sums in the DOM instead. Both show it
+ * only while the section has exactly one row.
  */
 (function () {
     'use strict';
@@ -55,6 +60,37 @@
         section.querySelector('[data-remove-row]').hidden = total <= Number(section.dataset.minRows);
     }
 
+    // Mirrors the template: the sum button only makes sense for a single row.
+    function refreshSumButton(section, total) {
+        var button = section.querySelector('[data-sum-rows]');
+        if (button) {
+            button.hidden = total !== 1;
+        }
+    }
+
+    /* Fill the single row's `data-sum-field` box with the total of that field
+     * across the `data-sum-from` section. Summed in hundredths, the boxes' own
+     * precision, so 0.1 + 0.2 stays 0.3. Nothing typed leaves the box alone. */
+    function sumRows(section) {
+        var field = section.dataset.sumField;
+        var source = document.querySelector('input[name="' + section.dataset.sumFrom + '-TOTAL_FORMS"]');
+        var target = section.querySelector('.item-row input[name$="-' + field + '"]');
+        if (!source || !target) {
+            return;
+        }
+        var hundredths = null;
+        var boxes = source.closest('[data-job-section]').querySelectorAll('.item-row input[name$="-' + field + '"]');
+        boxes.forEach(function (input) {
+            var value = Number(input.value);
+            if (input.value !== '' && Number.isFinite(value)) {
+                hundredths = (hundredths || 0) + Math.round(value * 100);
+            }
+        });
+        if (hundredths !== null) {
+            target.value = String(hundredths / 100);
+        }
+    }
+
     function addRow(section) {
         var input = totalInput(section);
         var total = Number(input.value);
@@ -67,6 +103,7 @@
         section.querySelector('.row-controls').before(row);
         input.value = total + 1;
         refreshRemoveButton(section, total + 1);
+        refreshSumButton(section, total + 1);
         refreshChoices(section);
         var first = row.querySelector('select, input');
         if (first) {
@@ -85,6 +122,7 @@
         rows[rows.length - 1].remove();
         input.value = total - 1;
         refreshRemoveButton(section, total - 1);
+        refreshSumButton(section, total - 1);
         refreshChoices(section);
     }
 
@@ -97,6 +135,13 @@
             event.preventDefault();
             removeRow(section);
         });
+        var sumButton = section.querySelector('[data-sum-rows]');
+        if (sumButton) {
+            sumButton.addEventListener('click', function (event) {
+                event.preventDefault();
+                sumRows(section);
+            });
+        }
         section.addEventListener('change', function (event) {
             if (event.target.matches(ROW_SELECT)) {
                 refreshChoices(section);

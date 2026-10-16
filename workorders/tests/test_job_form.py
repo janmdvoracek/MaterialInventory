@@ -527,6 +527,112 @@ class RowButtonTests(ReviewFixtureMixin, TestCase):
         self.assertEqual(work_order.movements.count(), 2)
 
 
+class SumButtonTests(ReviewFixtureMixin, TestCase):
+    """„= součet výstupů" fills a single consumed row with the produced total, for screening
+    jobs where only the outputs are weighed. Server path of `job_rows.js`'s sum."""
+
+    def setUp(self):
+        super().setUp()
+        self.fraction = Material.objects.create(sku='FIN2', name='Frakce 16/32')
+
+    def _press(self, consumed, produced, url=None):
+        data = job_payload(consumed, produced)
+        data['sum_consumed'] = ''
+        return self.client.post(url or reverse('transform_create'), data)
+
+    def _screening(self, quantities):
+        return [
+            {'material': material, 'quantity': quantity}
+            for material, quantity in zip(
+                (self.material_finished, self.fraction, self.material_raw), quantities, strict=False
+            )
+        ]
+
+    def _consumed_quantity(self, response):
+        return response.context['consumed_formset'].forms[0].initial.get('quantity')
+
+    def test_the_single_consumed_row_gets_the_produced_total(self):
+        self.client.force_login(self.worker)
+        response = self._press(
+            [{'material': self.material_raw, 'quantity': ''}], self._screening(('86', '53', '17.25'))
+        )
+        self.assertEqual(self._consumed_quantity(response), '156.25')
+        self.assertContains(response, 'name="consumed-0-quantity" value="156.25"')
+
+    def test_nothing_is_saved_and_nothing_is_refused(self):
+        self.client.force_login(self.worker)
+        response = self._press([{'material': self.material_raw, 'quantity': ''}], self._screening(('5',)))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(WorkOrder.objects.exists())
+        self.assertFalse(list(get_messages(response.wsgi_request)))
+        self.assertFalse(response.context['consumed_formset'].is_bound)
+
+    def test_a_typed_amount_is_replaced(self):
+        self.client.force_login(self.worker)
+        response = self._press([{'material': self.material_raw, 'quantity': '99'}], self._screening(('3', '4')))
+        self.assertEqual(self._consumed_quantity(response), '7')
+
+    def test_unreadable_and_blank_outputs_are_skipped(self):
+        self.client.force_login(self.worker)
+        response = self._press([{'material': self.material_raw, 'quantity': ''}], self._screening(('3', 'abc', 'NaN')))
+        self.assertEqual(self._consumed_quantity(response), '3')
+
+    def test_no_outputs_leaves_the_row_alone(self):
+        self.client.force_login(self.worker)
+        response = self._press([{'material': self.material_raw, 'quantity': '8'}], self._screening(('',)))
+        self.assertEqual(self._consumed_quantity(response), '8')
+
+    def test_a_large_total_is_not_written_as_an_exponent(self):
+        self.client.force_login(self.worker)
+        response = self._press([{'material': self.material_raw, 'quantity': ''}], self._screening(('1E+3', '0')))
+        self.assertEqual(self._consumed_quantity(response), '1000')
+
+    def test_two_consumed_rows_are_left_alone(self):
+        self.client.force_login(self.worker)
+        consumed = [
+            {'material': self.material_raw, 'quantity': '1'},
+            {'material': self.fraction, 'quantity': '2'},
+        ]
+        response = self._press(consumed, self._screening(('3',)))
+        forms_ = response.context['consumed_formset'].forms
+        self.assertEqual([form.initial.get('quantity') for form in forms_], ['1', '2'])
+
+    def test_the_summed_job_then_balances(self):
+        self.client.force_login(self.worker)
+        produced = self._screening(('86', '53', '17'))
+        response = self._press([{'material': self.material_raw, 'quantity': ''}], produced)
+        data = job_payload([{'material': self.material_raw, 'quantity': self._consumed_quantity(response)}], produced)
+        self.assertRedirects(self.client.post(reverse('transform_create'), data), reverse('transform_create'))
+        self.assertEqual(WorkOrder.objects.get().movements.filter(quantity__lt=0).get().quantity, Decimal('-156'))
+
+    def test_job_edit_sums_the_same_way(self):
+        work_order = self.submit_job(self.manager)
+        response = self._press(
+            [{'material': self.material_raw, 'quantity': ''}],
+            self._screening(('2', '3')),
+            url=reverse('job_edit', args=[work_order.pk]),
+        )
+        self.assertEqual(self._consumed_quantity(response), '5')
+        self.assertEqual(work_order.movements.filter(quantity__lt=0).get().quantity, Decimal('-5'))
+
+    def test_the_button_shows_only_for_a_single_consumed_row(self):
+        self.client.force_login(self.worker)
+        page = self.client.get(reverse('transform_create')).content.decode()
+        self.assertRegex(page, r'<button [^>]*name="sum_consumed"[^>]*formnovalidate[^>]*>')
+        self.assertNotRegex(page, r'<button [^>]*name="sum_consumed"[^>]*hidden')
+        data = job_payload([{'material': self.material_raw, 'quantity': '1'}], self._screening(('1',)))
+        data['add_consumed'] = ''
+        page = self.client.post(reverse('transform_create'), data).content.decode()
+        self.assertRegex(page, r'<button [^>]*name="sum_consumed"[^>]*hidden')
+
+    def test_only_the_consumed_section_has_one(self):
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('transform_create'))
+        self.assertContains(response, 'name="sum_', count=1)
+        self.client.force_login(self.manager)
+        self.assertNotContains(self.client.get(reverse('refuel_create')), 'name="sum_')
+
+
 class RowErrorVisibilityTests(ReviewFixtureMixin, TestCase):
     """Nothing is written unless every form validates, so an error with nowhere
     to render is a submission that vanishes without a word."""

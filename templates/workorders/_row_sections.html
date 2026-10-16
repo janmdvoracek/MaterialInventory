@@ -7,12 +7,17 @@ The row buttons are real submits (add_<prefix> / remove_<prefix>) and need
 than omitted, so job_rows.js can unhide it. `data-unique-field` names the one
 picker per row whose choices job_rows.js hides once another row took them.
 
+A section with `sum_from` (Spotřebováno) also gets „= součet výstupů"
+(sum_<prefix>), which fills its single row's `sum_field` with the other
+section's total: a screening job weighs only what comes out. It is `hidden` unless the section has exactly
+one row, and job_rows.js does the same sum in the DOM.
+
 job_rows.js and searchable_select.js are loaded here and are pure
 enhancement; they clone the row <template>.
 {% endcomment %}
 {% for section, formset in sections %}
 <h2>{{ section.title }}</h2>
-<div data-job-section data-min-rows="{{ min_rows }}" data-max-rows="{{ max_rows }}" data-unique-field="{{ formset.unique_field }}">
+<div data-job-section data-min-rows="{{ min_rows }}" data-max-rows="{{ max_rows }}" data-unique-field="{{ formset.unique_field }}"{% if section.sum_from %} data-sum-from="{{ section.sum_from }}" data-sum-field="{{ section.sum_field }}"{% endif %}>
     {{ formset.management_form }}
     {% for error in formset.non_form_errors %}<p class="messages error">{{ error }}</p>{% endfor %}
     {% for form in formset %}
@@ -34,6 +39,10 @@ enhancement; they clone the row <template>.
     <div class="row-controls">
         <button class="btn secondary" type="submit" name="add_{{ section.prefix }}" data-add-row formnovalidate>+ další řádek</button>
         <button class="btn secondary" type="submit" name="remove_{{ section.prefix }}" data-remove-row formnovalidate{% if formset|length <= 1 %} hidden{% endif %}>− odebrat řádek</button>
+        {% if section.sum_from %}
+            {# Fills the single row's {{ section.sum_field }} with the {{ section.sum_from }} total; hidden unless there is exactly one row. #}
+            <button class="btn secondary sum-rows" type="submit" name="sum_{{ section.prefix }}" data-sum-rows formnovalidate title="Sečíst vyrobené množství"{% if formset|length != 1 %} hidden{% endif %}>= součet výstupů</button>
+        {% endif %}
     </div>
 </div>
 {% endfor %}

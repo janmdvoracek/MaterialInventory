@@ -85,6 +85,13 @@ V každém řádku vyberte **Pracovníka** a zapište jeho **Hodiny**. Sebe sem 
 
 Pod každou částí je **„+ další řádek"** a **„− odebrat řádek"**. Vyplněné údaje zůstanou a nic se tím neukládá. Odebírá se vždy **poslední** řádek té části, i když je vyplněný. Poslední zbývající řádek odebrat nejde.
 
+### Součet výstupů (třídění)
+
+Při třídění jde dovnitř jeden materiál a ven několik frakcí. Zvážené máte jen to, co vyšlo. Když má **Spotřebováno jediný řádek**, je pod ním tlačítko **„= součet výstupů"**. To do množství toho řádku zapíše **součet všech řádků Vyrobeno**. Vyplňte proto nejdřív výstupy, pak klepněte na „= součet výstupů". Co v poli bylo předtím, se přepíše.
+
+- Tlačítko nic neukládá. Zakázku pak uložte jako obvykle.
+- Máte-li ve Spotřebováno víc řádků, tlačítko se nezobrazí.
+
 ### Fotky
 
 Nepovinné. Klepněte na **Přidat fotku** a zvolte **Vyfotit** (fotoaparát) nebo **Vybrat z galerie** (i více najednou). Každá další fotka se **přidá** do seznamu, nic nenahradí. **Odebrat** ji ze seznamu vyřadí.
