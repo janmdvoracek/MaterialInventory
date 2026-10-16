@@ -436,9 +436,11 @@ def material_detail_export(request):
     _, movements = _filtered_material_movements(request)
     return _csv_response(
         'detail-polozek',
-        ['Provedeno', 'Lokace', 'Materiál', 'Druh', 'Množství (t)', 'Zakázka', 'Kým'],
+        ['ID', 'Provedeno', 'Lokace', 'Materiál', 'Druh', 'Množství (t)', 'Zakázka', 'Kým'],
         [
             [
+                # Which job the row belongs to: two jobs can share a date, description and author.
+                movement.work_order_id,
                 movement.work_order.performed_on.isoformat(),
                 # Missing values are blank cells, not the page's „—".
                 movement.work_order.location.name if movement.work_order.location else '',

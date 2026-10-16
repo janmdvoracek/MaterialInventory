@@ -33,11 +33,12 @@
     <div class="table-scroll">
     <table>
         <thead>
-            <tr><th>Provedeno</th><th>Lokace</th><th>Materiál</th><th>Druh</th><th>Množství (t)</th><th>Zakázka</th><th>Kým</th></tr>
+            <tr><th>ID</th><th>Provedeno</th><th>Lokace</th><th>Materiál</th><th>Druh</th><th>Množství (t)</th><th>Zakázka</th><th>Kým</th></tr>
         </thead>
         <tbody>
         {% for movement in page_obj %}
             <tr>
+                <td><a href="{% url 'job_detail' movement.work_order_id %}">#{{ movement.work_order_id }}</a></td>
                 <td>{{ movement.work_order.performed_on|date:"Y-m-d" }}</td>
                 <td>{{ movement.work_order.location.name|default:"—" }}</td>
                 <td>{{ movement.material.name }}</td>
@@ -47,7 +48,7 @@
                 <td>{{ movement.work_order.created_by.username }}</td>
             </tr>
         {% empty %}
-            <tr><td colspan="7">Žádné položky neodpovídají zadaným filtrům.</td></tr>
+            <tr><td colspan="8">Žádné položky neodpovídají zadaným filtrům.</td></tr>
         {% endfor %}
         </tbody>
     </table>

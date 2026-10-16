@@ -413,6 +413,7 @@ How the exports behave:
 - **Same helpers as the page, same querystring.** The file is the table that was on screen: pending jobs excluded, and an invalid filter gives a header-only file. `_time_worked_scope` was extracted so that a worker's export is scoped exactly like their page.
 - **Same gate as the page.** `time_worked_export` is `login_required`; the rest are manager only.
 - **Detail exports hold every filtered row, not the current page.** Line items and fill-ups get reconciled against delivery notes and fuel receipts; usage rows carry the run time per job. A usage row's „Hodin na zakázce" is `_with_run_hours` over the unfiltered baseline, exactly as on the page.
+- **Line items carry their job's ID.** „Detail položek" starts with an „ID" column (`work_order_id`, a `#n` link to `job_detail` on the page, the bare number in the file), since two jobs can share a date, description and author.
 - **Format.** `_csv_response` writes `;`-delimited rows behind a UTF-8 BOM, because Excel under `cs` splits on `;` and needs the BOM for „Š". Numbers go through `number_format` (`12,50`). Unknowns are blank cells (`_csv_number`), never `—`, which would break a `SUM`. Dates are ISO. No openpyxl.
 
 `TableExportTests` covers this.

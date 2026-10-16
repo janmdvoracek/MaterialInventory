@@ -245,16 +245,26 @@ class TableExportTests(TestCase):
         work_order = self._job(quantity=Decimal('12.5'), location=default_location())
         self.client.force_login(self.manager)
         rows = self._rows(self.client.get(reverse('material_detail_export')))
-        self.assertEqual(rows[0], ['Provedeno', 'Lokace', 'Materiál', 'Druh', 'Množství (t)', 'Zakázka', 'Kým'])
+        self.assertEqual(rows[0], ['ID', 'Provedeno', 'Lokace', 'Materiál', 'Druh', 'Množství (t)', 'Zakázka', 'Kým'])
         today = date.today().isoformat()
         self.assertEqual(
             rows[1:],
             [
-                [today, 'Lom Sever', 'Frakce 8/16', 'Výroba', '12,50', 'job', 'worker'],
-                [today, 'Lom Sever', 'Štěrk', 'Spotřeba', '12,50', 'job', 'worker'],
+                [str(work_order.pk), today, 'Lom Sever', 'Frakce 8/16', 'Výroba', '12,50', 'job', 'worker'],
+                [str(work_order.pk), today, 'Lom Sever', 'Štěrk', 'Spotřeba', '12,50', 'job', 'worker'],
             ],
         )
         self.assertEqual(work_order.movements.count(), 2)
+
+    def test_detail_rows_name_their_job(self):
+        # Two jobs can share a date, description and author; the ID tells their
+        # rows apart in the file, and links to the job on the page.
+        first, second = self._job(quantity=Decimal('3')), self._job(quantity=Decimal('3'))
+        self.client.force_login(self.manager)
+        rows = self._rows(self.client.get(reverse('material_detail_export')))
+        self.assertEqual(sorted({row[0] for row in rows[1:]}), sorted({str(first.pk), str(second.pk)}))
+        page = self.client.get(reverse('material_dashboard'))
+        self.assertContains(page, f'<a href="{reverse("job_detail", args=[first.pk])}">#{first.pk}</a>', count=2)
 
     def test_detail_export_is_every_row_not_one_page(self):
         # The page paginates at HISTORY_PAGE_SIZE; a file holding the first 50
@@ -276,7 +286,7 @@ class TableExportTests(TestCase):
         response = self.client.get(
             reverse('material_detail_export'), {'date_from': (date.today() - timedelta(days=7)).isoformat()}
         )
-        quantities = [row[4] for row in self._rows(response)[1:]]
+        quantities = [row[5] for row in self._rows(response)[1:]]
         self.assertEqual(quantities, ['1,50', '1,50'])
 
     def test_detail_export_leaves_a_missing_description_blank(self):
@@ -284,13 +294,13 @@ class TableExportTests(TestCase):
         # the reader filters on, and blank is the same statement without it.
         WorkOrder.objects.filter(pk=self._job(quantity=Decimal('2')).pk).update(description='')
         self.client.force_login(self.manager)
-        self.assertEqual(self._rows(self.client.get(reverse('material_detail_export')))[1][5], '')
+        self.assertEqual(self._rows(self.client.get(reverse('material_detail_export')))[1][6], '')
 
     def test_detail_export_leaves_a_missing_location_blank(self):
         # Jobs recorded before the column existed, and fuel-only ones, have none.
         self._job(quantity=Decimal('2'))
         self.client.force_login(self.manager)
-        self.assertEqual(self._rows(self.client.get(reverse('material_detail_export')))[1][1], '')
+        self.assertEqual(self._rows(self.client.get(reverse('material_detail_export')))[1][2], '')
 
     def test_detail_export_is_a_bom_csv_named_for_the_day(self):
         self.client.force_login(self.manager)
