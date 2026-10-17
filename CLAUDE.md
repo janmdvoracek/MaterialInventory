@@ -107,7 +107,7 @@ Fuel is not part of a job; see **The refuelling**.
 
 Rows carry **no timestamp of their own**; their date is their entry's `performed_on`. Every row cascades when its entry is deleted. `StockMovement` and `MachineRefuel` are not registered in the admin; they are edited as inlines of `WorkOrderAdmin` and `RefuellingAdmin` (`AdminIndexTests` checks both). There a line item's sign must match its type, consumed negative and produced positive, never zero (`MovementAdminForm`, `AdminMovementSignTests`).
 
-**Mass balance.** A job needs at least one consumed row and one produced row, and `sum(consumed) == sum(produced)` must hold exactly (`Decimal`, no tolerance). It is `JobKind.page_errors`, checked before the transaction. The error totals go through `formats.localize`.
+**Mass balance.** A job needs at least one consumed row and one produced row, and `sum(consumed) == sum(produced)` must hold exactly (`Decimal`, no tolerance). It is `JobKind.page_errors`, checked before the transaction. The error totals go through `formats.localize`. **The admin doesn't check it, on purpose**: it is the back office's way around the rule, and Django's admin has no clean place to show an error spanning two inlines. The next correction on `job_edit` enforces it again.
 
 **Required fields.** „Popis", „Lokace" and „Moje hodiny" are required on `WorkOrderForm` itself; there is no exemption (the old fuel-only job is gone). Valid rows are still balance-checked when a job field fails, so both errors show (`ErrorBannerTests`). `Kind.is_valid` runs every kind's `page_errors` this way, so a refuelling with no machine shows that beside a field error too.
 

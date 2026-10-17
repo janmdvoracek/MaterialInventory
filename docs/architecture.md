@@ -78,6 +78,8 @@ A job needs **at least one consumed row and one produced row, and their totals m
 
 The check needs no database state, so it runs before the transaction, as the job kind's page-level rule (`JobKind.page_errors`). The error message localises its totals (`9,5`, not `9.5`).
 
+The admin does **not** check the balance, on purpose. It is the back office's way around the rule (an old job, a correction in two steps), and the check would span two inlines, which Django's admin has no clean place to report. Everything else about a line item is still held to the job form's rules there (number rules, sign). A job saved unbalanced in the admin is balanced again by its next correction on `job_edit`, which refuses to save it otherwise.
+
 ### Required fields
 
 „Lokace", „Popis" and „Moje hodiny" are required on the form itself (`WorkOrderForm`). Every job records work, so there is no exemption. When a job field is missing and the rows are valid, the balance is still checked, so both errors show at once.
