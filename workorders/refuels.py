@@ -3,7 +3,7 @@
 A refuelling is its own kind of entry, apart from any job: notes, a date, and
 one row per machine (stroj, zdroj, litry). It is reviewed like a job, and only
 approved ones count on Stroje. The form machinery is the job form's
-(`views._entry_forms`), with `REFUEL_SECTIONS` as its one section.
+(`entry.EntryPage`), with `REFUEL_SECTIONS` as its one section.
 """
 
 from django.contrib import messages
@@ -15,18 +15,19 @@ from django.views.decorators.http import require_POST
 
 from accounts.decorators import REVIEWER_ROLES, role_required
 
+from .entry import EntryPage
 from .forms import REFUEL_SECTIONS, RefuellingFilterForm, RefuellingForm
 from .models import MachineRefuel, Refuelling
 from .reports import MY_JOBS_LIMIT, _list_page_context, _previews
-from .views import _approve, _entry_context, _entry_forms, _filled_rows, _forms_valid, _review_on_submit, _trimmed
+from .views import _approve, _review_on_submit, _trimmed
 
 NO_ROWS_ERROR = 'Přidejte alespoň jeden natankovaný stroj.'
 
 
 def _refuel_forms(request, *, keep=None, initial=None):
-    """The refuelling page's forms (see `_entry_forms`). `keep` holds `machines` and `sources` on `refuel_edit`."""
+    """The refuelling page's `EntryPage`. `keep` holds `machines` and `sources` on `refuel_edit`."""
     keep = keep or {}
-    return _entry_forms(
+    return EntryPage(
         request,
         form_class=RefuellingForm,
         sections=REFUEL_SECTIONS,
@@ -36,11 +37,11 @@ def _refuel_forms(request, *, keep=None, initial=None):
     )
 
 
-def _valid_refuel_rows(request, order_form, formsets):
+def _valid_refuel_rows(request, page):
     """The filled-in rows, or None if any form is invalid or no machine was named."""
-    if not _forms_valid(request, order_form, formsets):
+    if not page.is_valid():
         return None
-    rows = _filled_rows(formsets['refuels'], 'machine')
+    rows = page.filled_rows('refuels')
     if not rows:
         messages.error(request, NO_ROWS_ERROR)
         return None
@@ -73,9 +74,10 @@ def _my_recent_refuellings(user):
 
 @login_required
 def refuel_create(request):
-    order_form, formsets, submitted = _refuel_forms(request)
-    if submitted:
-        rows = _valid_refuel_rows(request, order_form, formsets)
+    page = _refuel_forms(request)
+    order_form = page.order_form
+    if page.submitted:
+        rows = _valid_refuel_rows(request, page)
         if rows is not None:
             review = _review_on_submit(request.user)
             with transaction.atomic():
@@ -96,7 +98,7 @@ def refuel_create(request):
     return render(
         request,
         'workorders/refuel_form.html',
-        _entry_context(order_form, formsets, REFUEL_SECTIONS, my_refuellings=_my_recent_refuellings(request.user)),
+        page.context(my_refuellings=_my_recent_refuellings(request.user)),
     )
 
 
@@ -155,9 +157,10 @@ def refuel_edit(request, pk):
                 for fill_up in fill_ups
             ],
         }
-    order_form, formsets, submitted = _refuel_forms(request, keep=keep, initial=initial)
-    if submitted:
-        rows = _valid_refuel_rows(request, order_form, formsets)
+    page = _refuel_forms(request, keep=keep, initial=initial)
+    order_form = page.order_form
+    if page.submitted:
+        rows = _valid_refuel_rows(request, page)
         if rows is not None:
             with transaction.atomic():
                 refuelling.notes = order_form.cleaned_data['notes']
@@ -169,7 +172,7 @@ def refuel_edit(request, pk):
     return render(
         request,
         'workorders/refuel_edit.html',
-        _entry_context(order_form, formsets, REFUEL_SECTIONS, refuelling=refuelling),
+        page.context(refuelling=refuelling),
     )
 
 

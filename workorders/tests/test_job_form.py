@@ -10,8 +10,8 @@ from django.utils import timezone
 from accounts.models import User
 from machines.models import Machine
 from materials.models import Material
+from workorders.entry import FORM_ERRORS_MESSAGE, MAX_ROWS_PER_SECTION, MIN_ROWS_PER_SECTION, REQUIRED_FIELDS_MESSAGE
 from workorders.models import MachineUsage, StockMovement, WorkerHours, WorkOrder
-from workorders.views import FORM_ERRORS_MESSAGE, MAX_ROWS_PER_SECTION, MIN_ROWS_PER_SECTION, REQUIRED_FIELDS_MESSAGE
 
 from .helpers import ReviewFixtureMixin, default_location, job_payload
 

@@ -175,7 +175,7 @@ It is shown and filtered on Přehled and Materiál only, plus `job_detail` and t
 - **„Zdroj" is a catalog**, `machines.FuelSource` (name, `is_active`), managed in the admin exactly like `Location`: retired with `is_active=False`, protected from deletion. It has no balance; nothing is summed or refused per source.
 - **One row per machine** (`RefuelRowFormSet`). One source may feed several machines. A machine filled from two sources is two refuellings.
 - **`LITRES_MAX`** caps the litres; the minimum is 0,01, since a fill-up of nothing is not a fill-up.
-- **The form machinery is the job form's.** `_entry_forms` builds both pages, so the row buttons, the unbound rebuild, the error banner and the row scripts behave the same. There are no photos and no „Zapsat za".
+- **The form machinery is the job form's.** `EntryPage` (`workorders/entry.py`) builds both pages, so the row buttons, the unbound rebuild, the error banner and the row scripts behave the same. There are no photos and no „Zapsat za".
 
 `RefuellingFormTests` covers this.
 
@@ -240,13 +240,13 @@ Nothing is written unless all five forms validate. An error with nowhere to rend
 - Sections render `non_form_errors`.
 - The job form renders every field's errors.
 - `RowForm.clean()` returns early if a field already failed, so „Vyplňte materiál i množství…" never covers the real error.
-- One red banner tops any refused submission (`_form_error_summary`). It reads „Vyplňte prosím všechna povinná pole." if any error is `code='required'`, otherwise a generic line. There is no banner for a balance error alone or for a row button.
+- One red banner tops any refused submission (`EntryPage.is_valid`, worded by `_form_error_summary`). It reads „Vyplňte prosím všechna povinná pole." if any error is `code='required'`, otherwise a generic line. There is no banner for a balance error alone or for a row button.
 
 `ErrorBannerTests` covers this.
 
 ### Resizing a section (server)
 
-Each section has „+ další řádek" (`add_<prefix>`) and „− odebrat řádek" (`remove_<prefix>`), both ordinary submit buttons. `_entry_forms` (behind `_job_forms` and `_refuel_forms`) checks `_pressed_row_button` before treating the POST as a submission. It then rebuilds every form **unbound** from the raw POST, with that section one row bigger or smaller. Unbound means no "required" errors and no balance check on a form still being filled in.
+Each section has „+ další řádek" (`add_<prefix>`) and „− odebrat řádek" (`remove_<prefix>`), both ordinary submit buttons. `EntryPage` (built by `_job_forms` and `_refuel_forms`) checks `_pressed_row_button` before treating the POST as a submission. It then rebuilds every form **unbound** from the raw POST, with that section one row bigger or smaller. Unbound means no "required" errors and no balance check on a form still being filled in.
 
 - **Remove takes the last row**, the one add appends.
 - **Bounds.** Sections stay between `MIN_ROWS_PER_SECTION` (1) and `MAX_ROWS_PER_SECTION`. `TOTAL_FORMS` comes straight from the POST, so it is parsed defensively and clamped.
@@ -262,7 +262,7 @@ Each section has „+ další řádek" (`add_<prefix>`) and „− odebrat řád
 A screening job takes one input material and splits it into several outputs, and only the outputs get weighed. So Spotřebováno has a third button, „= součet výstupů" (`sum_consumed`), which fills its row's quantity with the total of the Vyrobeno quantities. The job still has to balance on save; the button just saves the arithmetic.
 
 - **Declared on the section.** `JobSection.sum_from` names the source section and `sum_field` the field summed and filled. Only Spotřebováno sets them, so the refuelling form has no such button.
-- **Same path as the row buttons.** It is a `formnovalidate` submit. `_entry_forms` checks `_pressed_sum_button` and rebuilds every form unbound from the POST, with `_summed_rows` filling the section's row. Nothing is saved and nothing is validated.
+- **Same path as the row buttons.** It is a `formnovalidate` submit. `EntryPage` checks `_pressed_sum_button` and rebuilds every form unbound from the POST, with `_summed_rows` filling the section's row. Nothing is saved and nothing is validated.
 - **Only for a single row.** With more consumed rows there is nothing sensible to fill, so the server leaves them alone and the template renders the button `hidden`.
 - **Lenient input.** Blank or unparsable outputs are skipped, since the real submission reports them. If nothing is typed, the row keeps what it had. A typed consumed amount is replaced. The total is written with `format(..., 'f')`, so `<input type="number">` never gets an exponent.
 
@@ -468,7 +468,7 @@ All URLs are in `workorders/urls.py`, mounted at the root. Login and password ch
 | `/media/<path>` | `protected_media` | Job photos, manager only |
 | `/manifest.webmanifest`, `/sw.js`, `/offline/` | `web_manifest`, `service_worker`, `offline` | PWA, public |
 
-`views.py` records and reviews jobs and holds the entry-form helpers. `refuels.py` records and reviews refuellings on top of them. `reports.py` holds the reports, exports and list helpers. `REVIEWER_ROLES` lives in `accounts/decorators.py`, so neither module imports the other for it.
+`entry.py` holds `EntryPage`, the entry page both forms are built on: the row and sum buttons, the unbound rebuild, the error banner and the page context. `views.py` records and reviews jobs on it, and holds the review helpers (`_review_on_submit`, `_approve`). `refuels.py` records and reviews refuellings on top of both. `reports.py` holds the reports, exports and list helpers. `REVIEWER_ROLES` lives in `accounts/decorators.py`, so neither module imports the other for it.
 
 The reports stay a module rather than a separate app: they aggregate only `workorders` models, and a separate app would need shared helpers moved out to avoid a circular import, for no behaviour change.
 

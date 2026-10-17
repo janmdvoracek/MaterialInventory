@@ -8,10 +8,10 @@ from django.conf import settings
 from django.test import TestCase
 from django.urls import reverse
 
+from workorders.entry import MAX_ROWS_PER_SECTION, MIN_ROWS_PER_SECTION
 from workorders.forms import (
     JOB_SECTIONS,
 )
-from workorders.views import MAX_ROWS_PER_SECTION, MIN_ROWS_PER_SECTION
 
 from .helpers import ReviewFixtureMixin, job_payload
 

@@ -2,7 +2,7 @@
  * „+ další řádek" / „− odebrat řádek" without a page load.
  *
  * Progressive enhancement only. Both buttons are real submits that the server
- * (`_entry_forms`) answers by re-rendering one row bigger or smaller; this does
+ * (`EntryPage`) answers by re-rendering one row bigger or smaller; this does
  * the same in the DOM. The tests can only see the server path, so it must keep
  * working without this file.
  *

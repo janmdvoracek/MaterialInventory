@@ -88,7 +88,7 @@ The scripts build no markup of their own. They clone server-rendered `<template>
 - **`materials`**: `Material` (SKU and name only; every quantity is implicitly tonnes, with the `t` hardcoded). It also hosts the `seed_data` command, which is the only place it imports `machines` or `locations`.
 - **`machines`**: `Machine` (name, `is_active`, optional `hourly_rate` and `rate_per_ton`). It stores no totals. Also `FuelSource` (name, `is_active`): the refuelling's „Zdroj", a label managed in the admin like `Location`.
 - **`locations`**: `Location` (name, `is_active`). One per job, and it is a **label**, not a stock location: nothing is summed or refused per location.
-- **`workorders`**: everything else. `views.py` records and reviews jobs and holds the entry-form helpers (`_entry_forms`, `_entry_context`, `_review_on_submit`, `_approve`); `refuels.py` records and reviews refuellings on top of them; `reports.py` holds Souhrn, Stroje, Materiál, the CSV exports and the list helpers; `pwa.py` serves the PWA. All URLs are mounted at the root. Keep the reports a module of `workorders`, not a separate app (that was considered and rejected).
+- **`workorders`**: everything else. `entry.py` holds `EntryPage`, the entry page both forms are built on (row and sum buttons, unbound rebuild, error banner, context); `views.py` records and reviews jobs on it and holds `_review_on_submit` and `_approve`; `refuels.py` records and reviews refuellings on top of both; `reports.py` holds Souhrn, Stroje, Materiál, the CSV exports and the list helpers; `pwa.py` serves the PWA. All URLs are mounted at the root. Keep the reports a module of `workorders`, not a separate app (that was considered and rejected).
 
 Catalog records are retired with `is_active=False` and protected from deletion by `on_delete=PROTECT`.
 
@@ -199,7 +199,7 @@ It must also widen the catalog pickers to the retired records the job already na
 `Refuelling` is its own entry, not part of a job: optional `notes`, `performed_on` (same `EntryForm` field and rules as the job's) and `MachineRefuel` rows (machine, `source` → `FuelSource`, `litres`), written in one `transaction.atomic()` by `refuel_create` (`/refuel/`).
 
 - **Rows** are a machine and litres, or blank (`RefuelRowForm.check_row`); `source` is optional, on the form and in the column. At least one row, one row per machine (`RefuelRowFormSet`). `litres` is 0,01 to `LITRES_MAX` and not nullable. Fill-ups migrated from jobs have no source.
-- **Same machinery as the job form.** `_entry_forms` builds the page (row buttons, unbound rebuild, error banner), `_row_sections.html` renders the section. No photos, no „Zapsat za".
+- **Same machinery as the job form.** `EntryPage` builds the page (row buttons, unbound rebuild, error banner), `_row_sections.html` renders the section. No photos, no „Zapsat za".
 - **Review** is the job's: `ReviewStatus`, saved by `_review_on_submit`, approved by `_approve`, three actions (approve, edit, delete) under `/refuels/`, all `role_required(MANAGER, ADMIN)`. `refuel_edit` widens its pickers with `keep` (machines) and `keep_source`. Only approved refuellings count on Stroje.
 - **Migration `0010_move_fill_ups`** moved each job's fill-ups onto a refuelling with the job's date, author and status. Emptied fuel-only jobs were deleted, except ones with photos.
 
@@ -215,12 +215,12 @@ It must also widen the catalog pickers to the retired records the job already na
 **Every error must render.** Nothing is written unless all five forms validate, so an error with nowhere to render looks like a button that did nothing.
 
 - Row errors go through `_row_errors.html`; section errors render via `non_form_errors`.
-- A refused submission also gets one red banner from `_form_error_summary`. It reads „Vyplňte prosím všechna povinná pole." if any error has code `required`, otherwise the generic text.
+- A refused submission also gets one red banner from `EntryPage.is_valid()` (`_form_error_summary`). It reads „Vyplňte prosím všechna povinná pole." if any error has code `required`, otherwise the generic text.
 - `RowForm.clean()` returns early when a field already failed, so the incomplete-row message never covers the real error.
 
 `ErrorBannerTests` covers this.
 
-**Row buttons.** `_entry_forms` checks `_pressed_row_button` before treating the POST as a submission, then rebuilds every form **unbound** from the raw POST, with that section one row bigger or smaller. Unbound means no errors and no balance check on a half-filled form.
+**Row buttons.** `EntryPage` checks `_pressed_row_button` before treating the POST as a submission, then rebuilds every form **unbound** from the raw POST, with that section one row bigger or smaller. Unbound means no errors and no balance check on a half-filled form.
 
 - Removing takes the **last** row.
 - Sections are clamped between `MIN_ROWS_PER_SECTION` (1) and `MAX_ROWS_PER_SECTION`, and `TOTAL_FORMS` from the POST is untrusted.
