@@ -550,7 +550,8 @@ class HoursReport:
 
     Approved jobs only. A worker sees only the jobs they worked on and only
     their own summary row: enforced here, in the queryset, not by hiding the
-    `worker` filter. The page and its export read this.
+    `worker` filter. A manager filtering to one worker gets that worker's row
+    alone (`subject`). The page and its export read this.
     """
 
     def __init__(self, data, user):
@@ -567,13 +568,25 @@ class HoursReport:
         return WorkOrder.objects.filter(pk__in=self.form.filter(jobs).values('pk'))
 
     @cached_property
+    def subject(self):
+        """Whose row the summary is cut to, or None for everyone's.
+
+        A worker only ever gets their own; a manager gets the „Pracovník" they
+        picked, not the colleagues on that person's jobs.
+        """
+        if not self.user.is_manager_or_admin:
+            return self.user
+        if self.form.is_bound and self.form.is_valid():
+            return self.form.cleaned_data.get('worker')
+        return None
+
+    @cached_property
     def summary(self):
         """Labour hours per person across `jobs`, most hours first. Unrelated to machine motohodiny."""
-        totals = (
-            WorkerHours.objects.filter(work_order__in=self.jobs)
-            .values('user')
-            .annotate(hours=Sum('hours'), orders=Count('work_order', distinct=True))
-        )
+        hours = WorkerHours.objects.filter(work_order__in=self.jobs)
+        if self.subject is not None:
+            hours = hours.filter(user=self.subject)
+        totals = hours.values('user').annotate(hours=Sum('hours'), orders=Count('work_order', distinct=True))
         users = User.objects.in_bulk([row['user'] for row in totals])
         rows = [
             {'user': users[row['user']], 'hours': row['hours'], 'orders': row['orders']}
@@ -581,9 +594,6 @@ class HoursReport:
             if row['user'] in users
         ]
         rows.sort(key=lambda row: (-row['hours'], row['user'].username))
-        if not self.user.is_manager_or_admin:
-            # A collaborated job would otherwise show its creator's total.
-            rows = [row for row in rows if row['user'] == self.user]
         return rows
 
     @cached_property
