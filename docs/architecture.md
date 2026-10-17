@@ -50,8 +50,9 @@ Shared rules:
 
 - **Rows have no timestamp of their own.** Their date is their entry's `performed_on`. `job_edit` and `refuel_edit` delete and rewrite rows, so an insert time would drift to the day of the correction.
 - **Every row cascades when its entry is deleted**, so `job_delete`, `refuel_delete` and the admin's delete are all a plain `.delete()`.
-- **`collaborators` is derived** from the hours rows (`collaborators.set(worker_hours.keys())`). The admin is the one place they can drift apart, because it edits the M2M and the hours inline independently.
+- **`collaborators` is derived** from the hours rows: `WorkOrder.derive_collaborators` sets it to everyone with hours on the job except its author. The job form calls it from `WorkersSection.write`, and the admin from `WorkOrderAdmin.save_related`, after its inlines are saved. The admin shows the field read-only, so it can no longer drift from the hours rows; before that, an hours row added there without ticking the person left the job off their Souhrn. Migration `0012_derive_collaborators` rebuilt the field on every existing job.
 - **`StockMovement` and `MachineRefuel` are not in the admin index.** They are edited as inlines of `WorkOrderAdmin` and `RefuellingAdmin`, so everything about an entry is edited in one place.
+- **A line item's sign matches its type**, also in the admin, where the signed number is typed directly: `MovementAdminForm` refuses a consumed row that isn't negative and a produced row that isn't positive. Materiál sums the signed quantities, and `job_edit` reads the typed amount back with `abs()`, so a wrong sign would skew the one and be silently flipped by the other.
 - **`Machine` stores no totals.** Every figure on Stroje is an annotation over approved rows.
 
 **Four numbers, all independent.** Never derive one from another:
@@ -76,6 +77,8 @@ Fuel is not part of a job. Refuelling happens on its own schedule, often for sev
 A job needs **at least one consumed row and one produced row, and their totals must be exactly equal.** The comparison is of totals, not row against row, because one input is normally crushed into several fractions. Equality is exact `Decimal` (`5.00` equals `5`; `5.01` does not), and the form accepts two decimals.
 
 The check needs no database state, so it runs before the transaction, as the job kind's page-level rule (`JobKind.page_errors`). The error message localises its totals (`9,5`, not `9.5`).
+
+The admin does **not** check the balance, on purpose. It is the back office's way around the rule (an old job, a correction in two steps), and the check would span two inlines, which Django's admin has no clean place to report. Everything else about a line item is still held to the job form's rules there (number rules, sign). A job saved unbalanced in the admin is balanced again by its next correction on `job_edit`, which refuses to save it otherwise.
 
 ### Required fields
 
@@ -103,7 +106,7 @@ Both caps are tighter than the model, which needs no migration. `WorkOrderAdminF
 
 ### Number limits
 
-The number columns are `decimal(12, 2)`. A form field wider than its column turns a large value into an unhandled `numeric field overflow` 500. So every number box has a `max_value`, rendered as the input's `max`:
+The number columns are `decimal(12, 2)`, except the line items' `quantity`, which is `decimal(12, 3)`; the forms take 2 places for both. A form field wider than its column turns a large value into an unhandled `numeric field overflow` 500. So every number box has a `max_value`, rendered as the input's `max`:
 
 | Constant | Limit | Boxes |
 |---|---|---|
@@ -112,7 +115,9 @@ The number columns are `decimal(12, 2)`. A form field wider than its column turn
 | `TONS_MAX` | 99 999 | material quantity and machine tonnage |
 | `LITRES_MAX` | 2 000 | „Natankováno" on the Tankování form |
 
-The limits are whole numbers because Django's „menší nebo rovna …" message prints the limit unlocalised. `CappedInline` in `workorders/admin.py` repeats them on the admin inlines (signed for line items). `ValueLimitTests` covers this.
+The limits are whole numbers because Django's „menší nebo rovna …" message prints the limit unlocalised. `ValueLimitTests` covers this.
+
+The admin inlines follow the same rules: `CappedInline` in `workorders/admin.py` reads each box's limits, step and decimal places off the entry form's own field (signed for line items, so their bounds cap the size either way). Without that, a value saved there, such as 1,25 worker hours or a 3-decimal quantity, was refused the next time the entry was opened on `job_edit` or `refuel_edit`. Decimal places are counted without trailing zeros, since the admin re-posts a stored 2 as 2.00. `AdminNumberRulesTests` covers this.
 
 ### The machine row
 

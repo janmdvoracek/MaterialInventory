@@ -103,11 +103,11 @@ One submission writes a `WorkOrder` plus its rows, all in one `transaction.atomi
 
 Fuel is not part of a job; see **The refuelling**.
 
-`collaborators` is **derived** from the hours rows (`collaborators.set(...)`), never entered.
+`collaborators` is **derived** from the hours rows, never entered: `WorkOrder.derive_collaborators` sets it to everyone with hours except the author, called by `WorkersSection.write` and by `WorkOrderAdmin.save_related` (the admin shows it read-only). Migration `0012_derive_collaborators` resynced the jobs the admin had let drift. `AdminCollaboratorsTests` and `DeriveCollaboratorsMigrationTests` cover this.
 
-Rows carry **no timestamp of their own**; their date is their entry's `performed_on`. Every row cascades when its entry is deleted. `StockMovement` and `MachineRefuel` are not registered in the admin; they are edited as inlines of `WorkOrderAdmin` and `RefuellingAdmin` (`AdminIndexTests` checks both).
+Rows carry **no timestamp of their own**; their date is their entry's `performed_on`. Every row cascades when its entry is deleted. `StockMovement` and `MachineRefuel` are not registered in the admin; they are edited as inlines of `WorkOrderAdmin` and `RefuellingAdmin` (`AdminIndexTests` checks both). There a line item's sign must match its type, consumed negative and produced positive, never zero (`MovementAdminForm`, `AdminMovementSignTests`).
 
-**Mass balance.** A job needs at least one consumed row and one produced row, and `sum(consumed) == sum(produced)` must hold exactly (`Decimal`, no tolerance). It is `JobKind.page_errors`, checked before the transaction. The error totals go through `formats.localize`.
+**Mass balance.** A job needs at least one consumed row and one produced row, and `sum(consumed) == sum(produced)` must hold exactly (`Decimal`, no tolerance). It is `JobKind.page_errors`, checked before the transaction. The error totals go through `formats.localize`. **The admin doesn't check it, on purpose**: it is the back office's way around the rule, and Django's admin has no clean place to show an error spanning two inlines. The next correction on `job_edit` enforces it again.
 
 **Required fields.** „Popis", „Lokace" and „Moje hodiny" are required on `WorkOrderForm` itself; there is no exemption (the old fuel-only job is gone). Valid rows are still balance-checked when a job field fails, so both errors show (`ErrorBannerTests`). `Kind.is_valid` runs every kind's `page_errors` this way, so a refuelling with no machine shows that beside a field error too.
 
@@ -127,7 +127,7 @@ The rule is per section, so one material may be both consumed and produced. `uni
 
 `DescriptionAndNotesTests` covers this.
 
-**Number bounds.** All number columns are `decimal(12, 2)`. A form field wider than its column turns a big value into an unhandled `numeric field overflow` 500. So every number box has a `max_value`, set from constants in `forms.py`:
+**Number bounds.** The number columns are `decimal(12, 2)`, except `StockMovement.quantity`, which is `decimal(12, 3)` (the forms still take 2 places). A form field wider than its column turns a big value into an unhandled `numeric field overflow` 500. So every number box has a `max_value`, set from constants in `forms.py`:
 
 | Constant | Value | Applies to |
 |---|---|---|
@@ -137,7 +137,7 @@ The rule is per section, so one material may be both consumed and produced. `uni
 | `LITRES_MAX` | 2 000 | litres (Tankování) |
 
 - The limits are whole numbers because Django's error message prints them unlocalised.
-- `CappedInline` in `admin.py` repeats them.
+- `CappedInline` in `admin.py` reads each inline box's rules (limits, step, decimal places) off the entry form's own field, so whatever the admin saves, `job_edit` and `refuel_edit` accept. Trailing zeros don't count as decimal places, because the admin re-posts a stored 2 as 2.00. `AdminNumberRulesTests` covers this.
 
 `ValueLimitTests` covers this.
 

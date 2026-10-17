@@ -82,12 +82,11 @@ class WorkersSection(Section):
         return {'user': author, 'viewer': viewer}
 
     def write(self, entry, rows, author):
-        # Derived from the hours rows, so the two can't disagree.
-        entry.collaborators.set(row['user'] for row in rows)
         entry.worker_hours.exclude(user=author).delete()
         WorkerHours.objects.bulk_create(
             WorkerHours(work_order=entry, user=row['user'], hours=row['hours']) for row in rows
         )
+        entry.derive_collaborators()
 
 
 @dataclass(frozen=True, kw_only=True)

@@ -121,3 +121,50 @@ class ReviewFixtureMixin:
         )
         self.assertRedirects(response, reverse('transform_create'))
         return WorkOrder.objects.order_by('-pk').first()
+
+
+def _inline(prefix, rows, max_num='1000'):
+    """One admin inline's management form and rows. A row with an `id` is a stored one."""
+    data = {
+        f'{prefix}-TOTAL_FORMS': str(len(rows)),
+        f'{prefix}-INITIAL_FORMS': str(sum(1 for row in rows if 'id' in row)),
+        f'{prefix}-MIN_NUM_FORMS': '0',
+        f'{prefix}-MAX_NUM_FORMS': max_num,
+    }
+    for index, row in enumerate(rows):
+        for key, value in row.items():
+            data[f'{prefix}-{index}-{key}'] = '' if value is None else value
+    return data
+
+
+def admin_job_payload(work_order, *, movements=None, usages=None, hours=None, **fields):
+    """POST data for the admin's change form of `work_order`.
+
+    Each inline defaults to the job's stored rows; pass a list of dicts to
+    replace it (rows with an `id` first; add `'DELETE': 'on'` to remove one).
+    `fields` override the job's own fields.
+    """
+    if movements is None:
+        movements = [
+            {'id': row.pk, 'material': row.material_id, 'movement_type': row.movement_type, 'quantity': row.quantity}
+            for row in work_order.movements.all()
+        ]
+    if usages is None:
+        usages = [
+            {'id': row.pk, 'machine': row.machine_id, 'hours': row.hours, 'tons': row.tons}
+            for row in work_order.machine_usages.all()
+        ]
+    if hours is None:
+        hours = [{'id': row.pk, 'user': row.user_id, 'hours': row.hours} for row in work_order.worker_hours.all()]
+    return {
+        'description': work_order.description,
+        'notes': work_order.notes,
+        'location': work_order.location_id or '',
+        'performed_on': work_order.performed_on.isoformat(),
+        'status': work_order.status,
+        **_inline('movements', movements),
+        **_inline('machine_usages', usages),
+        **_inline('worker_hours', hours),
+        **_inline('photos', [], max_num='10'),
+        **fields,
+    }

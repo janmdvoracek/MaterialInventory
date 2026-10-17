@@ -897,7 +897,7 @@ class DescriptionAndNotesTests(ReviewFixtureMixin, TestCase):
 
 class ValueLimitTests(ReviewFixtureMixin, TestCase):
     """Every job-form number box has an upper bound, rendered as `max` and enforced, keeping values inside the
-    decimal(12, 2) columns. The admin inlines repeat them.
+    decimal(12, 2/3) columns. The admin inlines read them off the same fields.
     """
 
     def _payload(self, quantity='5', **overrides):

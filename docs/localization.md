@@ -73,4 +73,4 @@ python manage.py compilemessages -l cs --ignore=.venv
 
 Keep the `--ignore`, or it recompiles every catalog in the virtualenv. `AdminCzechTests` fails if the `.mo` is missing or stale.
 
-**`filter_horizontal` can't be translated.** Its labels come from the `djangojs` catalog, which ignores `LOCALE_PATHS`. `WorkOrderAdmin` therefore uses a plain multi-select for `collaborators`.
+**`filter_horizontal` can't be translated.** Its labels come from the `djangojs` catalog, which ignores `LOCALE_PATHS`. No admin page uses it. (`collaborators`, the one M2M it would have suited, is read-only in the admin.)
