@@ -371,7 +371,7 @@ Three rules apply to the calculation (`MachineReadingTests`):
 - The baseline is every approved row of that machine, not just the filtered ones.
 - A machine's first reading, or a blank one, has no run time (`None`).
 
-**Money.** `hourly_rate` (Kč/hod) and `rate_per_ton` (Kč/t) price three columns, computed per row by `_machine_costs`. That is why `_machine_summary` returns a list.
+**Money.** `hourly_rate` (Kč/hod) and `rate_per_ton` (Kč/t) price three columns, computed per row by `_machine_costs`. That is why `MachineReport.summary` is a list.
 
 | Column | Value |
 |---|---|
@@ -386,7 +386,7 @@ The distinction throughout is unknown versus zero:
 - **„Celkem" is unknown if any priced side is.** Half a bill is worse than none.
 - `Sum` skips NULLs, so all-unknown tonnage is „—", never `0 t`.
 
-**Fuel.** The *Tankování* card (`_refuel_summary`) shows litres and fill-up count per machine from approved refuellings, under the same filter and with the same two listing rules. `RefuelFilterForm` is `MachineFilterForm` with its date and author read off the refuelling. Its zeros are real (`Coalesce`), so it stays a queryset. „Detail tankování" shows each fill-up's source and links to its refuelling.
+**Fuel.** The *Tankování* card (`MachineReport.fuel_summary`) shows litres and fill-up count per machine from approved refuellings, under the same filter and with the same two listing rules. `RefuelFilterForm` is `MachineFilterForm` with its date and author read off the refuelling. Its zeros are real (`Coalesce`), so it stays a queryset. „Detail tankování" shows each fill-up's source and links to its refuelling.
 
 The two detail tables paginate independently. `_paginated(request, rows, param)` gives each its own page parameter and keeps the other table's page in its links. `MachineRefuelReportTests` covers this.
 
@@ -412,23 +412,23 @@ Zeros are real here (`0,00 t`). Every active material is listed, and naming one 
 
 A worker sees only their own row, scoped twice: the queryset through `participation_filter`, and then the summary rows filtered to `request.user`. That second pass stops a collaborated job from showing the creator's hours. These hours have no fixed relationship to the motohodiny on Stroje.
 
-**Stroje** and **Tankování** (`_fleet_totals`, workers only) are the fleet's totals, so a worker can see how many tonnes and hours the machines did in a period. They are **deliberately not scoped to the worker**: every approved job and refuelling counts. They reuse Stroje's helpers (`_filtered_machine_usages` + `_machine_summary`, `_filtered_machine_refuels` + `_refuel_summary`), so the numbers equal Stroje's, but show only „Hodin za období" and „Tun" (no reading, rates or prices), and the fuel summary without its detail. Only the page's `date_from`/`date_to` reach them; a hand-typed `?machine=` or `?created_by=` is ignored. They have no CSV export. Managers and admins don't get them (`fleet` is `None`), because Stroje already shows the same and more.
+**Stroje** and **Tankování** (`_fleet_totals`, workers only) are the fleet's totals, so a worker can see how many tonnes and hours the machines did in a period. They are **deliberately not scoped to the worker**: every approved job and refuelling counts. They read a `MachineReport` built from the page's dates, so the numbers equal Stroje's, but show only „Hodin za období" and „Tun" (no reading, rates or prices), and the fuel summary without its detail. Only the page's `date_from`/`date_to` reach them; a hand-typed `?machine=` or `?created_by=` is ignored. They have no CSV export. Managers and admins don't get them (`fleet` is `None`), because Stroje already shows the same and more.
 
 ### CSV exports
 
 | Export | URL name | Built from |
 |---|---|---|
-| Souhrn „Odpracované hodiny" | `time_worked_export` | `_time_worked_scope` |
-| Stroje „Stav strojů" | `machine_dashboard_export` | `_filtered_machine_usages` + `_machine_summary` |
-| Stroje „Tankování" | `machine_refuel_export` | `_filtered_machine_refuels` + `_refuel_summary` |
-| Stroje „Detail tankování" | `machine_refuel_detail_export` | `_filtered_machine_refuels` |
-| Stroje „Detail používání strojů" | `machine_usage_detail_export` | `_filtered_machine_usages` |
-| Materiál „Souhrn materiálů" | `material_dashboard_export` | `_filtered_material_movements` + `_material_summary` |
-| Materiál „Detail položek" | `material_detail_export` | `_filtered_material_movements` |
+| Souhrn „Odpracované hodiny" | `time_worked_export` | `HoursReport.summary` |
+| Stroje „Stav strojů" | `machine_dashboard_export` | `MachineReport.summary` |
+| Stroje „Tankování" | `machine_refuel_export` | `MachineReport.fuel_summary` |
+| Stroje „Detail tankování" | `machine_refuel_detail_export` | `MachineReport.fill_ups` |
+| Stroje „Detail používání strojů" | `machine_usage_detail_export` | `MachineReport.usages` |
+| Materiál „Souhrn materiálů" | `material_dashboard_export` | `MaterialReport.summary` |
+| Materiál „Detail položek" | `material_detail_export` | `MaterialReport.detail_rows` |
 
 How the exports behave:
 
-- **Same helpers as the page, same querystring.** The file is the table that was on screen: pending jobs excluded, and an invalid filter gives a header-only file. `_time_worked_scope` was extracted so that a worker's export is scoped exactly like their page.
+- **Same report as the page, same querystring.** Each report page has one report class (`MachineReport`, `MaterialReport`, `HoursReport` in `reports.py`), built from the filter data, that owns the approved-only rule, the filter, the invalid-filter rule and every summary and detail table. The page and its exports read the same properties, so the file is the table that was on screen: pending jobs excluded, and an invalid filter gives a header-only file. `HoursReport` takes the user too, so a worker's export is scoped exactly like their page.
 - **Same gate as the page.** `time_worked_export` is `login_required`; the rest are manager only.
 - **Detail exports hold every filtered row, not the current page.** Line items and fill-ups get reconciled against delivery notes and fuel receipts; usage rows carry the run time per job. A usage row's „Hodin na zakázce" is `_with_run_hours` over the unfiltered baseline, exactly as on the page.
 - **Line items carry their job's ID.** „Detail položek" starts with an „ID" column (`work_order_id`, a `#n` link to `job_detail` on the page, the bare number in the file), since two jobs can share a date, description and author.

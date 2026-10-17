@@ -242,16 +242,16 @@ Souhrn, Stroje and Materiál each have a filter card, a summary table, and the d
 **Every report table, and both Přehled lists, start at `PREVIEW_ROWS` (5) rows.** `_previews` / `_preview` cut each one, and `_show_all.html` renders „Zobrazit vše (n)", a plain link that adds the table's key to `?vse=` (`EXPAND_PARAM`), keeps the filters and other expanded tables, and jumps back to the card (`#tabulka-<key>`). Once expanded (and longer than 5) it renders „Zobrazit méně" instead, which removes only that key and, for a paginated table, its page param. Pass a paginated table as its `_paginated` dict, so `_preview` knows the param. Templates loop over `tables.<key>.rows`, not the raw context. A paginated table shows its page links only once expanded, and they carry `vse`. Exports ignore all of this. `ShowAllTests` covers this.
 
 - **Stroje** (`machine_dashboard`): a manager page.
-  - Per machine: latest reading (`Max`), hours run, tonnage, both rates, and three money columns from `_machine_costs`. That makes `_machine_summary` a list rather than a queryset.
+  - Per machine: latest reading (`Max`), hours run, tonnage, both rates, and three money columns from `_machine_costs`. That makes `MachineReport.summary` a list rather than a queryset.
   - **Motohodiny are readings, never summed.** `_with_run_hours` computes each row's run time as its reading minus the previous approved reading of that machine. "Previous" is by value with a pk tie-break, the baseline is all approved rows (not just filtered ones), and a first or blank reading is `None`. „Cena za hodiny" prices the summed run hours. `MachineReadingTests` covers this.
   - **Unknown is not zero.** An unset rate or unknown tonnage is „—"; a priced machine that didn't run costs `0,00`. „Celkem" is unknown if any priced side is (`filtered_usages` tells the two cases apart).
-  - The fuel card (`_refuel_summary`) stays a queryset, because its zeros are real. It reads approved refuellings through `RefuelFilterForm` (Stroje's filter, dated and authored by the refuelling). „Detail tankování" shows each fill-up's source and links to its refuelling.
+  - The fuel card (`MachineReport.fuel_summary`) stays a queryset, because its zeros are real. It reads approved refuellings through `RefuelFilterForm` (Stroje's filter, dated and authored by the refuelling). „Detail tankování" shows each fill-up's source and links to its refuelling.
   - Every active machine is listed; naming one in the filter narrows the table to it.
   - The two tables paginate independently (`_paginated(request, rows, param)`). `MachineRefuelReportTests` covers this.
 - **Materiál** (`material_dashboard`): a manager page; the only place line items are read across jobs. It annotates consumed (`Abs`), produced and net (`Coalesce`); zeros are real. Its filter has `location` but no `created_by`. Its „Druh pohybu" (`movement_type`) narrows only Detail položek and its export (`MaterialFilterForm.detail_rows`), never the summary, whose columns already split the two directions.
 - **Souhrn** (`time_worked`, nav „Souhrn", URL still `/hours/`): any user.
   - **Odpracované hodiny** sums `WorkerHours` per person. It re-queries by `pk__in` before aggregating, because the collaborator join would otherwise multiply the `Sum`. Workers see only their own rows (see Access).
-  - **Stroje** („Hodin za období", „Tun") and **Tankování** (`_fleet_totals`) are for workers only (`fleet` is `None` for managers, who have Stroje). They are **deliberately unscoped**: every approved entry counts. They reuse Stroje's helpers, take only the page's dates (`machine`/`created_by` in the querystring are ignored), and have no export. `SouhrnFleetTests` covers this.
+  - **Stroje** („Hodin za období", „Tun") and **Tankování** (`_fleet_totals`) are for workers only (`fleet` is `None` for managers, who have Stroje). They are **deliberately unscoped**: every approved entry counts. They read a `MachineReport` built from only the page's dates (`machine`/`created_by` in the querystring are ignored), and have no export. `SouhrnFleetTests` covers this.
 - **Přehled** (`job_dashboard` and the `/jobs/` pages): a manager page. Location is shown and filtered only here and on Materiál. It links to **Přehled tankování** (`refuel_dashboard`) with the pending refuelling count.
 
 **CSV exports** sit at `<page>/export/`:
@@ -261,8 +261,8 @@ Souhrn, Stroje and Materiál each have a filter card, a summary table, and the d
 
 Rules:
 
-- Each export uses **the same helpers as its page**, so it can't disagree with it.
-- Each export carries its page's gate. The worker scoping lives in `_time_worked_scope`.
+- Each export reads **the same report class as its page** (`MachineReport`, `MaterialReport`, `HoursReport`), so it can't disagree with it. A report is built from the filter data (plus the user, for `HoursReport`), applies approved-only and the invalid-filter rule once, and computes each table on first use.
+- Each export carries its page's gate. The worker scoping lives in `HoursReport`.
 - A detail export contains every filtered row, not just the current page.
 - `_csv_response` writes `;`-delimited UTF-8 with a BOM, which is what Excel needs under `cs`. Numbers go through `number_format`. Unknowns are blank cells (`_csv_number`), never `—`. Dates are ISO.
 

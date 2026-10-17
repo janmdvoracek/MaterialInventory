@@ -278,7 +278,7 @@ class TableExportTests(TestCase):
 
     def test_detail_export_follows_the_filter_and_hides_pending_jobs(self):
         # Same two rules as every other download, and for the same reason: it
-        # is built from `_filtered_material_movements`, the page's own helper.
+        # reads `MaterialReport.detail_rows`, as the page does.
         self._job(quantity=Decimal('4'), performed_on=date.today() - timedelta(days=40))
         self._job(quantity=Decimal('9'), status=WorkOrder.Status.PENDING)
         self._job(quantity=Decimal('1.5'))

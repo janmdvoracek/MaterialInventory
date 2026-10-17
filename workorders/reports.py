@@ -4,6 +4,7 @@ list-page helpers Přehled shares with them."""
 import csv
 from datetime import timedelta
 from decimal import Decimal
+from functools import cached_property
 
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
@@ -43,19 +44,102 @@ DATE_PRESETS = (
 )
 
 
+def _catalog_in_scope(form, catalog, field):
+    """The active `catalog` records a report's summary lists, or None if the filter is invalid.
+
+    Every active record is listed, or just the one the filter names in `field`.
+    """
+    if form.is_bound and not form.is_valid():
+        return None
+    catalog = catalog.filter(is_active=True)
+    if form.is_bound and form.cleaned_data.get(field):
+        catalog = catalog.filter(pk=form.cleaned_data[field].pk)
+    return catalog
+
+
+class MachineReport:
+    """Stroje's numbers under one filter: usage and fuel, each as a summary and its detail rows.
+
+    Approved entries only. Not scoped per user: Stroje is manager-only, and
+    Souhrn's fleet tables (`_fleet_totals`) are deliberately shared. The page,
+    its four exports and the fleet tables all read this, so they can't disagree.
+    """
+
+    def __init__(self, data):
+        self.form = MachineFilterForm(data)
+        # The same filter, with the date and author read off the refuelling.
+        self._fuel_form = RefuelFilterForm(data)
+
+    @cached_property
+    def usages(self):
+        """The filtered usage rows, newest first, each with its `run_hours`."""
+        usages = (
+            MachineUsage.objects.filter(work_order__status=WorkOrder.Status.APPROVED)
+            .select_related('machine', 'work_order', 'work_order__created_by')
+            .order_by('-work_order__performed_on', '-id')
+        )
+        return self.form.filter(_with_run_hours(usages))
+
+    @cached_property
+    def summary(self):
+        """Meter reading, hours run, tonnage and cost per machine, as a list.
+
+        `filtered_reading` is the highest reading (never a sum);
+        `filtered_hours` is hours run, which the cost prices.
+        """
+        machines = _catalog_in_scope(self.form, Machine.objects.all(), 'machine')
+        if machines is None:
+            return []
+        in_scope = Q(usages__in=self.usages.values('pk'))
+        run_hours = _run_hours_by_machine(self.usages)
+        machines = machines.annotate(
+            filtered_reading=Max('usages__hours', filter=in_scope),
+            filtered_tons=Sum('usages__tons', filter=in_scope),
+            filtered_usages=Count('usages', filter=in_scope),
+        ).order_by('name')
+        for machine in machines:
+            machine.filtered_hours = run_hours.get(machine.pk)
+        return [_machine_costs(machine) for machine in machines]
+
+    @cached_property
+    def fill_ups(self):
+        """The filtered fill-up rows, newest first."""
+        refuels = (
+            MachineRefuel.objects.filter(refuelling__status=Refuelling.Status.APPROVED)
+            .select_related('machine', 'source', 'refuelling', 'refuelling__created_by')
+            .order_by('-refuelling__performed_on', '-id')
+        )
+        return self._fuel_form.filter(refuels)
+
+    @cached_property
+    def fuel_summary(self):
+        """Litres and fill-up count per machine. Listed like `summary`, but zeros are real (`litres` is not nullable)."""
+        machines = _catalog_in_scope(self._fuel_form, Machine.objects.all(), 'machine')
+        if machines is None:
+            return Machine.objects.none()
+        in_scope = Q(refuels__in=self.fill_ups.values('pk'))
+        return machines.annotate(
+            filtered_litres=Coalesce(Sum('refuels__litres', filter=in_scope), Decimal('0')),
+            filtered_refuels=Count('refuels', filter=in_scope),
+        ).order_by('name')
+
+    @cached_property
+    def total_litres(self):
+        # No fill-ups is a real zero.
+        return self.fill_ups.aggregate(total=Sum('litres'))['total'] or Decimal('0')
+
+
 @role_required(*REVIEWER_ROLES)
 def machine_dashboard(request):
     """Stroje: one filter over per-machine totals, usage rows and fill-ups (two paginators)."""
-    form, usages = _filtered_machine_usages(request.GET or None)
-    _, refuels = _filtered_machine_refuels(request.GET or None)
-    listing = _list_page_context(request, usages)
+    report = MachineReport(request.GET or None)
+    listing = _list_page_context(request, report.usages)
     context = {
-        'form': form,
-        'machines': _machine_summary(usages, form),
-        'refuel_machines': _refuel_summary(refuels, form),
-        # No fill-ups is a real zero.
-        'refuel_total_litres': refuels.aggregate(total=Sum('litres'))['total'] or Decimal('0'),
-        'fuel_page': _paginated(request, refuels, FUEL_PAGE_PARAM),
+        'form': report.form,
+        'machines': report.summary,
+        'refuel_machines': report.fuel_summary,
+        'refuel_total_litres': report.total_litres,
+        'fuel_page': _paginated(request, report.fill_ups, FUEL_PAGE_PARAM),
         **listing,
     }
     context['tables'] = _previews(
@@ -95,30 +179,6 @@ def _machine_costs(machine):
     return machine
 
 
-def _machine_summary(usages, form):
-    """Meter reading, hours run, tonnage and cost per machine over `usages`, as a list.
-
-    Every active machine is listed, or just the filtered one. `filtered_reading`
-    is the highest reading (never a sum); `filtered_hours` is hours run, which
-    the cost prices.
-    """
-    if form.is_bound and not form.is_valid():
-        return []
-    machines = Machine.objects.filter(is_active=True)
-    if form.is_bound and form.cleaned_data.get('machine'):
-        machines = machines.filter(pk=form.cleaned_data['machine'].pk)
-    in_scope = Q(usages__in=usages.values('pk'))
-    run_hours = _run_hours_by_machine(usages)
-    machines = machines.annotate(
-        filtered_reading=Max('usages__hours', filter=in_scope),
-        filtered_tons=Sum('usages__tons', filter=in_scope),
-        filtered_usages=Count('usages', filter=in_scope),
-    ).order_by('name')
-    for machine in machines:
-        machine.filtered_hours = run_hours.get(machine.pk)
-    return [_machine_costs(machine) for machine in machines]
-
-
 def _run_hours_by_machine(usages):
     """Hours run per machine over `usages`: the known `run_hours`, summed.
 
@@ -152,86 +212,60 @@ def _with_run_hours(usages):
     return usages.annotate(previous_hours=Subquery(previous), run_hours=F('hours') - F('previous_hours'))
 
 
-def _filtered_machine_usages(data):
-    # Approved jobs only. No per-user scoping: Stroje is manager-only, and Souhrn's fleet tables are deliberately shared.
-    form = MachineFilterForm(data)
-    usages = (
-        MachineUsage.objects.filter(work_order__status=WorkOrder.Status.APPROVED)
-        .select_related('machine', 'work_order', 'work_order__created_by')
-        .order_by('-work_order__performed_on', '-id')
-    )
-    return form, form.filter(_with_run_hours(usages))
+class MaterialReport:
+    """Materiál's numbers: per-material tonnage and the line items behind it.
 
-
-def _filtered_machine_refuels(data):
-    """Stroje's fill-up rows, from approved refuellings only, under Stroje's filter (`RefuelFilterForm`)."""
-    form = RefuelFilterForm(data)
-    refuels = (
-        MachineRefuel.objects.filter(refuelling__status=Refuelling.Status.APPROVED)
-        .select_related('machine', 'source', 'refuelling', 'refuelling__created_by')
-        .order_by('-refuelling__performed_on', '-id')
-    )
-    return form, form.filter(refuels)
-
-
-def _refuel_summary(refuels, form):
-    """Litres and fill-up count per active machine over `refuels`.
-
-    Listed like `_machine_summary`, but zeros are real (`litres` is not nullable).
+    Approved jobs only. No per-user scoping: the page is manager-only. The page
+    and its two exports read this.
     """
-    if form.is_bound and not form.is_valid():
-        return Machine.objects.none()
-    machines = Machine.objects.filter(is_active=True)
-    if form.is_bound and form.cleaned_data.get('machine'):
-        machines = machines.filter(pk=form.cleaned_data['machine'].pk)
-    in_scope = Q(refuels__in=refuels.values('pk'))
-    return machines.annotate(
-        filtered_litres=Coalesce(Sum('refuels__litres', filter=in_scope), Decimal('0')),
-        filtered_refuels=Count('refuels', filter=in_scope),
-    ).order_by('name')
+
+    def __init__(self, data):
+        self.form = MaterialFilterForm(data)
+
+    @cached_property
+    def movements(self):
+        """The filtered line items, newest first, each with its `typed_quantity`."""
+        movements = (
+            StockMovement.objects.filter(work_order__status=WorkOrder.Status.APPROVED)
+            .select_related('material', 'work_order', 'work_order__created_by', 'work_order__location')
+            .annotate(typed_quantity=Abs('quantity'))
+            .order_by('-work_order__performed_on', '-id')
+        )
+        return self.form.filter(movements)
+
+    @cached_property
+    def summary(self):
+        """Consumed, produced and net tonnage per material.
+
+        Quantities are stored signed, so the net is a plain Sum. Zeros here are
+        real zeros, unlike tons on Stroje.
+        """
+        materials = _catalog_in_scope(self.form, Material.objects.all(), 'material')
+        if materials is None:
+            return Material.objects.none()
+        in_scope = Q(movements__in=self.movements.values('pk'))
+        consumed = Q(movements__movement_type=StockMovement.MovementType.TRANSFORM_CONSUME)
+        produced = Q(movements__movement_type=StockMovement.MovementType.TRANSFORM_PRODUCE)
+        return materials.annotate(
+            filtered_consumed=Abs(Sum('movements__quantity', filter=in_scope & consumed)),
+            filtered_produced=Sum('movements__quantity', filter=in_scope & produced),
+            filtered_net=Coalesce(Sum('movements__quantity', filter=in_scope), Decimal('0')),
+        ).order_by('name')
+
+    @cached_property
+    def detail_rows(self):
+        """„Detail položek": the line items, also narrowed by „Druh pohybu"."""
+        return self.form.detail_rows(self.movements)
 
 
 @role_required(*REVIEWER_ROLES)
 def material_dashboard(request):
     """Materiál: the filter, per-material tonnage, and the line items behind it."""
-    form, movements = _filtered_material_movements(request)
-    listing = _list_page_context(request, form.detail_rows(movements))
-    context = {'form': form, 'materials': _material_summary(movements, form), **listing}
+    report = MaterialReport(request.GET or None)
+    listing = _list_page_context(request, report.detail_rows)
+    context = {'form': report.form, 'materials': report.summary, **listing}
     context['tables'] = _previews(request, materials=context['materials'], movements=listing)
     return render(request, 'workorders/material_dashboard.html', context)
-
-
-def _material_summary(movements, form):
-    """Consumed, produced and net tonnage per active material over `movements`.
-
-    Quantities are stored signed, so the net is a plain Sum. Zeros here are
-    real zeros, unlike tons on Stroje.
-    """
-    if form.is_bound and not form.is_valid():
-        return Material.objects.none()
-    materials = Material.objects.filter(is_active=True)
-    if form.is_bound and form.cleaned_data.get('material'):
-        materials = materials.filter(pk=form.cleaned_data['material'].pk)
-    in_scope = Q(movements__in=movements.values('pk'))
-    consumed = Q(movements__movement_type=StockMovement.MovementType.TRANSFORM_CONSUME)
-    produced = Q(movements__movement_type=StockMovement.MovementType.TRANSFORM_PRODUCE)
-    return materials.annotate(
-        filtered_consumed=Abs(Sum('movements__quantity', filter=in_scope & consumed)),
-        filtered_produced=Sum('movements__quantity', filter=in_scope & produced),
-        filtered_net=Coalesce(Sum('movements__quantity', filter=in_scope), Decimal('0')),
-    ).order_by('name')
-
-
-def _filtered_material_movements(request):
-    # Approved jobs only. No per-user scoping: the page is manager-only.
-    form = MaterialFilterForm(request.GET or None)
-    movements = (
-        StockMovement.objects.filter(work_order__status=WorkOrder.Status.APPROVED)
-        .select_related('material', 'work_order', 'work_order__created_by', 'work_order__location')
-        .annotate(typed_quantity=Abs('quantity'))
-        .order_by('-work_order__performed_on', '-id')
-    )
-    return form, form.filter(movements)
 
 
 # One page parameter per paginated table: Stroje has two, which page independently.
@@ -370,8 +404,7 @@ def _csv_response(stem, header, rows):
 
 @role_required(*REVIEWER_ROLES)
 def machine_dashboard_export(request):
-    """„Stav strojů" as a CSV, built from the same helpers as the page."""
-    form, usages = _filtered_machine_usages(request.GET or None)
+    """„Stav strojů" as a CSV, from the page's own `MachineReport`."""
     return _csv_response(
         'stav-stroju',
         [
@@ -397,21 +430,20 @@ def machine_dashboard_export(request):
                 _csv_number(machine.filtered_tons_cost, 2),
                 _csv_number(machine.filtered_total_cost, 2),
             ]
-            for machine in _machine_summary(usages, form)
+            for machine in MachineReport(request.GET or None).summary
         ],
     )
 
 
 @role_required(*REVIEWER_ROLES)
 def machine_refuel_export(request):
-    """„Tankování" as a CSV, built from the same helpers as the card."""
-    form, refuels = _filtered_machine_refuels(request.GET or None)
+    """„Tankování" as a CSV, from the page's own `MachineReport`."""
     return _csv_response(
         'tankovani',
         ['Stroj', 'Počet tankování', 'Natankováno (l)'],
         [
             [machine.name, machine.filtered_refuels, _csv_number(machine.filtered_litres, 2)]
-            for machine in _refuel_summary(refuels, form)
+            for machine in MachineReport(request.GET or None).fuel_summary
         ],
     )
 
@@ -419,7 +451,6 @@ def machine_refuel_export(request):
 @role_required(*REVIEWER_ROLES)
 def machine_refuel_detail_export(request):
     """„Detail tankování" as a CSV: every filtered fill-up, not just the page on screen."""
-    _, refuels = _filtered_machine_refuels(request.GET or None)
     return _csv_response(
         'detail-tankovani',
         ['Provedeno', 'Stroj', 'Zdroj', 'Natankováno (l)', 'Kým'],
@@ -432,7 +463,7 @@ def machine_refuel_detail_export(request):
                 _csv_number(refuel.litres, 2),
                 refuel.refuelling.created_by.username,
             ]
-            for refuel in refuels
+            for refuel in MachineReport(request.GET or None).fill_ups
         ],
     )
 
@@ -440,7 +471,6 @@ def machine_refuel_detail_export(request):
 @role_required(*REVIEWER_ROLES)
 def machine_usage_detail_export(request):
     """„Detail používání strojů" as a CSV: every filtered usage row, not just the page on screen."""
-    _, usages = _filtered_machine_usages(request.GET or None)
     return _csv_response(
         'detail-pouzivani-stroju',
         ['Provedeno', 'Stroj', 'Hodin na zakázce', 'Tuny', 'Zakázka', 'Kým'],
@@ -454,15 +484,14 @@ def machine_usage_detail_export(request):
                 usage.work_order.description,
                 usage.work_order.created_by.username,
             ]
-            for usage in usages
+            for usage in MachineReport(request.GET or None).usages
         ],
     )
 
 
 @role_required(*REVIEWER_ROLES)
 def material_dashboard_export(request):
-    """„Souhrn materiálů" as a CSV, built from the same helpers as the page."""
-    form, movements = _filtered_material_movements(request)
+    """„Souhrn materiálů" as a CSV, from the page's own `MaterialReport`."""
     return _csv_response(
         'souhrn-materialu',
         ['Materiál', 'Spotřebováno (t)', 'Vyrobeno (t)', 'Rozdíl (t)'],
@@ -473,7 +502,7 @@ def material_dashboard_export(request):
                 _csv_number(material.filtered_produced or Decimal('0'), 2),
                 _csv_number(material.filtered_net, 2),
             ]
-            for material in _material_summary(movements, form)
+            for material in MaterialReport(request.GET or None).summary
         ],
     )
 
@@ -481,7 +510,6 @@ def material_dashboard_export(request):
 @role_required(*REVIEWER_ROLES)
 def material_detail_export(request):
     """„Detail položek" as a CSV: every filtered line item, not just the page on screen."""
-    form, movements = _filtered_material_movements(request)
     return _csv_response(
         'detail-polozek',
         ['ID', 'Provedeno', 'Lokace', 'Materiál', 'Druh', 'Množství (t)', 'Zakázka', 'Kým'],
@@ -499,78 +527,94 @@ def material_detail_export(request):
                 movement.work_order.description,
                 movement.work_order.created_by.username,
             ]
-            for movement in form.detail_rows(movements)
+            for movement in MaterialReport(request.GET or None).detail_rows
         ],
     )
 
 
 @login_required
 def time_worked_export(request):
-    """Souhrn's „Odpracované hodiny" as a CSV, scoped exactly like the page."""
-    _, _, summary = _time_worked_scope(request)
+    """Souhrn's „Odpracované hodiny" as a CSV, scoped exactly like the page (`HoursReport`)."""
     return _csv_response(
         'souhrn-hodin',
         ['Pracovník', 'Hodiny', 'Zakázek'],
-        [[row['user'].username, _csv_number(row['hours'], 1), row['orders']] for row in summary],
+        [
+            [row['user'].username, _csv_number(row['hours'], 1), row['orders']]
+            for row in HoursReport(request.GET or None, request.user).summary
+        ],
     )
 
 
-def _time_worked_summary(work_orders):
-    """Labour hours per person across `work_orders`. Unrelated to machine motohodiny."""
-    totals = (
-        WorkerHours.objects.filter(work_order__in=work_orders)
-        .values('user')
-        .annotate(hours=Sum('hours'), orders=Count('work_order', distinct=True))
-    )
-    users = User.objects.in_bulk([row['user'] for row in totals])
-    rows = [
-        {'user': users[row['user']], 'hours': row['hours'], 'orders': row['orders']}
-        for row in totals
-        if row['user'] in users
-    ]
-    rows.sort(key=lambda row: (-row['hours'], row['user'].username))
-    return rows
+class HoursReport:
+    """Souhrn's labour numbers: hours per person and the jobs behind them.
 
+    Approved jobs only. A worker sees only the jobs they worked on and only
+    their own summary row: enforced here, in the queryset, not by hiding the
+    `worker` filter. The page and its export read this.
+    """
 
-def _time_worked_scope(request):
-    """Souhrn's filter form, scoped jobs and hours summary — shared with its export so both scope alike."""
-    form = TimeWorkedFilterForm(request.GET or None, user=request.user)
-    work_orders = WorkOrder.objects.filter(status=WorkOrder.Status.APPROVED)
-    if not request.user.is_manager_or_admin:
-        # Enforced here, not just by hiding the `worker` filter.
-        work_orders = work_orders.filter(participation_filter(request.user))
-    work_orders = form.filter(work_orders)
+    def __init__(self, data, user):
+        self.user = user
+        self.form = TimeWorkedFilterForm(data, user=user)
 
-    # Re-query by pk: the collaborator M2M join would inflate the sums.
-    scoped = WorkOrder.objects.filter(pk__in=work_orders.values('pk'))
+    @cached_property
+    def jobs(self):
+        """The approved jobs in scope, filtered, one row per job."""
+        jobs = WorkOrder.objects.filter(status=WorkOrder.Status.APPROVED)
+        if not self.user.is_manager_or_admin:
+            jobs = jobs.filter(participation_filter(self.user))
+        # Re-query by pk: the collaborator M2M join would inflate the sums.
+        return WorkOrder.objects.filter(pk__in=self.form.filter(jobs).values('pk'))
 
-    summary = _time_worked_summary(scoped)
-    if not request.user.is_manager_or_admin:
-        # A collaborated job would otherwise show its creator's total.
-        summary = [row for row in summary if row['user'] == request.user]
-    return form, scoped, summary
+    @cached_property
+    def summary(self):
+        """Labour hours per person across `jobs`, most hours first. Unrelated to machine motohodiny."""
+        totals = (
+            WorkerHours.objects.filter(work_order__in=self.jobs)
+            .values('user')
+            .annotate(hours=Sum('hours'), orders=Count('work_order', distinct=True))
+        )
+        users = User.objects.in_bulk([row['user'] for row in totals])
+        rows = [
+            {'user': users[row['user']], 'hours': row['hours'], 'orders': row['orders']}
+            for row in totals
+            if row['user'] in users
+        ]
+        rows.sort(key=lambda row: (-row['hours'], row['user'].username))
+        if not self.user.is_manager_or_admin:
+            # A collaborated job would otherwise show its creator's total.
+            rows = [row for row in rows if row['user'] == self.user]
+        return rows
+
+    @cached_property
+    def total_hours(self):
+        return sum((row['hours'] for row in self.summary), Decimal('0'))
+
+    @cached_property
+    def detail(self):
+        """„Detail": the jobs with their total hours, newest first."""
+        return (
+            self.jobs.annotate(total_hours=Sum('worker_hours__hours'))
+            .select_related('created_by')
+            .prefetch_related('collaborators', 'worker_hours__user')
+            .order_by('-performed_on', '-created_at')
+        )
 
 
 @login_required
 def time_worked(request):
-    form, scoped, summary = _time_worked_scope(request)
-    detail = (
-        scoped.annotate(total_hours=Sum('worker_hours__hours'))
-        .select_related('created_by')
-        .prefetch_related('collaborators', 'worker_hours__user')
-        .order_by('-performed_on', '-created_at')
-    )
-    listing = _list_page_context(request, detail)
+    report = HoursReport(request.GET or None, request.user)
+    listing = _list_page_context(request, report.detail)
     context = {
-        'form': form,
-        'summary': summary,
-        'total_hours': sum((row['hours'] for row in summary), Decimal('0')),
+        'form': report.form,
+        'summary': report.summary,
+        'total_hours': report.total_hours,
         'my_jobs': _my_recent_jobs(request.user),
         # Managers have the same numbers, with more, on Stroje.
         'fleet': None if request.user.is_manager_or_admin else _fleet_totals(request),
         **listing,
     }
-    tables = {'hours': summary, 'jobs': listing}
+    tables = {'hours': report.summary, 'jobs': listing}
     if context['fleet']:
         tables.update(machines=context['fleet']['machines'], refuels=context['fleet']['refuel_machines'])
     context['tables'] = _previews(request, **tables)
@@ -585,12 +629,11 @@ def _fleet_totals(request):
     are not on this page, so anything else in the querystring is ignored.
     """
     dates = {key: request.GET[key] for key in ('date_from', 'date_to') if key in request.GET} or None
-    usage_form, usages = _filtered_machine_usages(dates)
-    refuel_form, refuels = _filtered_machine_refuels(dates)
+    report = MachineReport(dates)
     return {
-        'machines': _machine_summary(usages, usage_form),
-        'refuel_machines': _refuel_summary(refuels, refuel_form),
-        'total_litres': refuels.aggregate(total=Sum('litres'))['total'] or Decimal('0'),
+        'machines': report.summary,
+        'refuel_machines': report.fuel_summary,
+        'total_litres': report.total_litres,
     }
 
 
