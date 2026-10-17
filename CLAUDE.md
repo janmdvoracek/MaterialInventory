@@ -105,7 +105,7 @@ Fuel is not part of a job; see **The refuelling**.
 
 `collaborators` is **derived** from the hours rows, never entered: `WorkOrder.derive_collaborators` sets it to everyone with hours except the author, called by `WorkersSection.write` and by `WorkOrderAdmin.save_related` (the admin shows it read-only). Migration `0012_derive_collaborators` resynced the jobs the admin had let drift. `AdminCollaboratorsTests` and `DeriveCollaboratorsMigrationTests` cover this.
 
-Rows carry **no timestamp of their own**; their date is their entry's `performed_on`. Every row cascades when its entry is deleted. `StockMovement` and `MachineRefuel` are not registered in the admin; they are edited as inlines of `WorkOrderAdmin` and `RefuellingAdmin` (`AdminIndexTests` checks both).
+Rows carry **no timestamp of their own**; their date is their entry's `performed_on`. Every row cascades when its entry is deleted. `StockMovement` and `MachineRefuel` are not registered in the admin; they are edited as inlines of `WorkOrderAdmin` and `RefuellingAdmin` (`AdminIndexTests` checks both). There a line item's sign must match its type, consumed negative and produced positive, never zero (`MovementAdminForm`, `AdminMovementSignTests`).
 
 **Mass balance.** A job needs at least one consumed row and one produced row, and `sum(consumed) == sum(produced)` must hold exactly (`Decimal`, no tolerance). It is `JobKind.page_errors`, checked before the transaction. The error totals go through `formats.localize`.
 

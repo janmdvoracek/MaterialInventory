@@ -72,9 +72,36 @@ class CappedInline(admin.TabularInline):
         return field
 
 
+class MovementAdminForm(forms.ModelForm):
+    """A line item whose sign matches its type: consumed negative, produced positive, never zero.
+
+    Materiál sums the signed quantities, and `job_edit` reads the typed amount back with `abs()`.
+    """
+
+    sign_errors = {
+        StockMovement.MovementType.TRANSFORM_CONSUME: 'Spotřeba se zapisuje záporným množstvím.',
+        StockMovement.MovementType.TRANSFORM_PRODUCE: 'Výroba se zapisuje kladným množstvím.',
+    }
+
+    class Meta:
+        model = StockMovement
+        fields = ('material', 'movement_type', 'quantity')
+
+    def clean(self):
+        cleaned_data = super().clean()
+        movement_type, quantity = cleaned_data.get('movement_type'), cleaned_data.get('quantity')
+        if movement_type is None or quantity is None:
+            return cleaned_data
+        consumed = movement_type == StockMovement.MovementType.TRANSFORM_CONSUME
+        if (quantity < 0) != consumed or quantity == 0:
+            self.add_error('quantity', self.sign_errors[movement_type])
+        return cleaned_data
+
+
 # Line items are edited only through this inline, never registered on their own.
 class MovementInline(CappedInline):
     model = StockMovement
+    form = MovementAdminForm
     extra = 1
     fields = ('material', 'movement_type', 'quantity')
     rules = {'quantity': MovementItemForm.base_fields['quantity']}

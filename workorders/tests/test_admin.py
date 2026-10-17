@@ -284,3 +284,46 @@ class AdminNumberRulesTests(ReviewFixtureMixin, TestCase):
             with self.subTest(name=name):
                 tag = re.search(rf'<input[^>]*name="{name}"[^>]*>', html).group(0)
                 self.assertIn(f'step="{step}"', tag)
+
+
+class AdminMovementSignTests(ReviewFixtureMixin, TestCase):
+    """A line item's sign must match its type in the admin: consumed negative, produced positive, never zero.
+
+    Materiál's net is a plain Sum of the signed quantities, and `job_edit` reads
+    the typed amount back with `abs()`, so a wrong sign skews the one and is
+    silently flipped by the other.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.job = self.submit_job(self.manager)
+        self.client.force_login(User.objects.create_superuser(username='admin', password='pw'))
+
+    def _post_with(self, movement_type, quantity):
+        movements = [
+            {'id': row.pk, 'material': row.material_id, 'movement_type': row.movement_type, 'quantity': row.quantity}
+            for row in self.job.movements.all()
+        ]
+        movements = [
+            {**row, 'quantity': quantity} if row['movement_type'] == movement_type else row for row in movements
+        ]
+        url = reverse('admin:workorders_workorder_change', args=[self.job.pk])
+        return self.client.post(url, admin_job_payload(self.job, movements=movements))
+
+    def test_a_wrong_or_zero_sign_is_refused(self):
+        consume = StockMovement.MovementType.TRANSFORM_CONSUME
+        produce = StockMovement.MovementType.TRANSFORM_PRODUCE
+        for movement_type, quantity, message in (
+            (consume, '5', 'Spotřeba se zapisuje záporným množstvím.'),
+            (consume, '0', 'Spotřeba se zapisuje záporným množstvím.'),
+            (produce, '-5', 'Výroba se zapisuje kladným množstvím.'),
+            (produce, '0', 'Výroba se zapisuje kladným množstvím.'),
+        ):
+            with self.subTest(movement_type=movement_type, quantity=quantity):
+                self.assertContains(self._post_with(movement_type, quantity), message)
+        self.assertEqual(sorted(self.job.movements.values_list('quantity', flat=True)), [Decimal('-5'), Decimal('5')])
+
+    def test_matching_signs_are_saved(self):
+        response = self._post_with(StockMovement.MovementType.TRANSFORM_CONSUME, '-4.5')
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(self.job.movements.get(quantity__lt=0).quantity, Decimal('-4.5'))

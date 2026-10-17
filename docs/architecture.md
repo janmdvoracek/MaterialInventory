@@ -52,6 +52,7 @@ Shared rules:
 - **Every row cascades when its entry is deleted**, so `job_delete`, `refuel_delete` and the admin's delete are all a plain `.delete()`.
 - **`collaborators` is derived** from the hours rows: `WorkOrder.derive_collaborators` sets it to everyone with hours on the job except its author. The job form calls it from `WorkersSection.write`, and the admin from `WorkOrderAdmin.save_related`, after its inlines are saved. The admin shows the field read-only, so it can no longer drift from the hours rows; before that, an hours row added there without ticking the person left the job off their Souhrn. Migration `0012_derive_collaborators` rebuilt the field on every existing job.
 - **`StockMovement` and `MachineRefuel` are not in the admin index.** They are edited as inlines of `WorkOrderAdmin` and `RefuellingAdmin`, so everything about an entry is edited in one place.
+- **A line item's sign matches its type**, also in the admin, where the signed number is typed directly: `MovementAdminForm` refuses a consumed row that isn't negative and a produced row that isn't positive. Materiál sums the signed quantities, and `job_edit` reads the typed amount back with `abs()`, so a wrong sign would skew the one and be silently flipped by the other.
 - **`Machine` stores no totals.** Every figure on Stroje is an annotation over approved rows.
 
 **Four numbers, all independent.** Never derive one from another:
