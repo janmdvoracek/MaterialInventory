@@ -1,13 +1,14 @@
 from django.urls import path
 
 from . import pwa, refuels, reports, views
+from .kinds import JOB, REFUELLING
 
 urlpatterns = [
     # Zpracování is the landing page — it is what a worker opens the app to do,
     # and it is where LOGIN_REDIRECT_URL and the header logo point.
-    path('', views.transform_create, name='transform_create'),
+    path('', views.entry_create, {'kind': JOB}, name='transform_create'),
     # Tankování: a refuelling is its own entry, not part of a job.
-    path('refuel/', refuels.refuel_create, name='refuel_create'),
+    path('refuel/', views.entry_create, {'kind': REFUELLING}, name='refuel_create'),
     path('machines/', reports.machine_dashboard, name='machine_dashboard'),
     path('materials/', reports.material_dashboard, name='material_dashboard'),
     path('hours/', reports.time_worked, name='time_worked'),
@@ -48,13 +49,13 @@ urlpatterns = [
     path('jobs/', views.job_dashboard, name='job_dashboard'),
     path('jobs/<int:pk>/', views.job_detail, name='job_detail'),
     path('jobs/<int:pk>/fotky/<int:number>/', views.job_photo, name='job_photo'),
-    path('jobs/<int:pk>/upravit/', views.job_edit, name='job_edit'),
-    path('jobs/<int:pk>/schvalit/', views.job_approve, name='job_approve'),
+    path('jobs/<int:pk>/upravit/', views.entry_edit, {'kind': JOB}, name='job_edit'),
+    path('jobs/<int:pk>/schvalit/', views.entry_approve, {'kind': JOB}, name='job_approve'),
     path('jobs/<int:pk>/smazat/', views.job_delete, name='job_delete'),
     # Manager review of refuellings, mirroring the job pages above.
     path('refuels/', refuels.refuel_dashboard, name='refuel_dashboard'),
     path('refuels/<int:pk>/', refuels.refuel_detail, name='refuel_detail'),
-    path('refuels/<int:pk>/upravit/', refuels.refuel_edit, name='refuel_edit'),
-    path('refuels/<int:pk>/schvalit/', refuels.refuel_approve, name='refuel_approve'),
+    path('refuels/<int:pk>/upravit/', views.entry_edit, {'kind': REFUELLING}, name='refuel_edit'),
+    path('refuels/<int:pk>/schvalit/', views.entry_approve, {'kind': REFUELLING}, name='refuel_approve'),
     path('refuels/<int:pk>/smazat/', refuels.refuel_delete, name='refuel_delete'),
 ]

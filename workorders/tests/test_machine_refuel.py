@@ -13,8 +13,8 @@ from accounts.models import User
 from machines.models import FuelSource, Machine
 from workorders.entry import FORM_ERRORS_MESSAGE
 from workorders.forms import LITRES_MAX
+from workorders.kinds import NO_ROWS_ERROR
 from workorders.models import MachineRefuel, Refuelling, WorkOrder
-from workorders.refuels import NO_ROWS_ERROR
 from workorders.reports import FUEL_PAGE_PARAM, HISTORY_PAGE_SIZE, MY_JOBS_LIMIT
 
 from .helpers import ReviewFixtureMixin, refuel_payload
@@ -90,6 +90,15 @@ class RefuellingFormTests(RefuelFixtureMixin, TestCase):
         self.client.force_login(self.worker)
         response = self._submit([])
         self.assertEqual(response.status_code, 200)
+        self.assertContains(response, NO_ROWS_ERROR)
+        self.assertFalse(Refuelling.objects.exists())
+
+    def test_no_machines_shows_beside_a_field_error(self):
+        # Like a job's mass balance: both errors at once, not one per attempt.
+        self.client.force_login(self.worker)
+        tomorrow = timezone.localdate() + timedelta(days=1)
+        response = self._submit([], performed_on=tomorrow.isoformat())
+        self.assertContains(response, 'Datum provedení nemůže být v budoucnosti.')
         self.assertContains(response, NO_ROWS_ERROR)
         self.assertFalse(Refuelling.objects.exists())
 

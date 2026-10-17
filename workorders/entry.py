@@ -6,7 +6,7 @@ rebuilding them unbound, so the page works with every script blocked. It also
 validates the page, puts up the error banner, shapes the template context, and
 writes the rows, each through its section (`sections.Section`). What an entry
 *is* (its own fields, which sections it has, how its own fields are saved)
-stays with the caller: `views._job_forms` and `refuels._refuel_forms`.
+is the entry kind's (`kinds.Kind`).
 """
 
 from decimal import Decimal, InvalidOperation
@@ -47,6 +47,7 @@ class EntryPage:
     def __init__(self, request, *, form_class, sections, order_kwargs, author, viewer, entry=None, order_initial=None):
         self.request = request
         self.sections = sections
+        self.author = author
         self.submitted = False
         # Read on every request, not just GET: the recorded rows also decide which retired records stay pickable.
         recorded = {
@@ -104,10 +105,13 @@ class EntryPage:
         formset = self.formsets[prefix]
         return [form.cleaned_data for form in formset if form.cleaned_data.get(formset.unique_field)]
 
-    def write_rows(self, entry, author):
-        """Replace every section's stored rows on `entry` with the filled rows. Call inside `transaction.atomic()`."""
+    def write_rows(self, entry):
+        """Replace every section's stored rows on `entry` with the filled rows, as `author`'s.
+
+        Call inside `transaction.atomic()`.
+        """
         for section in self.sections:
-            section.write(entry, self.filled_rows(section.prefix), author)
+            section.write(entry, self.filled_rows(section.prefix), self.author)
 
     def context(self, **extra):
         """The page's context: its form, `sections` in render order, and each formset by name.

@@ -71,7 +71,7 @@ accounts/     User model, roles, role_required, the /admin/ gate
 materials/    Material catalog and the seed_data command
 machines/     Machine catalog and rates
 locations/    Location catalog
-workorders/   jobs, every page and URL (entry.py: entry page; sections.py: its sections; views.py: jobs; refuels.py; reports.py: reports; pwa.py)
+workorders/   jobs, every page and URL (entry.py: entry page; sections.py: its sections; kinds.py: job and refuelling; views.py; refuels.py; reports.py: reports; pwa.py)
 templates/    all HTML
 static/       source assets (tracked)
 seed_data/    CSV templates; real files are gitignored

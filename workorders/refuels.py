@@ -1,52 +1,21 @@
-"""Recording a refuelling (Tankování) and reviewing it.
+"""The refuelling's own review pages (Přehled tankování, detail, delete) and a
+worker's recent refuellings.
 
 A refuelling is its own kind of entry, apart from any job: notes, a date, and
-one row per machine (stroj, zdroj, litry). It is reviewed like a job, and only
-approved ones count on Stroje. The form machinery is the job form's
-(`entry.EntryPage`), with `REFUEL_SECTIONS` as its one section.
+one row per machine (stroj, zdroj, litry). It is recorded, corrected and
+approved through the generic entry views with `kinds.REFUELLING`, and only
+approved ones count on Stroje.
 """
 
 from django.contrib import messages
-from django.contrib.auth.decorators import login_required
-from django.db import transaction
 from django.db.models import Count, Sum
 from django.shortcuts import get_object_or_404, redirect, render
-from django.views.decorators.http import require_POST
 
 from accounts.decorators import REVIEWER_ROLES, role_required
 
-from .entry import EntryPage
-from .forms import RefuellingFilterForm, RefuellingForm
+from .forms import RefuellingFilterForm
 from .models import Refuelling
 from .reports import MY_JOBS_LIMIT, _list_page_context, _previews
-from .sections import REFUEL_SECTIONS
-from .views import _approve, _review_on_submit
-
-NO_ROWS_ERROR = 'Přidejte alespoň jeden natankovaný stroj.'
-
-
-def _refuel_forms(request, *, refuelling=None, order_initial=None):
-    """The refuelling page's `EntryPage`; `refuelling` is the one being edited, if any."""
-    return EntryPage(
-        request,
-        form_class=RefuellingForm,
-        sections=REFUEL_SECTIONS,
-        order_kwargs={},
-        author=refuelling.created_by if refuelling is not None else request.user,
-        viewer=request.user,
-        entry=refuelling,
-        order_initial=order_initial,
-    )
-
-
-def _refuelling_is_valid(request, page):
-    """True if every form validates and at least one machine was named."""
-    if not page.is_valid():
-        return False
-    if not page.filled_rows('refuels'):
-        messages.error(request, NO_ROWS_ERROR)
-        return False
-    return True
 
 
 def _with_totals(refuellings):
@@ -62,34 +31,6 @@ def _my_recent_refuellings(user):
     if user.is_manager_or_admin:
         return Refuelling.objects.none()
     return _with_totals(Refuelling.objects.filter(created_by=user)).order_by('-created_at')[:MY_JOBS_LIMIT]
-
-
-@login_required
-def refuel_create(request):
-    page = _refuel_forms(request)
-    order_form = page.order_form
-    if page.submitted and _refuelling_is_valid(request, page):
-        review = _review_on_submit(request.user)
-        with transaction.atomic():
-            refuelling = Refuelling.objects.create(
-                created_by=request.user,
-                notes=order_form.cleaned_data['notes'],
-                performed_on=order_form.cleaned_data['performed_on'],
-                **review,
-            )
-            page.write_rows(refuelling, request.user)
-        messages.success(
-            request,
-            'Tankování bylo zaznamenáno.'
-            if review['status'] == Refuelling.Status.APPROVED
-            else 'Tankování bylo zaznamenáno a čeká na schválení vedoucím.',
-        )
-        return redirect('refuel_create')
-    return render(
-        request,
-        'workorders/refuel_form.html',
-        page.context(my_refuellings=_my_recent_refuellings(request.user)),
-    )
 
 
 @role_required(*REVIEWER_ROLES)
@@ -126,37 +67,6 @@ def refuel_detail(request, pk):
         'workorders/refuel_detail.html',
         {'refuelling': refuelling, 'fill_ups': _fill_ups(refuelling)},
     )
-
-
-@role_required(*REVIEWER_ROLES)
-def refuel_edit(request, pk):
-    """Correct a recorded refuelling. Does not approve it."""
-    refuelling = get_object_or_404(Refuelling.objects.select_related('created_by'), pk=pk)
-    initial = {'notes': refuelling.notes, 'performed_on': refuelling.performed_on}
-    page = _refuel_forms(request, refuelling=refuelling, order_initial=initial if request.method == 'GET' else None)
-    order_form = page.order_form
-    if page.submitted and _refuelling_is_valid(request, page):
-        with transaction.atomic():
-            refuelling.notes = order_form.cleaned_data['notes']
-            refuelling.performed_on = order_form.cleaned_data['performed_on']
-            refuelling.save(update_fields=['notes', 'performed_on'])
-            page.write_rows(refuelling, refuelling.created_by)
-        messages.success(request, 'Tankování bylo upraveno.')
-        return redirect('refuel_detail', pk=refuelling.pk)
-    return render(
-        request,
-        'workorders/refuel_edit.html',
-        page.context(refuelling=refuelling),
-    )
-
-
-@role_required(*REVIEWER_ROLES)
-@require_POST
-def refuel_approve(request, pk):
-    refuelling = get_object_or_404(Refuelling, pk=pk)
-    _approve(refuelling, request.user)
-    messages.success(request, 'Tankování bylo schváleno.')
-    return redirect('refuel_detail', pk=refuelling.pk)
 
 
 @role_required(*REVIEWER_ROLES)
