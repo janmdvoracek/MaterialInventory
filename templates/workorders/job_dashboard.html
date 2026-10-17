@@ -7,7 +7,7 @@
     <p class="messages error">Čeká na schválení: {{ pending_count }}</p>
 {% endif %}
 {# Refuellings are reviewed on their own list. #}
-<p><a href="{% url 'refuel_dashboard' %}">Přehled tankování →</a>{% if pending_refuel_count %} (čeká na schválení: {{ pending_refuel_count }}){% endif %}</p>
+<p><a href="{% url 'refuel_dashboard' %}">Přehled tankování →</a></p>
 {% include "workorders/_filter_card.html" %}
 <div class="card" id="{{ tables.jobs.anchor }}">
     <div class="table-scroll">
