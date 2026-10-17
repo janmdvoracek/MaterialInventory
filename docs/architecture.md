@@ -75,7 +75,7 @@ Fuel is not part of a job. Refuelling happens on its own schedule, often for sev
 
 A job needs **at least one consumed row and one produced row, and their totals must be exactly equal.** The comparison is of totals, not row against row, because one input is normally crushed into several fractions. Equality is exact `Decimal` (`5.00` equals `5`; `5.01` does not), and the form accepts two decimals.
 
-The check needs no database state, so it runs in the view before the transaction. The error message localises its totals (`9,5`, not `9.5`).
+The check needs no database state, so it runs before the transaction, as the job kind's page-level rule (`JobKind.page_errors`). The error message localises its totals (`9,5`, not `9.5`).
 
 ### Required fields
 
@@ -170,7 +170,7 @@ It is shown and filtered on Přehled and Materiál only, plus `job_detail` and t
 
 ## Recording a refuelling
 
-`refuel_create` (Tankování, `workorders/refuels.py`) takes optional notes („Poznámky"), the date („Datum provedení", the same `EntryForm` fields and rules as the job's) and one section, *Tankované stroje* (`REFUEL_SECTIONS`). Each row is stroj, zdroj, litry: a machine and litres, or blank; the source is optional (`RefuelRowForm.check_row`). At least one row is needed. It is written in one `transaction.atomic()`.
+`refuel_create` (Tankování, the `REFUELLING` kind in `workorders/kinds.py`) takes optional notes („Poznámky"), the date („Datum provedení", the same `EntryForm` fields and rules as the job's) and one section, *Tankované stroje* (`REFUEL_SECTIONS`). Each row is stroj, zdroj, litry: a machine and litres, or blank; the source is optional (`RefuelRowForm.check_row`). At least one row is needed (`RefuellingKind.page_errors`); like the mass balance, that shows beside any field error. It is written in one `transaction.atomic()`.
 
 - **„Zdroj" is a catalog**, `machines.FuelSource` (name, `is_active`), managed in the admin exactly like `Location`: retired with `is_active=False`, protected from deletion. It has no balance; nothing is summed or refused per source.
 - **One row per machine** (the section's `picker`). One source may feed several machines. A machine filled from two sources is two refuellings.
@@ -185,9 +185,9 @@ It is shown and filtered on Přehled and Materiál only, plus `job_detail` and t
 
 `WorkOrder.status` and `Refuelling.status` are both `ReviewStatus`: `PENDING` or `APPROVED`, with `reviewed_at` and `reviewed_by`.
 
-**An entry counts only once approved.** Souhrn, Stroje and Materiál report approved jobs and refuellings only. A worker's submission is saved `PENDING`; a manager's or admin's own is saved `APPROVED` with themselves as reviewer, since there's nobody above them (`_review_on_submit`).
+**An entry counts only once approved.** Souhrn, Stroje and Materiál report approved jobs and refuellings only. A worker's submission is saved `PENDING`; a manager's or admin's own is saved `APPROVED` with themselves as reviewer, since there's nobody above them (`_review_on_submit`, applied by `Kind.save` on create).
 
-The review pages under `/jobs/` and `/refuels/` are all `role_required(MANAGER, ADMIN)` and offer three actions: **approve, edit, delete** (`_approve` is shared). An entry is never handed back to its author, and editing does not approve. Přehled links to the refuelling list („Přehled tankování") with its pending count, and Stroje's „Detail tankování" links each fill-up to its refuelling.
+The review pages under `/jobs/` and `/refuels/` are all `role_required(MANAGER, ADMIN)` and offer three actions: **approve, edit, delete**. Approve and edit are the generic `entry_approve` and `entry_edit`, with `_approve` shared; delete stays per kind, since its confirmation page differs. An entry is never handed back to its author, and editing does not approve. Přehled links to the refuelling list („Přehled tankování") with its pending count, and Stroje's „Detail tankování" links each fill-up to its refuelling.
 
 ### What a worker sees
 
@@ -205,7 +205,7 @@ Managers and admins get an `author` field („Zapsat za", default „Za sebe"). 
 
 - With an author set, the job, its hours and its line items belong to the author, and „Moje hodiny" is relabelled „Odpracované hodiny".
 - **Approval follows the submitter**, so the job is `APPROVED` with `reviewed_by` = the manager.
-- `_submitted_author` reads the author from the POST before any formset is built, because the author decides who may be a collaborator.
+- `JobKind.author` reads the author from the POST (`_submitted_author`) before any formset is built, because the author decides who may be a collaborator.
 
 `collaborator_queryset(user, viewer)` takes two people:
 
@@ -216,7 +216,7 @@ Managers and admins get an `author` field („Zapsat za", default „Za sebe"). 
 
 ### Editing
 
-`job_edit` reuses the submission's helpers (`_job_forms`, `_job_is_valid`, `_write_job_rows`), so a correction is mass-balanced like the original. Each section reads its own rows off the job (`Section.recorded_rows`), and those same rows decide which retired records stay pickable, so the pre-fill and `keep` can't disagree.
+`job_edit` goes through the same `JOB` kind as the submission (`page`, `is_valid`, `save`), so a correction is mass-balanced like the original. Each section reads its own rows off the job (`Section.recorded_rows`), and those same rows decide which retired records stay pickable, so the pre-fill and `keep` can't disagree.
 
 - Rows are written as the **author**.
 - The collaborator list is built from (author, editing manager).
@@ -246,7 +246,7 @@ Nothing is written unless all five forms validate. An error with nowhere to rend
 
 ### Resizing a section (server)
 
-Each section has „+ další řádek" (`add_<prefix>`) and „− odebrat řádek" (`remove_<prefix>`), both ordinary submit buttons. `EntryPage` (built by `_job_forms` and `_refuel_forms`) checks `_pressed_row_button` before treating the POST as a submission. It then rebuilds every form **unbound** from the raw POST, with that section one row bigger or smaller. Unbound means no "required" errors and no balance check on a form still being filled in.
+Each section has „+ další řádek" (`add_<prefix>`) and „− odebrat řádek" (`remove_<prefix>`), both ordinary submit buttons. `EntryPage` (built by `Kind.page`) checks `_pressed_row_button` before treating the POST as a submission. It then rebuilds every form **unbound** from the raw POST, with that section one row bigger or smaller. Unbound means no "required" errors and no balance check on a form still being filled in.
 
 - **Remove takes the last row**, the one add appends.
 - **Bounds.** Sections stay between `MIN_ROWS_PER_SECTION` (1) and `MAX_ROWS_PER_SECTION`. `TOTAL_FORMS` comes straight from the POST, so it is parsed defensively and clamped.
@@ -468,7 +468,7 @@ All URLs are in `workorders/urls.py`, mounted at the root. Login and password ch
 | `/media/<path>` | `protected_media` | Job photos, manager only |
 | `/manifest.webmanifest`, `/sw.js`, `/offline/` | `web_manifest`, `service_worker`, `offline` | PWA, public |
 
-`entry.py` holds `EntryPage`, the entry page both forms are built on: the row and sum buttons, the unbound rebuild, the error banner, the page context and writing the rows. `sections.py` holds the sections (`JOB_SECTIONS`, `REFUEL_SECTIONS`), each owning its rows end to end: how they render, how they come off a recorded entry, which retired records they keep pickable, and how they are stored. `views.py` records and reviews jobs on it, and holds the review helpers (`_review_on_submit`, `_approve`). `refuels.py` records and reviews refuellings on top of both. `reports.py` holds the reports, exports and list helpers. `REVIEWER_ROLES` lives in `accounts/decorators.py`, so neither module imports the other for it.
+`entry.py` holds `EntryPage`, the entry page both forms are built on: the row and sum buttons, the unbound rebuild, the error banner, the page context and writing the rows. `sections.py` holds the sections (`JOB_SECTIONS`, `REFUEL_SECTIONS`), each owning its rows end to end: how they render, how they come off a recorded entry, which retired records they keep pickable, and how they are stored. `kinds.py` holds the entry kinds, `JOB` and `REFUELLING`: what each entry is (model, form, sections, own fields, templates, messages), the hooks where the two differ (author, form kwargs, edit pre-fill, page-level rule, extra rows, extra context), the shared `page` / `is_valid` / `save`, and the review helpers (`_review_on_submit`, `_approve`). `views.py` holds the generic `entry_create`, `entry_edit` and `entry_approve`, which `urls.py` wires to each kind under the URL names in the table above, plus the job's read-only pages. `refuels.py` holds the refuelling's read-only pages. `reports.py` holds the reports, exports and list helpers. `REVIEWER_ROLES` lives in `accounts/decorators.py`, so neither module imports the other for it.
 
 The reports stay a module rather than a separate app: they aggregate only `workorders` models, and a separate app would need shared helpers moved out to avoid a circular import, for no behaviour change.
 

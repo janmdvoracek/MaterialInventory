@@ -88,7 +88,7 @@ The scripts build no markup of their own. They clone server-rendered `<template>
 - **`materials`**: `Material` (SKU and name only; every quantity is implicitly tonnes, with the `t` hardcoded). It also hosts the `seed_data` command, which is the only place it imports `machines` or `locations`.
 - **`machines`**: `Machine` (name, `is_active`, optional `hourly_rate` and `rate_per_ton`). It stores no totals. Also `FuelSource` (name, `is_active`): the refuelling's „Zdroj", a label managed in the admin like `Location`.
 - **`locations`**: `Location` (name, `is_active`). One per job, and it is a **label**, not a stock location: nothing is summed or refused per location.
-- **`workorders`**: everything else. `entry.py` holds `EntryPage`, the entry page both forms are built on (row and sum buttons, unbound rebuild, error banner, context, writing rows); `sections.py` holds the sections, each owning its rows end to end (`recorded_rows`, `row_form_kwargs`, `write`); `views.py` records and reviews jobs on it and holds `_review_on_submit` and `_approve`; `refuels.py` records and reviews refuellings on top of both; `reports.py` holds Souhrn, Stroje, Materiál, the CSV exports and the list helpers; `pwa.py` serves the PWA. All URLs are mounted at the root. Keep the reports a module of `workorders`, not a separate app (that was considered and rejected).
+- **`workorders`**: everything else. `entry.py` holds `EntryPage`, the entry page both forms are built on (row and sum buttons, unbound rebuild, error banner, context, writing rows); `sections.py` holds the sections, each owning its rows end to end (`recorded_rows`, `row_form_kwargs`, `write`); `kinds.py` holds the two entry kinds, `JOB` and `REFUELLING`: what each entry *is* (model, form, sections, `own_fields`, templates, messages) plus a few hooks (`author`, `form_kwargs`, `edit_initial`, `page_errors`, `write_rows`, `extra_context`), and `page` / `is_valid` / `save` on top of `EntryPage`, along with `_review_on_submit` and `_approve`; `views.py` holds the generic `entry_create`, `entry_edit` and `entry_approve` (`urls.py` passes `{'kind': ...}`, URL names unchanged) and the job's read-only pages; `refuels.py` holds the refuelling's read-only pages; `reports.py` holds Souhrn, Stroje, Materiál, the CSV exports and the list helpers; `pwa.py` serves the PWA. All URLs are mounted at the root. Keep the reports a module of `workorders`, not a separate app (that was considered and rejected).
 
 Catalog records are retired with `is_active=False` and protected from deletion by `on_delete=PROTECT`.
 
@@ -107,9 +107,9 @@ Fuel is not part of a job; see **The refuelling**.
 
 Rows carry **no timestamp of their own**; their date is their entry's `performed_on`. Every row cascades when its entry is deleted. `StockMovement` and `MachineRefuel` are not registered in the admin; they are edited as inlines of `WorkOrderAdmin` and `RefuellingAdmin` (`AdminIndexTests` checks both).
 
-**Mass balance.** A job needs at least one consumed row and one produced row, and `sum(consumed) == sum(produced)` must hold exactly (`Decimal`, no tolerance). It is checked in the view before the transaction. The error totals go through `formats.localize`.
+**Mass balance.** A job needs at least one consumed row and one produced row, and `sum(consumed) == sum(produced)` must hold exactly (`Decimal`, no tolerance). It is `JobKind.page_errors`, checked before the transaction. The error totals go through `formats.localize`.
 
-**Required fields.** „Popis", „Lokace" and „Moje hodiny" are required on `WorkOrderForm` itself; there is no exemption (the old fuel-only job is gone). Valid rows are still balance-checked when a job field fails, so both errors show (`ErrorBannerTests`).
+**Required fields.** „Popis", „Lokace" and „Moje hodiny" are required on `WorkOrderForm` itself; there is no exemption (the old fuel-only job is gone). Valid rows are still balance-checked when a job field fails, so both errors show (`ErrorBannerTests`). `Kind.is_valid` runs every kind's `page_errors` this way, so a refuelling with no machine shows that beside a field error too.
 
 **No duplicates per section.** Each section may name the same material, machine or person only once. `UniqueChoiceFormSet` handles this in two ways:
 
@@ -183,24 +183,24 @@ Easy to break:
 - **Review actions.** There are exactly three: approve, edit, delete. There is no "returned" status. Editing does not approve.
 - **Worker feedback.** `my_jobs` (`_my_recent_jobs`, top of Souhrn, last `MY_JOBS_LIMIT` = 5) is a worker's only view of a job's review status. It is scoped by `created_by` only, ignores the filter form, and is empty for managers. `my_refuellings` does the same for refuellings, under the Tankování form.
 
-**Recording for someone else.** Managers and admins get an `author` field („Zapsat za"). The job then belongs to the author, but approval follows the submitter. `_submitted_author` resolves the author before any formset is built.
+**Recording for someone else.** Managers and admins get an `author` field („Zapsat za"). The job then belongs to the author, but approval follows the submitter. `JobKind.author` resolves it from the POST (`_submitted_author`) before any formset is built.
 
 `collaborator_queryset(user, viewer)` takes two people:
 
 - `user` is the author, and is excluded from the list.
 - `viewer` is whoever fills in the form. A plain worker viewer may name only workers.
 
-**Editing (`job_edit`).** It reuses the submission helpers (`_job_forms`, `_job_is_valid`, `_write_job_rows`), so corrections are mass-balanced too. The author's own hours are the job's field, written by `_write_job_rows`; the workers section holds only the collaborators. Rows are written as the author, and the collaborator list uses (author, editing manager).
+**Editing (`job_edit`).** It goes through the same `JOB` kind as the submission (`page`, `is_valid`, `save`), so corrections are mass-balanced too. The author's own hours are the job's field, written by `JobKind.write_rows`; the workers section holds only the collaborators. Rows are written as the author, and the collaborator list uses (author, editing manager).
 
 It must also widen the catalog pickers to the retired records the job already names. Otherwise a row renders blank and saving silently deletes it. The mechanism: each section's `row_form_kwargs` derives `keep` from its `recorded_rows` and it reaches `_offer_recorded`; `keep_location` does the same for the location. `RetiredCatalogOnEditTests` covers this.
 
 ## The refuelling
 
-`Refuelling` is its own entry, not part of a job: optional `notes`, `performed_on` (same `EntryForm` field and rules as the job's) and `MachineRefuel` rows (machine, `source` → `FuelSource`, `litres`), written in one `transaction.atomic()` by `refuel_create` (`/refuel/`).
+`Refuelling` is its own entry, not part of a job: optional `notes`, `performed_on` (same `EntryForm` field and rules as the job's) and `MachineRefuel` rows (machine, `source` → `FuelSource`, `litres`), written in one `transaction.atomic()` by `entry_create` with the `REFUELLING` kind (`refuel_create`, `/refuel/`).
 
-- **Rows** are a machine and litres, or blank (`RefuelRowForm.check_row`); `source` is optional, on the form and in the column. At least one row, one row per machine (the section's `picker`). `litres` is 0,01 to `LITRES_MAX` and not nullable. Fill-ups migrated from jobs have no source.
+- **Rows** are a machine and litres, or blank (`RefuelRowForm.check_row`); `source` is optional, on the form and in the column. At least one row (`RefuellingKind.page_errors`, `NO_ROWS_ERROR`), one row per machine (the section's `picker`). `litres` is 0,01 to `LITRES_MAX` and not nullable. Fill-ups migrated from jobs have no source.
 - **Same machinery as the job form.** `EntryPage` builds the page (row buttons, unbound rebuild, error banner), `_row_sections.html` renders the section. No photos, no „Zapsat za".
-- **Review** is the job's: `ReviewStatus`, saved by `_review_on_submit`, approved by `_approve`, three actions (approve, edit, delete) under `/refuels/`, all `role_required(MANAGER, ADMIN)`. `refuel_edit` widens its pickers with `keep` (machines) and `keep_source`, both from `RefuelSection.row_form_kwargs`. Only approved refuellings count on Stroje.
+- **Review** is the job's: `ReviewStatus`, saved by `_review_on_submit`, approved by `_approve` (both in `kinds.py`), three actions (approve, edit, delete) under `/refuels/`, all `role_required(MANAGER, ADMIN)`. `refuel_edit` widens its pickers with `keep` (machines) and `keep_source`, both from `RefuelSection.row_form_kwargs`. Only approved refuellings count on Stroje.
 - **Migration `0010_move_fill_ups`** moved each job's fill-ups onto a refuelling with the job's date, author and status. Emptied fuel-only jobs were deleted, except ones with photos.
 
 `RefuellingFormTests`, `RefuellingReviewTests` and `MachineRefuelReportTests` cover this.
