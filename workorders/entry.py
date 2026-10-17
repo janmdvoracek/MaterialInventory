@@ -183,11 +183,13 @@ def _pressed_sum_button(post_data, sections):
     return None
 
 
-def _rows_total(rows, field):
+def _rows_total(rows, field, limit):
     """The total of `field` across raw POST `rows`, or None if none is readable.
 
-    Unparsable values are skipped, since the rebuilt form is unbound and the
-    real submission reports them.
+    Unparsable values, and any above `limit`, are skipped, since the rebuilt
+    form is unbound and the real submission reports them. The limit also keeps
+    a value like 1e999999999 from overflowing the addition (`copy_abs`, as
+    `abs` would overflow first).
     """
     total = None
     for row in rows:
@@ -195,9 +197,14 @@ def _rows_total(rows, field):
             value = Decimal(row.get(field, '').strip())
         except InvalidOperation:
             continue
-        if value.is_finite():
+        if value.is_finite() and value.copy_abs() <= limit:
             total = value + (total or 0)
     return total
+
+
+def _limit(section, field):
+    """The `max_value` of one of `section`'s row boxes, which a total written into it is held to."""
+    return section.row_form.base_fields[field].max_value
 
 
 def _summed_rows(rows, section, source_rows):
@@ -208,7 +215,7 @@ def _summed_rows(rows, section, source_rows):
     """
     if len(rows) != 1:
         return rows
-    total = _rows_total(source_rows, section.sum_field)
+    total = _rows_total(source_rows, section.sum_field, _limit(section, section.sum_field))
     if total is None:
         return rows
     # 'f', or a sum like 1E+3 would come back in a form <input type="number"> refuses.
@@ -221,7 +228,7 @@ def _mirrored_rows(rows, section, source_rows):
     Only rows that name their catalog record (a machine) are filled, since a
     number on an otherwise blank row is refused. A typed value is kept.
     """
-    total = _rows_total(source_rows, section.mirror_source)
+    total = _rows_total(source_rows, section.mirror_source, _limit(section, section.mirror_field))
     if total is None:
         return rows
     picker = section.picker

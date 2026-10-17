@@ -215,6 +215,13 @@ class TableExportTests(TestCase):
         rows = self._rows(self.client.get(reverse('time_worked_export')))
         self.assertEqual(rows[1:], [['worker', '2,0', '1']])
 
+    def test_hours_export_filtered_to_a_worker_leaves_out_their_colleagues(self):
+        self._job(hours=[(self.worker, Decimal('2')), (self.other_worker, Decimal('3'))])
+        WorkOrder.objects.get().collaborators.add(self.other_worker)
+        self.client.force_login(self.manager)
+        rows = self._rows(self.client.get(reverse('time_worked_export'), {'worker': self.other_worker.pk}))
+        self.assertEqual(rows[1:], [['other', '3,0', '1']])
+
     def test_worker_cannot_reach_the_manager_only_exports(self):
         # Hiding the link is not access control; all three are gated like their
         # pages. The detail file is the most worth gating: it names every job's

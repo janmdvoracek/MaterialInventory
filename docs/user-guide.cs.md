@@ -191,7 +191,7 @@ Příklad: „kolik frakce 8/16 minulý měsíc?" → **Minulý měsíc**, vyber
 
 ## Souhrn
 
-**Odpracované hodiny** po lidech a pod nimi **Detail zakázek**. Počítají se **hodiny, které si každý zapsal sám** (ne motohodiny). Pracovník vidí jen své, vedoucí všechny a může filtrovat podle pracovníka.
+**Odpracované hodiny** po lidech a pod nimi **Detail zakázek**. Počítají se **hodiny, které si každý zapsal sám** (ne motohodiny). Pracovník vidí jen své, vedoucí všechny, a když vybere pracovníka, jen jeho. Detail zakázek pak ukazuje zakázky, na kterých ten pracovník byl, s hodinami všech, kdo na nich pracovali.
 
 Pracovník tu má navíc dvě tabulky za **všechny stroje a všechny lidi**, ne jen za sebe:
 

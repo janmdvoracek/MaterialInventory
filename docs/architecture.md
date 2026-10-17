@@ -264,7 +264,7 @@ A screening job takes one input material and splits it into several outputs, and
 - **Declared on the section.** `Section.sum_from` names the source section and `sum_field` the field summed and filled. Only Spotřebováno sets them, so the refuelling form has no such button.
 - **Same path as the row buttons.** It is a `formnovalidate` submit. `EntryPage` checks `_pressed_sum_button` and rebuilds every form unbound from the POST, with `_summed_rows` filling the section's row. Nothing is saved and nothing is validated.
 - **Only for a single row.** With more consumed rows there is nothing sensible to fill, so the server leaves them alone and the template renders the button `hidden`.
-- **Lenient input.** Blank or unparsable outputs are skipped, since the real submission reports them. If nothing is typed, the row keeps what it had. A typed consumed amount is replaced. The total is written with `format(..., 'f')`, so `<input type="number">` never gets an exponent.
+- **Lenient input.** Blank or unparsable outputs, and any larger than the box being filled accepts, are skipped, since the real submission reports them. The tonnage mirror skips the same ones. If nothing is typed, the row keeps what it had. A typed consumed amount is replaced. The total is written with `format(..., 'f')`, so `<input type="number">` never gets an exponent.
 
 `SumButtonTests` covers this.
 
@@ -410,7 +410,7 @@ Zeros are real here (`0,00 t`). Every active material is listed, and naming one 
 
 **Odpracované hodiny** and **Detail zakázek** are labour. `time_worked` `WorkerHours.hours` per person. It re-queries the scoped jobs by `pk__in` before aggregating, because the collaborator join would otherwise multiply the `Sum`.
 
-A worker sees only their own row, scoped twice: the queryset through `participation_filter`, and then the summary rows filtered to `request.user`. That second pass stops a collaborated job from showing the creator's hours. These hours have no fixed relationship to the motohodiny on Stroje.
+A worker sees only their own row, scoped twice: the queryset through `participation_filter`, and then the summary's `WorkerHours` limited to `request.user` before they are summed (`HoursReport.subject`). That second cut stops a collaborated job from showing the creator's hours. A manager who picks a „Pracovník" gets the same cut for that person: the filter narrows the jobs to theirs, and the summary to their row alone, while the job list below still shows each whole job. These hours have no fixed relationship to the motohodiny on Stroje.
 
 **Stroje** and **Tankování** (`_fleet_totals`, workers only) are the fleet's totals, so a worker can see how many tonnes and hours the machines did in a period. They are **deliberately not scoped to the worker**: every approved job and refuelling counts. They read a `MachineReport` built from the page's dates, so the numbers equal Stroje's, but show only „Hodin za období" and „Tun" (no reading, rates or prices), and the fuel summary without its detail. Only the page's `date_from`/`date_to` reach them; a hand-typed `?machine=` or `?created_by=` is ignored. They have no CSV export. Managers and admins don't get them (`fleet` is `None`), because Stroje already shows the same and more.
 

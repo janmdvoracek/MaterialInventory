@@ -809,8 +809,14 @@ class TimeWorkedTests(TestCase):
         )
         self.client.force_login(self.manager)
         response = self.client.get(reverse('time_worked'), {'worker': self.worker.pk})
-        self.assertEqual(self._summary_for(response, self.worker)['hours'], Decimal('3.00'))
+        # Only the picked worker: the colleagues on the same job are not „Pracovník".
+        self.assertEqual(
+            [(row['user'], row['hours']) for row in response.context['summary']], [(self.worker, Decimal('3.00'))]
+        )
+        self.assertEqual(response.context['total_hours'], Decimal('3.00'))
+        # The job list still shows the whole job.
         self.assertEqual([o.pk for o in response.context['page_obj'].object_list], [work_order.pk])
+        self.assertEqual(response.context['page_obj'].object_list[0].total_hours, Decimal('5.00'))
 
     def test_manager_sees_every_worker(self):
         self._job(self.worker, Decimal('2'))
