@@ -11,7 +11,7 @@ from machines.models import FuelSource, Machine
 from materials.models import Material
 from workorders.models import MachineRefuel, MachineUsage, Refuelling, StockMovement, WorkerHours, WorkOrder
 
-from .helpers import ReviewFixtureMixin, default_location
+from .helpers import ReviewFixtureMixin, admin_job_payload, default_location
 
 
 class WorkOrderAdminTests(TestCase):
@@ -137,3 +137,47 @@ class AdminJobDeleteTests(ReviewFixtureMixin, TestCase):
         )
         self.assertEqual(response.status_code, 302)
         self.assertJobGone()
+
+
+class AdminCollaboratorsTests(ReviewFixtureMixin, TestCase):
+    """`collaborators` is derived from the hours rows in the admin too, never entered.
+
+    A worker reaches Souhrn through `collaborators` (`participation_filter`),
+    so an hours row added here without it left the job out of their view.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.job = self.submit_job(self.manager, worker_rows=[{'user': self.worker, 'hours': '2'}])
+        self.client.force_login(User.objects.create_superuser(username='admin', password='pw'))
+
+    def _save(self, **overrides):
+        url = reverse('admin:workorders_workorder_change', args=[self.job.pk])
+        response = self.client.post(url, admin_job_payload(self.job, **overrides))
+        self.assertEqual(response.status_code, 302)
+
+    def _stored_hours(self):
+        return [{'id': row.pk, 'user': row.user_id, 'hours': row.hours} for row in self.job.worker_hours.all()]
+
+    def test_an_hours_row_added_here_makes_a_collaborator(self):
+        self._save(hours=[*self._stored_hours(), {'user': self.other_worker.pk, 'hours': '3'}])
+        self.assertEqual(set(self.job.collaborators.all()), {self.worker, self.other_worker})
+        # And so the job reaches that worker's Souhrn.
+        self.client.force_login(self.other_worker)
+        response = self.client.get(reverse('time_worked'))
+        self.assertEqual([job.pk for job in response.context['page_obj'].object_list], [self.job.pk])
+
+    def test_a_removed_hours_row_drops_the_collaborator(self):
+        rows = [{**row, 'DELETE': 'on'} if row['user'] == self.worker.pk else row for row in self._stored_hours()]
+        self._save(hours=rows)
+        self.assertFalse(self.job.collaborators.exists())
+
+    def test_the_authors_own_hours_do_not_make_a_collaborator(self):
+        self._save()
+        self.assertEqual(list(self.job.collaborators.all()), [self.worker])
+
+    def test_collaborators_cannot_be_entered_directly(self):
+        url = reverse('admin:workorders_workorder_change', args=[self.job.pk])
+        self.assertNotIn('collaborators', self.client.get(url).context['adminform'].form.fields)
+        self._save(collaborators=[self.other_worker.pk])
+        self.assertEqual(list(self.job.collaborators.all()), [self.worker])

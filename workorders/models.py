@@ -93,6 +93,14 @@ class WorkOrder(models.Model):
     def is_approved(self):
         return self.status == self.Status.APPROVED
 
+    def derive_collaborators(self):
+        """Set `collaborators` to everyone with hours on the job except its author.
+
+        Derived, never entered: the job form and the admin both call this
+        after writing the hours rows, so the two can't disagree.
+        """
+        self.collaborators.set(self.worker_hours.exclude(user=self.created_by_id).values_list('user', flat=True))
+
 
 class StockMovement(models.Model):
     """One material line item on a job: consumed (negative) or produced (positive).

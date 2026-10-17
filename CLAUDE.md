@@ -103,7 +103,7 @@ One submission writes a `WorkOrder` plus its rows, all in one `transaction.atomi
 
 Fuel is not part of a job; see **The refuelling**.
 
-`collaborators` is **derived** from the hours rows (`collaborators.set(...)`), never entered.
+`collaborators` is **derived** from the hours rows, never entered: `WorkOrder.derive_collaborators` sets it to everyone with hours except the author, called by `WorkersSection.write` and by `WorkOrderAdmin.save_related` (the admin shows it read-only). `AdminCollaboratorsTests` covers the admin side.
 
 Rows carry **no timestamp of their own**; their date is their entry's `performed_on`. Every row cascades when its entry is deleted. `StockMovement` and `MachineRefuel` are not registered in the admin; they are edited as inlines of `WorkOrderAdmin` and `RefuellingAdmin` (`AdminIndexTests` checks both).
 

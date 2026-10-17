@@ -98,9 +98,9 @@ class JobPhotoInline(admin.TabularInline):
 class WorkOrderAdminForm(forms.ModelForm):
     class Meta:
         model = WorkOrder
-        # Every field on purpose: this form only adds the description cap, and
-        # WorkOrderAdmin declares no `fields`, so the admin shows whatever the model has.
-        fields = '__all__'  # noqa: DJ007
+        # The job's editable fields. Not `collaborators`: it follows the hours
+        # rows (`WorkOrder.derive_collaborators`), and is shown read-only.
+        fields = ('performed_on', 'location', 'description', 'notes', 'status')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -126,9 +126,8 @@ class WorkOrderAdmin(admin.ModelAdmin):
     )
     list_filter = ('status', 'location')
     date_hierarchy = 'performed_on'
-    # Review fields are written by `job_approve`.
-    readonly_fields = ('created_by', 'reviewed_at', 'reviewed_by')
-    # No `filter_horizontal` for collaborators: its JavaScript labels aren't translated to Czech.
+    # Review fields are written by `job_approve`; collaborators follow the hours rows.
+    readonly_fields = ('created_by', 'reviewed_at', 'reviewed_by', 'collaborators')
     inlines = [MovementInline, MachineUsageInline, WorkerHoursInline, JobPhotoInline]
 
     def save_model(self, request, obj, form, change):
@@ -151,6 +150,11 @@ class WorkOrderAdmin(admin.ModelAdmin):
         formset.save_m2m()
         for obj in formset.deleted_objects:
             obj.delete()
+
+    def save_related(self, request, form, formsets, change):
+        super().save_related(request, form, formsets, change)
+        # After the inlines, so the hours rows it reads are the saved ones.
+        form.instance.derive_collaborators()
 
 
 @admin.register(Refuelling)
