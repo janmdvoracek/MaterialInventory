@@ -264,7 +264,7 @@ A screening job takes one input material and splits it into several outputs, and
 - **Declared on the section.** `Section.sum_from` names the source section and `sum_field` the field summed and filled. Only Spotřebováno sets them, so the refuelling form has no such button.
 - **Same path as the row buttons.** It is a `formnovalidate` submit. `EntryPage` checks `_pressed_sum_button` and rebuilds every form unbound from the POST, with `_summed_rows` filling the section's row. Nothing is saved and nothing is validated.
 - **Only for a single row.** With more consumed rows there is nothing sensible to fill, so the server leaves them alone and the template renders the button `hidden`.
-- **Lenient input.** Blank or unparsable outputs are skipped, since the real submission reports them. If nothing is typed, the row keeps what it had. A typed consumed amount is replaced. The total is written with `format(..., 'f')`, so `<input type="number">` never gets an exponent.
+- **Lenient input.** Blank or unparsable outputs, and any larger than the box being filled accepts, are skipped, since the real submission reports them. The tonnage mirror skips the same ones. If nothing is typed, the row keeps what it had. A typed consumed amount is replaced. The total is written with `format(..., 'f')`, so `<input type="number">` never gets an exponent.
 
 `SumButtonTests` covers this.
 

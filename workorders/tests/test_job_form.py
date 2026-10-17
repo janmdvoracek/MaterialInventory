@@ -577,6 +577,15 @@ class SumButtonTests(ReviewFixtureMixin, TestCase):
         response = self._press([{'material': self.material_raw, 'quantity': ''}], self._screening(('3', 'abc', 'NaN')))
         self.assertEqual(self._consumed_quantity(response), '3')
 
+    def test_outputs_past_the_box_limit_are_skipped(self):
+        """One beyond Decimal's range used to overflow into a 500; the submission refuses them anyway."""
+        self.client.force_login(self.worker)
+        response = self._press(
+            [{'material': self.material_raw, 'quantity': ''}], self._screening(('3', '1e999999999', '100000'))
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self._consumed_quantity(response), '3')
+
     def test_no_outputs_leaves_the_row_alone(self):
         self.client.force_login(self.worker)
         response = self._press([{'material': self.material_raw, 'quantity': '8'}], self._screening(('',)))
@@ -671,6 +680,13 @@ class TonnageMirrorTests(ReviewFixtureMixin, TestCase):
     def test_nothing_consumed_leaves_the_rows_alone(self):
         self.client.force_login(self.worker)
         response = self._rebuild(self._consumed('', 'abc'), [{'machine': self.machine_a, 'tons': ''}])
+        self.assertEqual(self._tons(response)[0], '')
+
+    def test_consumed_past_the_box_limit_is_skipped(self):
+        """Any row button mirrors, so an out-of-range amount used to make every one a 500."""
+        self.client.force_login(self.worker)
+        response = self._rebuild(self._consumed('1e999999999', '1e99999'), [{'machine': self.machine_a, 'tons': ''}])
+        self.assertEqual(response.status_code, 200)
         self.assertEqual(self._tons(response)[0], '')
 
     def test_the_sum_button_reaches_the_machines(self):
