@@ -181,3 +181,21 @@ class AdminCollaboratorsTests(ReviewFixtureMixin, TestCase):
         self.assertNotIn('collaborators', self.client.get(url).context['adminform'].form.fields)
         self._save(collaborators=[self.other_worker.pk])
         self.assertEqual(list(self.job.collaborators.all()), [self.worker])
+
+
+class DeriveCollaboratorsMigrationTests(ReviewFixtureMixin, TestCase):
+    """Migration 0012 rebuilds `collaborators` on jobs the admin let drift from their hours rows."""
+
+    def test_existing_jobs_are_resynced(self):
+        from importlib import import_module
+
+        from django.apps import apps
+
+        migration = import_module('workorders.migrations.0012_derive_collaborators')
+        missing = self.submit_job(self.manager, worker_rows=[{'user': self.worker, 'hours': '2'}])
+        missing.collaborators.clear()
+        stray = self.submit_job(self.manager)
+        stray.collaborators.add(self.other_worker)
+        migration.derive_collaborators(apps, None)
+        self.assertEqual(list(missing.collaborators.all()), [self.worker])
+        self.assertFalse(stray.collaborators.exists())

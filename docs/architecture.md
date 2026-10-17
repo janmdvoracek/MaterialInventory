@@ -50,7 +50,7 @@ Shared rules:
 
 - **Rows have no timestamp of their own.** Their date is their entry's `performed_on`. `job_edit` and `refuel_edit` delete and rewrite rows, so an insert time would drift to the day of the correction.
 - **Every row cascades when its entry is deleted**, so `job_delete`, `refuel_delete` and the admin's delete are all a plain `.delete()`.
-- **`collaborators` is derived** from the hours rows: `WorkOrder.derive_collaborators` sets it to everyone with hours on the job except its author. The job form calls it from `WorkersSection.write`, and the admin from `WorkOrderAdmin.save_related`, after its inlines are saved. The admin shows the field read-only, so it can no longer drift from the hours rows; before that, an hours row added there without ticking the person left the job off their Souhrn.
+- **`collaborators` is derived** from the hours rows: `WorkOrder.derive_collaborators` sets it to everyone with hours on the job except its author. The job form calls it from `WorkersSection.write`, and the admin from `WorkOrderAdmin.save_related`, after its inlines are saved. The admin shows the field read-only, so it can no longer drift from the hours rows; before that, an hours row added there without ticking the person left the job off their Souhrn. Migration `0012_derive_collaborators` rebuilt the field on every existing job.
 - **`StockMovement` and `MachineRefuel` are not in the admin index.** They are edited as inlines of `WorkOrderAdmin` and `RefuellingAdmin`, so everything about an entry is edited in one place.
 - **`Machine` stores no totals.** Every figure on Stroje is an annotation over approved rows.
 
