@@ -2,7 +2,6 @@
 serving the photos attached to one."""
 
 from decimal import Decimal
-from typing import NamedTuple
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -18,28 +17,10 @@ from django.views.decorators.http import require_POST
 from accounts.decorators import REVIEWER_ROLES, role_required
 
 from .entry import EntryPage
-from .forms import JOB_SECTIONS, PHOTO_MAX_COUNT, JobFilterForm, WorkOrderForm
-from .models import JobPhoto, MachineUsage, Refuelling, StockMovement, WorkerHours, WorkOrder
+from .forms import PHOTO_MAX_COUNT, JobFilterForm, WorkOrderForm
+from .models import JobPhoto, Refuelling, StockMovement, WorkerHours, WorkOrder
 from .reports import _list_page_context, _previews
-
-
-class JobRows(NamedTuple):
-    """Everything one job submission records, split the way the tables are."""
-
-    consumed: list
-    produced: list
-    usages: list
-    worker_hours: dict
-
-
-def _collect_rows(page):
-    """The filled-in rows of each section."""
-    return JobRows(
-        consumed=page.filled_rows('consumed'),
-        produced=page.filled_rows('produced'),
-        usages=page.filled_rows('machines'),
-        worker_hours={row['user']: row['hours'] for row in page.filled_rows('workers')},
-    )
+from .sections import JOB_SECTIONS, _trim
 
 
 def _balance_error(consumed_rows, produced_rows):
@@ -68,41 +49,14 @@ def _apply_photos(work_order, cleaned_data):
     JobPhoto.objects.bulk_create(JobPhoto(work_order=work_order, file=upload) for upload in cleaned_data['photo'])
 
 
-def _write_job_rows(work_order, author, own_hours, rows):
-    """Replace the job's hours, line items and machine usage with the submitted rows.
+def _write_job_rows(work_order, author, own_hours, page):
+    """Store the author's own hours (the job's „Moje hodiny") and every section's rows.
 
     Call inside `transaction.atomic()`. The rows belong to `author`, not the editor.
+    The author's own hours come first, so they stay the job's first hours row.
     """
-    # Derived from the hours rows, so the two can't disagree.
-    work_order.collaborators.set(rows.worker_hours.keys())
-    work_order.worker_hours.all().delete()
-    WorkerHours.objects.bulk_create(
-        WorkerHours(work_order=work_order, user=user, hours=hours)
-        for user, hours in [(author, own_hours), *rows.worker_hours.items()]
-    )
-
-    work_order.movements.all().delete()
-    # Consumed quantities are stored negative, so a material's net is a plain Sum.
-    StockMovement.objects.bulk_create(
-        StockMovement(
-            work_order=work_order,
-            created_by=author,
-            material=row['material'],
-            quantity=sign * row['quantity'],
-            movement_type=movement_type,
-        )
-        for section_rows, sign, movement_type in (
-            (rows.consumed, -1, StockMovement.MovementType.TRANSFORM_CONSUME),
-            (rows.produced, 1, StockMovement.MovementType.TRANSFORM_PRODUCE),
-        )
-        for row in section_rows
-    )
-
-    work_order.machine_usages.all().delete()
-    MachineUsage.objects.bulk_create(
-        MachineUsage(work_order=work_order, machine=row['machine'], hours=row['hours'], tons=row['tons'])
-        for row in rows.usages
-    )
+    WorkerHours.objects.update_or_create(work_order=work_order, user=author, defaults={'hours': own_hours})
+    page.write_rows(work_order, author)
 
 
 def _submitted_author(post_data, submitter):
@@ -116,35 +70,32 @@ def _submitted_author(post_data, submitter):
     return form.author_or(submitter)
 
 
-def _section_form_kwargs(prefix, *, author, viewer, keep=None):
-    """Row-form kwargs: the author/viewer pair for workers, `keep` for the catalog sections."""
-    if prefix == 'workers':
-        return {'user': author, 'viewer': viewer}
-    return {'keep': (keep or {}).get(prefix, ())}
+def _job_forms(request, *, author, viewer, order_form_user=None, work_order=None, order_initial=None):
+    """The job page's `EntryPage`; `work_order` is the job being edited, if any.
 
-
-def _job_forms(request, *, author, viewer, order_form_user=None, keep=None, initial=None, photos=None):
-    """The job page's `EntryPage`.
-
-    `keep` is keyed by section prefix, plus `location` for the job form's own picker.
-    `photos` is the job's stored photos on `job_edit`, which offers to remove them.
+    The sections read their rows off `work_order`. The job's own location is
+    kept pickable even if retired (see `_offer_recorded`), and its stored photos
+    are offered for removal.
     """
-    keep = keep or {}
+    keep_location = [work_order.location_id] if work_order is not None and work_order.location_id else []
     return EntryPage(
         request,
         form_class=WorkOrderForm,
         sections=JOB_SECTIONS,
-        order_kwargs={'user': order_form_user, 'keep_location': keep.get('location', ()), 'photos': photos},
-        form_kwargs={
-            section.prefix: _section_form_kwargs(section.prefix, author=author, viewer=viewer, keep=keep)
-            for section in JOB_SECTIONS
+        order_kwargs={
+            'user': order_form_user,
+            'keep_location': keep_location,
+            'photos': work_order.photos.all() if work_order is not None else None,
         },
-        initial=initial,
+        author=author,
+        viewer=viewer,
+        entry=work_order,
+        order_initial=order_initial,
     )
 
 
-def _valid_job_rows(request, page):
-    """The submitted rows, or None if any form is invalid or the job doesn't balance.
+def _job_is_valid(request, page):
+    """True if every form validates and the job balances.
 
     The balance error has no field, so it goes on `messages`, beside the banner
     `page.is_valid()` puts up for any field error. Valid rows are balanced even
@@ -152,12 +103,11 @@ def _valid_job_rows(request, page):
     """
     valid = page.is_valid()
     if not page.rows_valid():
-        return None
-    rows = _collect_rows(page)
-    balance_error = _balance_error(rows.consumed, rows.produced)
+        return False
+    balance_error = _balance_error(page.filled_rows('consumed'), page.filled_rows('produced'))
     if balance_error:
         messages.error(request, balance_error)
-    return rows if valid and not balance_error else None
+    return valid and not balance_error
 
 
 def _review_on_submit(submitter):
@@ -182,38 +132,27 @@ def transform_create(request):
     author = _submitted_author(request.POST, request.user) if request.method == 'POST' else request.user
     page = _job_forms(request, author=author, viewer=request.user, order_form_user=request.user)
     order_form = page.order_form
-    if page.submitted:
-        rows = _valid_job_rows(request, page)
-        if rows is not None:
-            review = _review_on_submit(request.user)
-            with transaction.atomic():
-                work_order = WorkOrder.objects.create(
-                    created_by=author,
-                    location=order_form.cleaned_data['location'],
-                    description=order_form.cleaned_data['description'],
-                    notes=order_form.cleaned_data['notes'],
-                    performed_on=order_form.cleaned_data['performed_on'],
-                    **review,
-                )
-                _write_job_rows(work_order, author, order_form.cleaned_data['hours'], rows)
-                _apply_photos(work_order, order_form.cleaned_data)
-            messages.success(
-                request,
-                'Zpracování bylo zaznamenáno.'
-                if review['status'] == WorkOrder.Status.APPROVED
-                else 'Zpracování bylo zaznamenáno a čeká na schválení vedoucím.',
+    if page.submitted and _job_is_valid(request, page):
+        review = _review_on_submit(request.user)
+        with transaction.atomic():
+            work_order = WorkOrder.objects.create(
+                created_by=author,
+                location=order_form.cleaned_data['location'],
+                description=order_form.cleaned_data['description'],
+                notes=order_form.cleaned_data['notes'],
+                performed_on=order_form.cleaned_data['performed_on'],
+                **review,
             )
-            return redirect('transform_create')
+            _write_job_rows(work_order, author, order_form.cleaned_data['hours'], page)
+            _apply_photos(work_order, order_form.cleaned_data)
+        messages.success(
+            request,
+            'Zpracování bylo zaznamenáno.'
+            if review['status'] == WorkOrder.Status.APPROVED
+            else 'Zpracování bylo zaznamenáno a čeká na schválení vedoucím.',
+        )
+        return redirect('transform_create')
     return render(request, 'workorders/transform_form.html', page.context(photo_max_count=PHOTO_MAX_COUNT))
-
-
-def _trim(value):
-    """A stored Decimal without trailing zeros, so the stricter form accepts it as `initial`.
-
-    Avoids normalize() turning 100.00 into 1E+2.
-    """
-    normalized = value.normalize()
-    return normalized.quantize(Decimal(1)) if normalized.as_tuple().exponent > 0 else normalized
 
 
 @role_required(*REVIEWER_ROLES)
@@ -319,37 +258,25 @@ def job_edit(request, pk):
     work_order = get_object_or_404(WorkOrder.objects.select_related('created_by'), pk=pk)
     # The rows stay the author's, not the editing manager's.
     author = work_order.created_by
-    consumed, produced = _job_line_items(work_order)
-    usages = list(work_order.machine_usages.all())
-    # Keep retired records the job names selectable; see `_offer_recorded`.
-    keep = {
-        'consumed': [movement.material_id for movement in consumed],
-        'produced': [movement.material_id for movement in produced],
-        'machines': [usage.machine_id for usage in usages],
-        'location': [work_order.location_id] if work_order.location_id else [],
-    }
     page = _job_forms(
         request,
         author=author,
         viewer=request.user,
-        keep=keep,
-        initial=_edit_initial(work_order, author, consumed, produced, usages) if request.method == 'GET' else None,
-        photos=work_order.photos.all(),
+        work_order=work_order,
+        order_initial=_edit_initial(work_order, author) if request.method == 'GET' else None,
     )
     order_form = page.order_form
-    if page.submitted:
-        rows = _valid_job_rows(request, page)
-        if rows is not None:
-            with transaction.atomic():
-                work_order.location = order_form.cleaned_data['location']
-                work_order.description = order_form.cleaned_data['description']
-                work_order.notes = order_form.cleaned_data['notes']
-                work_order.performed_on = order_form.cleaned_data['performed_on']
-                work_order.save(update_fields=['location', 'description', 'notes', 'performed_on'])
-                _write_job_rows(work_order, author, order_form.cleaned_data['hours'], rows)
-                _apply_photos(work_order, order_form.cleaned_data)
-            messages.success(request, 'Zpracování bylo upraveno.')
-            return redirect('job_detail', pk=work_order.pk)
+    if page.submitted and _job_is_valid(request, page):
+        with transaction.atomic():
+            work_order.location = order_form.cleaned_data['location']
+            work_order.description = order_form.cleaned_data['description']
+            work_order.notes = order_form.cleaned_data['notes']
+            work_order.performed_on = order_form.cleaned_data['performed_on']
+            work_order.save(update_fields=['location', 'description', 'notes', 'performed_on'])
+            _write_job_rows(work_order, author, order_form.cleaned_data['hours'], page)
+            _apply_photos(work_order, order_form.cleaned_data)
+        messages.success(request, 'Zpracování bylo upraveno.')
+        return redirect('job_detail', pk=work_order.pk)
     # Set on every path, since an invalid POST re-renders too.
     order_form.fields['hours'].label = f'Hodiny – {author.username}'
     return render(
@@ -359,30 +286,15 @@ def job_edit(request, pk):
     )
 
 
-def _trimmed(row):
-    """A row's Decimals passed through `_trim`; None (unknown) stays None."""
-    return {key: _trim(value) if isinstance(value, Decimal) else value for key, value in row.items()}
-
-
-def _edit_initial(work_order, author, consumed, produced, usages):
-    """`job_edit`'s pre-fill: the job as recorded, quantities as they were typed."""
+def _edit_initial(work_order, author):
+    """`job_edit`'s pre-fill of the job's own fields; the sections fill their own rows."""
     own_hours = work_order.worker_hours.filter(user=author).first()
     return {
-        'order': {
-            'location': work_order.location_id,
-            'description': work_order.description,
-            'notes': work_order.notes,
-            'hours': _trim(own_hours.hours) if own_hours else None,
-            'performed_on': work_order.performed_on,
-        },
-        'consumed': [{'material': m.material_id, 'quantity': _trim(m.typed_quantity)} for m in consumed],
-        'produced': [{'material': m.material_id, 'quantity': _trim(m.typed_quantity)} for m in produced],
-        'machines': [
-            _trimmed({'machine': usage.machine_id, 'hours': usage.hours, 'tons': usage.tons}) for usage in usages
-        ],
-        'workers': [
-            {'user': row.user_id, 'hours': _trim(row.hours)} for row in work_order.worker_hours.exclude(user=author)
-        ],
+        'location': work_order.location_id,
+        'description': work_order.description,
+        'notes': work_order.notes,
+        'hours': _trim(own_hours.hours) if own_hours else None,
+        'performed_on': work_order.performed_on,
     }
 
 

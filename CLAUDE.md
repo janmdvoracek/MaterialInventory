@@ -88,7 +88,7 @@ The scripts build no markup of their own. They clone server-rendered `<template>
 - **`materials`**: `Material` (SKU and name only; every quantity is implicitly tonnes, with the `t` hardcoded). It also hosts the `seed_data` command, which is the only place it imports `machines` or `locations`.
 - **`machines`**: `Machine` (name, `is_active`, optional `hourly_rate` and `rate_per_ton`). It stores no totals. Also `FuelSource` (name, `is_active`): the refuelling's „Zdroj", a label managed in the admin like `Location`.
 - **`locations`**: `Location` (name, `is_active`). One per job, and it is a **label**, not a stock location: nothing is summed or refused per location.
-- **`workorders`**: everything else. `entry.py` holds `EntryPage`, the entry page both forms are built on (row and sum buttons, unbound rebuild, error banner, context); `views.py` records and reviews jobs on it and holds `_review_on_submit` and `_approve`; `refuels.py` records and reviews refuellings on top of both; `reports.py` holds Souhrn, Stroje, Materiál, the CSV exports and the list helpers; `pwa.py` serves the PWA. All URLs are mounted at the root. Keep the reports a module of `workorders`, not a separate app (that was considered and rejected).
+- **`workorders`**: everything else. `entry.py` holds `EntryPage`, the entry page both forms are built on (row and sum buttons, unbound rebuild, error banner, context, writing rows); `sections.py` holds the sections, each owning its rows end to end (`recorded_rows`, `row_form_kwargs`, `write`); `views.py` records and reviews jobs on it and holds `_review_on_submit` and `_approve`; `refuels.py` records and reviews refuellings on top of both; `reports.py` holds Souhrn, Stroje, Materiál, the CSV exports and the list helpers; `pwa.py` serves the PWA. All URLs are mounted at the root. Keep the reports a module of `workorders`, not a separate app (that was considered and rejected).
 
 Catalog records are retired with `is_active=False` and protected from deletion by `on_delete=PROTECT`.
 
@@ -190,17 +190,17 @@ Easy to break:
 - `user` is the author, and is excluded from the list.
 - `viewer` is whoever fills in the form. A plain worker viewer may name only workers.
 
-**Editing (`job_edit`).** It reuses the submission helpers (`_job_forms`, `_valid_job_rows`, `_write_job_rows`), so corrections are mass-balanced too. Rows are written as the author, and the collaborator list uses (author, editing manager).
+**Editing (`job_edit`).** It reuses the submission helpers (`_job_forms`, `_job_is_valid`, `_write_job_rows`), so corrections are mass-balanced too. The author's own hours are the job's field, written by `_write_job_rows`; the workers section holds only the collaborators. Rows are written as the author, and the collaborator list uses (author, editing manager).
 
-It must also widen the catalog pickers to the retired records the job already names. Otherwise a row renders blank and saving silently deletes it. The mechanism: `keep` goes through `_section_form_kwargs` into `_offer_recorded`; `keep_location` does the same for the location. `RetiredCatalogOnEditTests` covers this.
+It must also widen the catalog pickers to the retired records the job already names. Otherwise a row renders blank and saving silently deletes it. The mechanism: each section's `row_form_kwargs` derives `keep` from its `recorded_rows` and it reaches `_offer_recorded`; `keep_location` does the same for the location. `RetiredCatalogOnEditTests` covers this.
 
 ## The refuelling
 
 `Refuelling` is its own entry, not part of a job: optional `notes`, `performed_on` (same `EntryForm` field and rules as the job's) and `MachineRefuel` rows (machine, `source` → `FuelSource`, `litres`), written in one `transaction.atomic()` by `refuel_create` (`/refuel/`).
 
-- **Rows** are a machine and litres, or blank (`RefuelRowForm.check_row`); `source` is optional, on the form and in the column. At least one row, one row per machine (`RefuelRowFormSet`). `litres` is 0,01 to `LITRES_MAX` and not nullable. Fill-ups migrated from jobs have no source.
+- **Rows** are a machine and litres, or blank (`RefuelRowForm.check_row`); `source` is optional, on the form and in the column. At least one row, one row per machine (the section's `picker`). `litres` is 0,01 to `LITRES_MAX` and not nullable. Fill-ups migrated from jobs have no source.
 - **Same machinery as the job form.** `EntryPage` builds the page (row buttons, unbound rebuild, error banner), `_row_sections.html` renders the section. No photos, no „Zapsat za".
-- **Review** is the job's: `ReviewStatus`, saved by `_review_on_submit`, approved by `_approve`, three actions (approve, edit, delete) under `/refuels/`, all `role_required(MANAGER, ADMIN)`. `refuel_edit` widens its pickers with `keep` (machines) and `keep_source`. Only approved refuellings count on Stroje.
+- **Review** is the job's: `ReviewStatus`, saved by `_review_on_submit`, approved by `_approve`, three actions (approve, edit, delete) under `/refuels/`, all `role_required(MANAGER, ADMIN)`. `refuel_edit` widens its pickers with `keep` (machines) and `keep_source`, both from `RefuelSection.row_form_kwargs`. Only approved refuellings count on Stroje.
 - **Migration `0010_move_fill_ups`** moved each job's fill-ups onto a refuelling with the job's date, author and status. Emptied fuel-only jobs were deleted, except ones with photos.
 
 `RefuellingFormTests`, `RefuellingReviewTests` and `MachineRefuelReportTests` cover this.
@@ -231,9 +231,9 @@ It must also widen the catalog pickers to the retired records the job already na
 
 `RowButtonTests` covers this.
 
-**Sum button („= součet výstupů", `sum_consumed`).** Screening jobs weigh only what comes out, so Spotřebováno gets a button that fills its row's quantity with the Vyrobeno total. It shows only while the section has exactly one row (`hidden` otherwise, like „− odebrat řádek"). It is declared on the section (`JobSection.sum_from` / `sum_field`) and takes the row-button path: a `formnovalidate` submit answered by the same unbound rebuild, with `_summed_rows` filling the row. Unparsable values are skipped, and the total is written with `format(..., 'f')`, never as an exponent. `job_rows.js` sums in hundredths in the DOM. `SumButtonTests` covers this.
+**Sum button („= součet výstupů", `sum_consumed`).** Screening jobs weigh only what comes out, so Spotřebováno gets a button that fills its row's quantity with the Vyrobeno total. It shows only while the section has exactly one row (`hidden` otherwise, like „− odebrat řádek"). It is declared on the section (`Section.sum_from` / `sum_field`) and takes the row-button path: a `formnovalidate` submit answered by the same unbound rebuild, with `_summed_rows` filling the row. Unparsable values are skipped, and the total is written with `format(..., 'f')`, never as an exponent. `job_rows.js` sums in hundredths in the DOM. `SumButtonTests` covers this.
 
-**Tonnage mirror.** Each machine row's „Tuny" defaults to the Spotřebováno total (`JobSection.mirror_from` / `mirror_source` / `mirror_field`), only on rows that name a machine. It is a default, not a derivation; a typed value is kept. The server fills blank boxes on every unbound rebuild (`_mirrored_rows`, after any sum), never on a real submission. `job_rows.js` does it live, following a box while it is blank or still holds the last copied total. `TonnageMirrorTests` covers this.
+**Tonnage mirror.** Each machine row's „Tuny" defaults to the Spotřebováno total (`Section.mirror_from` / `mirror_source` / `mirror_field`), only on rows that name a machine. It is a default, not a derivation; a typed value is kept. The server fills blank boxes on every unbound rebuild (`_mirrored_rows`, after any sum), never on a real submission. `job_rows.js` does it live, following a box while it is blank or still holds the last copied total. `TonnageMirrorTests` covers this.
 
 ## Reports
 

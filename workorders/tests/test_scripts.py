@@ -9,9 +9,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from workorders.entry import MAX_ROWS_PER_SECTION, MIN_ROWS_PER_SECTION
-from workorders.forms import (
-    JOB_SECTIONS,
-)
+from workorders.sections import JOB_SECTIONS
 
 from .helpers import ReviewFixtureMixin, job_payload
 

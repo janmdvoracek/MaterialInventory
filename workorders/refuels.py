@@ -16,45 +16,37 @@ from django.views.decorators.http import require_POST
 from accounts.decorators import REVIEWER_ROLES, role_required
 
 from .entry import EntryPage
-from .forms import REFUEL_SECTIONS, RefuellingFilterForm, RefuellingForm
-from .models import MachineRefuel, Refuelling
+from .forms import RefuellingFilterForm, RefuellingForm
+from .models import Refuelling
 from .reports import MY_JOBS_LIMIT, _list_page_context, _previews
-from .views import _approve, _review_on_submit, _trimmed
+from .sections import REFUEL_SECTIONS
+from .views import _approve, _review_on_submit
 
 NO_ROWS_ERROR = 'Přidejte alespoň jeden natankovaný stroj.'
 
 
-def _refuel_forms(request, *, keep=None, initial=None):
-    """The refuelling page's `EntryPage`. `keep` holds `machines` and `sources` on `refuel_edit`."""
-    keep = keep or {}
+def _refuel_forms(request, *, refuelling=None, order_initial=None):
+    """The refuelling page's `EntryPage`; `refuelling` is the one being edited, if any."""
     return EntryPage(
         request,
         form_class=RefuellingForm,
         sections=REFUEL_SECTIONS,
         order_kwargs={},
-        form_kwargs={'refuels': {'keep': keep.get('machines', ()), 'keep_source': keep.get('sources', ())}},
-        initial=initial,
+        author=refuelling.created_by if refuelling is not None else request.user,
+        viewer=request.user,
+        entry=refuelling,
+        order_initial=order_initial,
     )
 
 
-def _valid_refuel_rows(request, page):
-    """The filled-in rows, or None if any form is invalid or no machine was named."""
+def _refuelling_is_valid(request, page):
+    """True if every form validates and at least one machine was named."""
     if not page.is_valid():
-        return None
-    rows = page.filled_rows('refuels')
-    if not rows:
+        return False
+    if not page.filled_rows('refuels'):
         messages.error(request, NO_ROWS_ERROR)
-        return None
-    return rows
-
-
-def _write_refuel_rows(refuelling, rows):
-    """Replace the entry's fill-ups with the submitted rows. Call inside `transaction.atomic()`."""
-    refuelling.machine_refuels.all().delete()
-    MachineRefuel.objects.bulk_create(
-        MachineRefuel(refuelling=refuelling, machine=row['machine'], source=row['source'], litres=row['litres'])
-        for row in rows
-    )
+        return False
+    return True
 
 
 def _with_totals(refuellings):
@@ -76,25 +68,23 @@ def _my_recent_refuellings(user):
 def refuel_create(request):
     page = _refuel_forms(request)
     order_form = page.order_form
-    if page.submitted:
-        rows = _valid_refuel_rows(request, page)
-        if rows is not None:
-            review = _review_on_submit(request.user)
-            with transaction.atomic():
-                refuelling = Refuelling.objects.create(
-                    created_by=request.user,
-                    notes=order_form.cleaned_data['notes'],
-                    performed_on=order_form.cleaned_data['performed_on'],
-                    **review,
-                )
-                _write_refuel_rows(refuelling, rows)
-            messages.success(
-                request,
-                'Tankování bylo zaznamenáno.'
-                if review['status'] == Refuelling.Status.APPROVED
-                else 'Tankování bylo zaznamenáno a čeká na schválení vedoucím.',
+    if page.submitted and _refuelling_is_valid(request, page):
+        review = _review_on_submit(request.user)
+        with transaction.atomic():
+            refuelling = Refuelling.objects.create(
+                created_by=request.user,
+                notes=order_form.cleaned_data['notes'],
+                performed_on=order_form.cleaned_data['performed_on'],
+                **review,
             )
-            return redirect('refuel_create')
+            page.write_rows(refuelling, request.user)
+        messages.success(
+            request,
+            'Tankování bylo zaznamenáno.'
+            if review['status'] == Refuelling.Status.APPROVED
+            else 'Tankování bylo zaznamenáno a čeká na schválení vedoucím.',
+        )
+        return redirect('refuel_create')
     return render(
         request,
         'workorders/refuel_form.html',
@@ -142,33 +132,17 @@ def refuel_detail(request, pk):
 def refuel_edit(request, pk):
     """Correct a recorded refuelling. Does not approve it."""
     refuelling = get_object_or_404(Refuelling.objects.select_related('created_by'), pk=pk)
-    fill_ups = list(refuelling.machine_refuels.all())
-    # Keep retired machines and sources the entry names selectable; see `_offer_recorded`.
-    keep = {
-        'machines': [fill_up.machine_id for fill_up in fill_ups],
-        'sources': [fill_up.source_id for fill_up in fill_ups if fill_up.source_id],
-    }
-    initial = None
-    if request.method == 'GET':
-        initial = {
-            'order': {'notes': refuelling.notes, 'performed_on': refuelling.performed_on},
-            'refuels': [
-                _trimmed({'machine': fill_up.machine_id, 'source': fill_up.source_id, 'litres': fill_up.litres})
-                for fill_up in fill_ups
-            ],
-        }
-    page = _refuel_forms(request, keep=keep, initial=initial)
+    initial = {'notes': refuelling.notes, 'performed_on': refuelling.performed_on}
+    page = _refuel_forms(request, refuelling=refuelling, order_initial=initial if request.method == 'GET' else None)
     order_form = page.order_form
-    if page.submitted:
-        rows = _valid_refuel_rows(request, page)
-        if rows is not None:
-            with transaction.atomic():
-                refuelling.notes = order_form.cleaned_data['notes']
-                refuelling.performed_on = order_form.cleaned_data['performed_on']
-                refuelling.save(update_fields=['notes', 'performed_on'])
-                _write_refuel_rows(refuelling, rows)
-            messages.success(request, 'Tankování bylo upraveno.')
-            return redirect('refuel_detail', pk=refuelling.pk)
+    if page.submitted and _refuelling_is_valid(request, page):
+        with transaction.atomic():
+            refuelling.notes = order_form.cleaned_data['notes']
+            refuelling.performed_on = order_form.cleaned_data['performed_on']
+            refuelling.save(update_fields=['notes', 'performed_on'])
+            page.write_rows(refuelling, refuelling.created_by)
+        messages.success(request, 'Tankování bylo upraveno.')
+        return redirect('refuel_detail', pk=refuelling.pk)
     return render(
         request,
         'workorders/refuel_edit.html',

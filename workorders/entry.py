@@ -3,9 +3,10 @@
 `EntryPage` builds every form on the page and answers the row buttons
 (`add_<prefix>` / `remove_<prefix>`) and the sum button (`sum_<prefix>`) by
 rebuilding them unbound, so the page works with every script blocked. It also
-validates the page, puts up the error banner, and shapes the template context.
-What an entry *is* (its fields, its sections, how it is saved) stays with the
-caller: `views._job_forms` and `refuels._refuel_forms`.
+validates the page, puts up the error banner, shapes the template context, and
+writes the rows, each through its section (`sections.Section`). What an entry
+*is* (its own fields, which sections it has, how its own fields are saved)
+stays with the caller: `views._job_forms` and `refuels._refuel_forms`.
 """
 
 from decimal import Decimal, InvalidOperation
@@ -35,16 +36,26 @@ class EntryPage:
     - Either way, a blank `mirror_field` is filled from its `mirror_from`
       section's total (`_mirrored_rows`), as job_rows.js does live.
     - Any other POST: bound, and `submitted` is True.
-    - GET: fresh forms, pre-filled from `initial` (keyed `order` and by section prefix).
+    - GET: fresh forms, pre-filled from `order_initial` and each section's
+      rows as recorded on `entry` (none when `entry` is None).
 
-    `order_kwargs` go to `form_class`; `form_kwargs` holds each section's
-    row-form kwargs, keyed by prefix.
+    `order_kwargs` go to `form_class`. `author` is whose rows these are and
+    `viewer` who fills the page in; each section turns them, and its recorded
+    rows, into its row-form kwargs (see `Section.row_form_kwargs`).
     """
 
-    def __init__(self, request, *, form_class, sections, order_kwargs, form_kwargs, initial=None):
+    def __init__(self, request, *, form_class, sections, order_kwargs, author, viewer, entry=None, order_initial=None):
         self.request = request
         self.sections = sections
         self.submitted = False
+        # Read on every request, not just GET: the recorded rows also decide which retired records stay pickable.
+        recorded = {
+            section.prefix: section.recorded_rows(entry, author) if entry is not None else [] for section in sections
+        }
+        form_kwargs = {
+            section.prefix: section.row_form_kwargs(recorded[section.prefix], author=author, viewer=viewer)
+            for section in sections
+        }
         post = request.POST if request.method == 'POST' else None
         pressed = _pressed_row_button(post, sections) if post is not None else None
         summed = _pressed_sum_button(post, sections) if post is not None else None
@@ -68,11 +79,10 @@ class EntryPage:
             }
             self.submitted = True
         else:
-            initial = initial or {}
-            self.order_form = form_class(initial=initial.get('order'), **order_kwargs)
+            self.order_form = form_class(initial=order_initial, **order_kwargs)
             self.formsets = {
                 section.prefix: job_row_formset(
-                    section, rows=initial.get(section.prefix, ()), form_kwargs=form_kwargs[section.prefix]
+                    section, rows=recorded[section.prefix], form_kwargs=form_kwargs[section.prefix]
                 )
                 for section in sections
             }
@@ -93,6 +103,11 @@ class EntryPage:
         """The rows of one section that name something in its picker, as typed. Duplicates were already refused."""
         formset = self.formsets[prefix]
         return [form.cleaned_data for form in formset if form.cleaned_data.get(formset.unique_field)]
+
+    def write_rows(self, entry, author):
+        """Replace every section's stored rows on `entry` with the filled rows. Call inside `transaction.atomic()`."""
+        for section in self.sections:
+            section.write(entry, self.filled_rows(section.prefix), author)
 
     def context(self, **extra):
         """The page's context: its form, `sections` in render order, and each formset by name.
@@ -205,7 +220,7 @@ def _mirrored_rows(rows, section, source_rows):
     total = _rows_total(source_rows, section.mirror_source)
     if total is None:
         return rows
-    picker = section.formset_class.unique_field
+    picker = section.picker
     return [
         {**row, section.mirror_field: format(total, 'f')}
         if row.get(picker) and not row.get(section.mirror_field, '').strip()
