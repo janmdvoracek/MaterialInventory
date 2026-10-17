@@ -1,5 +1,6 @@
 """The back office."""
 
+import re
 from decimal import Decimal
 
 from django.test import TestCase
@@ -199,3 +200,87 @@ class DeriveCollaboratorsMigrationTests(ReviewFixtureMixin, TestCase):
         migration.derive_collaborators(apps, None)
         self.assertEqual(list(missing.collaborators.all()), [self.worker])
         self.assertFalse(stray.collaborators.exists())
+
+
+class AdminNumberRulesTests(ReviewFixtureMixin, TestCase):
+    """The admin inlines hold numbers to the entry forms' rules: decimal places and half-hour steps too,
+    not just the limits. Otherwise a value saved here is refused when the entry is next opened on
+    `job_edit` or `refuel_edit`."""
+
+    def setUp(self):
+        super().setUp()
+        self.job = self.submit_job(
+            self.manager,
+            machine_rows=[{'machine': self.machine_a, 'hours': '100', 'tons': '5'}],
+            worker_rows=[{'user': self.worker, 'hours': '2'}],
+        )
+        self.client.force_login(User.objects.create_superuser(username='admin', password='pw'))
+
+    def _post(self, **overrides):
+        url = reverse('admin:workorders_workorder_change', args=[self.job.pk])
+        return self.client.post(url, admin_job_payload(self.job, **overrides))
+
+    def test_stored_values_save_unchanged(self):
+        # The admin re-posts 2.00 for a stored 2: trailing zeros are not decimal places.
+        self.assertEqual(self._post().status_code, 302)
+
+    def test_a_value_the_entry_form_refuses_is_refused_here(self):
+        movement = self.job.movements.get(quantity__gt=0)
+        usage = self.job.machine_usages.get()
+        hours = self.job.worker_hours.get(user=self.worker)
+        movements = [
+            {'id': row.pk, 'material': row.material_id, 'movement_type': row.movement_type, 'quantity': row.quantity}
+            for row in self.job.movements.all()
+        ]
+        usage_row = {'id': usage.pk, 'machine': usage.machine_id, 'hours': usage.hours, 'tons': usage.tons}
+        hours_rows = [{'id': row.pk, 'user': row.user_id, 'hours': row.hours} for row in self.job.worker_hours.all()]
+        cases = {
+            'quantity with 3 decimals': {
+                'movements': [{**row, 'quantity': '5.001'} if row['id'] == movement.pk else row for row in movements]
+            },
+            'meter reading off the half hour': {'usages': [{**usage_row, 'hours': '100.25'}]},
+            'tonnes with 3 decimals': {'usages': [{**usage_row, 'tons': '5.001'}]},
+            'worker hours off the half hour': {
+                'hours': [{**row, 'hours': '2.25'} if row['id'] == hours.pk else row for row in hours_rows]
+            },
+            'worker hours below half an hour': {
+                'hours': [{**row, 'hours': '0'} if row['id'] == hours.pk else row for row in hours_rows]
+            },
+        }
+        for name, overrides in cases.items():
+            with self.subTest(name):
+                self.assertEqual(self._post(**overrides).status_code, 200)
+        movement.refresh_from_db()
+        usage.refresh_from_db()
+        hours.refresh_from_db()
+        self.assertEqual((movement.quantity, usage.hours, usage.tons, hours.hours), (5, 100, 5, 2))
+
+    def test_litres_with_3_decimals_are_refused(self):
+        response = self.client.post(
+            reverse('admin:workorders_refuelling_add'),
+            {
+                'performed_on': timezone.localdate().isoformat(),
+                'notes': '',
+                'status': Refuelling.Status.APPROVED,
+                'machine_refuels-TOTAL_FORMS': '1',
+                'machine_refuels-INITIAL_FORMS': '0',
+                'machine_refuels-MIN_NUM_FORMS': '0',
+                'machine_refuels-MAX_NUM_FORMS': '1000',
+                'machine_refuels-0-machine': self.machine_a.pk,
+                'machine_refuels-0-litres': '45.001',
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Refuelling.objects.exists())
+
+    def test_the_boxes_render_the_entry_forms_steps(self):
+        html = self.client.get(reverse('admin:workorders_workorder_change', args=[self.job.pk])).content.decode()
+        for name, step in (
+            ('movements-0-quantity', '0.01'),
+            ('machine_usages-0-hours', '0.5'),
+            ('machine_usages-0-tons', '0.01'),
+            ('worker_hours-0-hours', '0.5'),
+        ):
+            with self.subTest(name=name):
+                tag = re.search(rf'<input[^>]*name="{name}"[^>]*>', html).group(0)
+                self.assertIn(f'step="{step}"', tag)

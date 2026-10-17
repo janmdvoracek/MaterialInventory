@@ -1,14 +1,22 @@
+from decimal import Decimal
+
 from django import forms
 from django.contrib import admin
-from django.core.validators import MaxLengthValidator, MaxValueValidator, MinValueValidator
+from django.core.validators import (
+    DecimalValidator,
+    MaxLengthValidator,
+    MaxValueValidator,
+    MinValueValidator,
+    StepValueValidator,
+)
 
 from .forms import (
     DESCRIPTION_MAX_LENGTH,
-    LITRES_MAX,
-    METER_READING_MAX,
     PHOTO_MAX_COUNT,
-    TONS_MAX,
-    WORKER_HOURS_MAX,
+    MachineUsageForm,
+    MovementItemForm,
+    RefuelRowForm,
+    WorkerHoursForm,
     clean_photo_upload,
 )
 from .models import (
@@ -23,25 +31,44 @@ from .models import (
 )
 
 
-class CappedInline(admin.TabularInline):
-    """An inline capping its number fields at the job form's bounds (`caps`: field -> limit).
+class _PlacesValidator(DecimalValidator):
+    """Django's decimal-places check, on the value without trailing zeros.
 
-    Otherwise a value saved here would be refused when the job is next opened on `job_edit`.
+    The admin re-posts a stored 2 as 2.00, which is not two decimal places.
     """
 
-    caps = {}
-    # Fields stored signed, so the cap bounds the size either way.
+    def __call__(self, value):
+        super().__call__(value.normalize())
+
+
+class CappedInline(admin.TabularInline):
+    """An inline holding its number fields to the entry forms' rules (`rules`: field -> that form's field).
+
+    The bounds, the step and the decimal places, read off the entry form's own
+    field, so a value saved here is never refused when the entry is next opened
+    on `job_edit` or `refuel_edit`.
+    """
+
+    rules = {}
+    # Fields stored signed: the bounds cap the size either way, and there is no step.
     signed = ()
 
     def formfield_for_dbfield(self, db_field, request, **kwargs):
         field = super().formfield_for_dbfield(db_field, request, **kwargs)
-        limit = self.caps.get(db_field.name)
-        if limit is not None:
-            field.validators.append(MaxValueValidator(limit))
-            field.widget.attrs['max'] = str(limit)
-            if db_field.name in self.signed:
-                field.validators.append(MinValueValidator(-limit))
-                field.widget.attrs['min'] = str(-limit)
+        rule = self.rules.get(db_field.name)
+        if rule is None:
+            return field
+        low = -rule.max_value if db_field.name in self.signed else rule.min_value
+        field.validators += [
+            MaxValueValidator(rule.max_value),
+            MinValueValidator(low),
+            _PlacesValidator(None, rule.decimal_places),
+        ]
+        if rule.step_size is not None and db_field.name not in self.signed:
+            field.validators.append(StepValueValidator(rule.step_size, offset=rule.min_value))
+        # Set outright: the widget already carries the column's own step (0.001).
+        step = rule.step_size or Decimal(1).scaleb(-rule.decimal_places)
+        field.widget.attrs.update(max=str(rule.max_value), min=str(low), step=str(step))
         return field
 
 
@@ -50,7 +77,7 @@ class MovementInline(CappedInline):
     model = StockMovement
     extra = 1
     fields = ('material', 'movement_type', 'quantity')
-    caps = {'quantity': TONS_MAX}
+    rules = {'quantity': MovementItemForm.base_fields['quantity']}
     # Consumed rows are stored negative.
     signed = ('quantity',)
 
@@ -59,7 +86,7 @@ class MachineUsageInline(CappedInline):
     model = MachineUsage
     extra = 1
     fields = ('machine', 'hours', 'tons')
-    caps = {'hours': METER_READING_MAX, 'tons': TONS_MAX}
+    rules = {'hours': MachineUsageForm.base_fields['hours'], 'tons': MachineUsageForm.base_fields['tons']}
 
 
 # A refuelling's rows, edited only as an inline of `RefuellingAdmin`, never registered top-level.
@@ -67,14 +94,15 @@ class MachineRefuelInline(CappedInline):
     model = MachineRefuel
     extra = 1
     fields = ('machine', 'source', 'litres')
-    caps = {'litres': LITRES_MAX}
+    rules = {'litres': RefuelRowForm.base_fields['litres']}
 
 
+# The author's own hours too: the job form's „Moje hodiny" follows the same rules as a row.
 class WorkerHoursInline(CappedInline):
     model = WorkerHours
     extra = 1
     fields = ('user', 'hours')
-    caps = {'hours': WORKER_HOURS_MAX}
+    rules = {'hours': WorkerHoursForm.base_fields['hours']}
 
 
 class JobPhotoForm(forms.ModelForm):

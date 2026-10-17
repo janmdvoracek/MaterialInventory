@@ -15,9 +15,9 @@ from .models import ReviewStatus, StockMovement
 from .photos import UnreadablePhoto, shrink_photo
 
 # Upper bounds for the job form's number boxes, rendered as each input's `max`.
-# They keep values far inside the decimal(12, 2) columns, so an oversized value
+# They keep values far inside the decimal(12, 2/3) columns, so an oversized value
 # is a field error, not a `numeric field overflow` 500. Whole numbers because
-# Django prints the limit unlocalised. The admin inlines repeat them.
+# Django prints the limit unlocalised. The admin inlines read them off the fields.
 WORKER_HOURS_MAX = Decimal('24')  # a job is one day
 METER_READING_MAX = Decimal('99999')  # five-digit hour meter
 TONS_MAX = Decimal('99999')

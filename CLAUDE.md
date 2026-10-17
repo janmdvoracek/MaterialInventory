@@ -127,7 +127,7 @@ The rule is per section, so one material may be both consumed and produced. `uni
 
 `DescriptionAndNotesTests` covers this.
 
-**Number bounds.** All number columns are `decimal(12, 2)`. A form field wider than its column turns a big value into an unhandled `numeric field overflow` 500. So every number box has a `max_value`, set from constants in `forms.py`:
+**Number bounds.** The number columns are `decimal(12, 2)`, except `StockMovement.quantity`, which is `decimal(12, 3)` (the forms still take 2 places). A form field wider than its column turns a big value into an unhandled `numeric field overflow` 500. So every number box has a `max_value`, set from constants in `forms.py`:
 
 | Constant | Value | Applies to |
 |---|---|---|
@@ -137,7 +137,7 @@ The rule is per section, so one material may be both consumed and produced. `uni
 | `LITRES_MAX` | 2 000 | litres (Tankování) |
 
 - The limits are whole numbers because Django's error message prints them unlocalised.
-- `CappedInline` in `admin.py` repeats them.
+- `CappedInline` in `admin.py` reads each inline box's rules (limits, step, decimal places) off the entry form's own field, so whatever the admin saves, `job_edit` and `refuel_edit` accept. Trailing zeros don't count as decimal places, because the admin re-posts a stored 2 as 2.00. `AdminNumberRulesTests` covers this.
 
 `ValueLimitTests` covers this.
 
