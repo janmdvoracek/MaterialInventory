@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 from decimal import Decimal
 
 from django import forms
@@ -260,11 +259,13 @@ class RefuellingForm(EntryForm):
 
 
 class UniqueChoiceFormSet(forms.BaseFormSet):
-    """A job section whose rows must each name a different thing.
+    """A section whose rows must each name a different `unique_field`.
 
-    `clean()` refuses a repeat. Unbound formsets also hide choices other rows
-    already took; bound ones don't, or a duplicate would fail as
-    „Vyberte platnou možnost." instead of with `duplicate_error`.
+    `job_row_formset` sets `unique_field` and `duplicate_error` from the
+    section (`sections.Section.picker`). `clean()` refuses a repeat. Unbound
+    formsets also hide choices other rows already took; bound ones don't, or a
+    duplicate would fail as „Vyberte platnou možnost." instead of with
+    `duplicate_error`.
     """
 
     unique_field = None
@@ -309,29 +310,6 @@ class UniqueChoiceFormSet(forms.BaseFormSet):
             if value in seen:
                 form.add_error(None, self.duplicate_error.format(name=value))
             seen.add(value)
-
-
-class MaterialRowFormSet(UniqueChoiceFormSet):
-    unique_field = 'material'
-    duplicate_error = 'Materiál „{name}“ je v této sekci vybraný víckrát. Sečtěte množství do jednoho řádku.'
-
-
-class MachineRowFormSet(UniqueChoiceFormSet):
-    unique_field = 'machine'
-    duplicate_error = 'Stroj „{name}“ je vybraný víckrát. Zapište ho jen do jednoho řádku.'
-
-
-class RefuelRowFormSet(UniqueChoiceFormSet):
-    unique_field = 'machine'
-    duplicate_error = (
-        'Stroj „{name}“ je vybraný víckrát. Sečtěte litry do jednoho řádku, '
-        'nebo tankování z jiného zdroje zapište zvlášť.'
-    )
-
-
-class WorkerRowFormSet(UniqueChoiceFormSet):
-    unique_field = 'user'
-    duplicate_error = 'Pracovník „{name}“ je vybraný víckrát. Sečtěte hodiny do jednoho řádku.'
 
 
 class RowForm(forms.Form):
@@ -503,66 +481,15 @@ class WorkerHoursForm(RowForm):
         self.fields['user'].queryset = collaborator_queryset(user, viewer)
 
 
-@dataclass(frozen=True)
-class JobSection:
-    """One row section of an entry form. `prefix` also names its row buttons (`add_<prefix>`).
-
-    `sum_from` names another section whose `sum_field` total this section's
-    single row can be filled with (the `sum_<prefix>` button): a screening job
-    weighs only what comes out.
-
-    `mirror_from` names another section whose `mirror_source` total is copied
-    into this section's `mirror_field` on every row that names its catalog
-    record: the machines usually process exactly what the job consumed.
-    """
-
-    prefix: str
-    context_name: str
-    title: str
-    row_form: type
-    formset_class: type
-    sum_from: str = ''
-    sum_field: str = ''
-    mirror_from: str = ''
-    mirror_source: str = ''
-    mirror_field: str = ''
-
-
-# In render order. A new section only needs adding here.
-JOB_SECTIONS = (
-    JobSection('workers', 'worker_formset', 'Spolupracovníci', WorkerHoursForm, WorkerRowFormSet),
-    JobSection(
-        'consumed',
-        'consumed_formset',
-        'Spotřebováno',
-        MovementItemForm,
-        MaterialRowFormSet,
-        sum_from='produced',
-        sum_field='quantity',
-    ),
-    JobSection('produced', 'produced_formset', 'Vyrobeno', MovementItemForm, MaterialRowFormSet),
-    JobSection(
-        'machines',
-        'machine_formset',
-        'Použité stroje',
-        MachineUsageForm,
-        MachineRowFormSet,
-        mirror_from='consumed',
-        mirror_source='quantity',
-        mirror_field='tons',
-    ),
-)
-
-# The refuelling form's one section.
-REFUEL_SECTIONS = (JobSection('refuels', 'refuel_formset', 'Tankované stroje', RefuelRowForm, RefuelRowFormSet),)
-
-
 def job_row_formset(section, *, data=None, rows=(), blank_rows=1, form_kwargs=None):
     """One section's formset: bound to `data`, or `rows` plus `blank_rows` empty ones.
 
-    `extra` is a class attribute, hence a new formset class per call.
+    `extra` is a class attribute, hence a new formset class per call; the
+    section's picker and duplicate message go on that class too.
     """
-    formset_class = forms.formset_factory(section.row_form, formset=section.formset_class, extra=blank_rows)
+    formset_class = forms.formset_factory(section.row_form, formset=UniqueChoiceFormSet, extra=blank_rows)
+    formset_class.unique_field = section.picker
+    formset_class.duplicate_error = section.duplicate_error
     return formset_class(data, prefix=section.prefix, initial=list(rows), form_kwargs=form_kwargs or {})
 
 

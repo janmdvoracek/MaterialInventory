@@ -11,11 +11,11 @@ from django.utils import timezone
 
 from accounts.models import User
 from machines.models import FuelSource, Machine
+from workorders.entry import FORM_ERRORS_MESSAGE
 from workorders.forms import LITRES_MAX
 from workorders.models import MachineRefuel, Refuelling, WorkOrder
 from workorders.refuels import NO_ROWS_ERROR
 from workorders.reports import FUEL_PAGE_PARAM, HISTORY_PAGE_SIZE, MY_JOBS_LIMIT
-from workorders.views import FORM_ERRORS_MESSAGE
 
 from .helpers import ReviewFixtureMixin, refuel_payload
 
