@@ -1,7 +1,7 @@
 # A named stage, so Dependabot bumps uv too. Keep it at or above `required-version` in pyproject.toml.
 FROM ghcr.io/astral-sh/uv:0.12.20 AS uv
 
-FROM python:3.14-slim
+FROM python:3.15-slim
 
 COPY --from=uv /uv /usr/local/bin/uv
 
