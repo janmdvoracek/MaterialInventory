@@ -27,6 +27,7 @@
 {% include "workorders/_filter_card.html" %}
 <div class="card" id="{{ tables.hours.anchor }}">
     <h2>Odpracované hodiny</h2>
+    {% include "workorders/_shown_count.html" with table=tables.hours %}
     <div class="table-scroll">
     <table>
         <thead>
@@ -45,7 +46,7 @@
         </tbody>
     </table>
     </div>
-    {% include "workorders/_show_all.html" with table=tables.hours %}
+    {% include "workorders/_show_more.html" with table=tables.hours %}
     {# The filter goes with the download, so the file is every row, not just those shown. #}
     <a class="btn" href="{% url 'time_worked_export' %}?{{ querystring }}">Stáhnout do CSV / Excelu</a>
 </div>
@@ -53,6 +54,7 @@
 {# Every approved entry, not just this worker's: the machines' totals — see _fleet_totals. #}
 <div class="card" id="{{ tables.machines.anchor }}">
     <h2>Stroje</h2>
+    {% include "workorders/_shown_count.html" with table=tables.machines %}
     <div class="table-scroll">
     <table>
         <thead>
@@ -71,10 +73,11 @@
         </tbody>
     </table>
     </div>
-    {% include "workorders/_show_all.html" with table=tables.machines %}
+    {% include "workorders/_show_more.html" with table=tables.machines %}
 </div>
 <div class="card" id="{{ tables.refuels.anchor }}">
     <h2>Tankování</h2>
+    {% include "workorders/_shown_count.html" with table=tables.refuels %}
     <div class="table-scroll">
     <table>
         <thead>
@@ -96,11 +99,12 @@
         </tfoot>
     </table>
     </div>
-    {% include "workorders/_show_all.html" with table=tables.refuels %}
+    {% include "workorders/_show_more.html" with table=tables.refuels %}
 </div>
 {% endif %}
 <div class="card" id="{{ tables.jobs.anchor }}">
     <h2>Detail zakázek</h2>
+    {% include "workorders/_shown_count.html" with table=tables.jobs %}
     <div class="table-scroll">
     <table>
         <thead>
@@ -122,7 +126,6 @@
         </tbody>
     </table>
     </div>
-    {% include "workorders/_show_all.html" with table=tables.jobs %}
+    {% include "workorders/_show_more.html" with table=tables.jobs %}
 </div>
-{% if tables.jobs.expanded %}{% include "workorders/_pagination.html" %}{% endif %}
 {% endblock %}

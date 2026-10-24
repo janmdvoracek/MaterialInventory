@@ -58,7 +58,7 @@ class JobReviewTests(ReviewFixtureMixin, TestCase):
         self.submit_job(self.worker, machine_rows=[{'machine': self.machine_a, 'hours': '2'}])
         self.client.force_login(self.manager)
         response = self.client.get(reverse('machine_dashboard'))
-        self.assertEqual(len(response.context['page_obj'].object_list), 0)
+        self.assertEqual(len(response.context['rows']), 0)
 
     def test_approval_lets_the_job_into_the_reports(self):
         work_order = self.submit_job(self.worker, hours='3', machine_rows=[{'machine': self.machine_a, 'hours': '2'}])
@@ -68,7 +68,7 @@ class JobReviewTests(ReviewFixtureMixin, TestCase):
         response = self.client.get(reverse('time_worked'))
         self.assertEqual([row['user'] for row in response.context['summary']], [self.worker])
         response = self.client.get(reverse('machine_dashboard'))
-        self.assertEqual(len(response.context['page_obj'].object_list), 1)
+        self.assertEqual(len(response.context['rows']), 1)
         machine = next(m for m in response.context['machines'] if m == self.machine_a)
         self.assertEqual(machine.filtered_reading, Decimal('2.0'))
 
@@ -219,7 +219,7 @@ class JobDashboardTests(ReviewFixtureMixin, TestCase):
         theirs = self.submit_job(self.worker)
         self.client.force_login(self.manager)
         response = self.client.get(reverse('job_dashboard'))
-        self.assertEqual(set(response.context['page_obj'].object_list), {mine, theirs})
+        self.assertEqual(set(response.context['rows']), {mine, theirs})
 
     def test_dashboard_highlights_jobs_awaiting_review(self):
         self.submit_job(self.worker)
@@ -232,21 +232,21 @@ class JobDashboardTests(ReviewFixtureMixin, TestCase):
         self.submit_job(self.worker, hours='3', worker_rows=[{'user': self.other_worker, 'hours': '2'}])
         self.client.force_login(self.manager)
         response = self.client.get(reverse('job_dashboard'))
-        self.assertEqual(response.context['page_obj'].object_list[0].total_hours, Decimal('5.00'))
+        self.assertEqual(response.context['rows'][0].total_hours, Decimal('5.00'))
 
     def test_dashboard_filters_by_status(self):
         approved = self.submit_job(self.manager)
         self.submit_job(self.worker)
         self.client.force_login(self.manager)
         response = self.client.get(reverse('job_dashboard'), {'status': WorkOrder.Status.APPROVED})
-        self.assertEqual(list(response.context['page_obj'].object_list), [approved])
+        self.assertEqual(list(response.context['rows']), [approved])
 
     def test_dashboard_filters_by_author(self):
         self.submit_job(self.manager)
         theirs = self.submit_job(self.worker)
         self.client.force_login(self.manager)
         response = self.client.get(reverse('job_dashboard'), {'created_by': self.worker.pk})
-        self.assertEqual(list(response.context['page_obj'].object_list), [theirs])
+        self.assertEqual(list(response.context['rows']), [theirs])
 
     def test_dashboard_shows_no_rows_when_filter_is_invalid(self):
         # An unusable filter must not fall through to showing everything.
@@ -255,7 +255,7 @@ class JobDashboardTests(ReviewFixtureMixin, TestCase):
         response = self.client.get(reverse('job_dashboard'), {'date_from': 'not-a-date'})
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.context['form'].is_valid())
-        self.assertEqual(len(response.context['page_obj'].object_list), 0)
+        self.assertEqual(len(response.context['rows']), 0)
 
     def test_detail_shows_everything_that_was_filled_in(self):
         work_order = self.submit_job(

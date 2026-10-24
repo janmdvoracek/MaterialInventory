@@ -1,0 +1,12 @@
+{% comment %}
+„Zobrazit více" under a table cut by `_preview`: MORE_ROWS more rows, or
+however many are left. „Zobrazit méně" cuts it back to the first rows once it
+has grown. Plain links (no script): they keep the filters and jump back to the
+table. Needs `table`.
+{% endcomment %}
+{% if table.more %}
+<a class="btn secondary" href="?{{ table.more_querystring }}#{{ table.anchor }}">Zobrazit více ({{ table.more }})</a>
+{% endif %}
+{% if table.can_collapse %}
+<a class="btn secondary" href="?{{ table.collapse_querystring }}#{{ table.anchor }}">Zobrazit méně</a>
+{% endif %}

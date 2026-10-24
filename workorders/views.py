@@ -89,7 +89,7 @@ def job_dashboard(request):
             'form': form,
             'pending_count': WorkOrder.objects.filter(status=WorkOrder.Status.PENDING).count(),
             'pending_refuel_count': Refuelling.objects.filter(status=Refuelling.Status.PENDING).count(),
-            'tables': _previews(request, jobs=listing),
+            'tables': _previews(request, jobs=listing['rows']),
             **listing,
         },
     )

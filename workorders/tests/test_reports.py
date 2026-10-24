@@ -11,7 +11,7 @@ from accounts.models import User
 from machines.models import Machine
 from materials.models import Material
 from workorders.models import MachineRefuel, MachineUsage, Refuelling, StockMovement, WorkerHours, WorkOrder
-from workorders.reports import EXPAND_PARAM, HISTORY_PAGE_SIZE, PREVIEW_ROWS, _last_month
+from workorders.reports import MORE_ROWS, PREVIEW_ROWS, _last_month
 
 from .helpers import ReviewFixtureMixin, job_payload
 
@@ -82,7 +82,7 @@ class ReportsUsePerformedOnTests(TestCase):
         machine = response.context['machines'][0]
         # No usage in range is a real 0 h, unlike usage that left motohodiny blank.
         self.assertEqual(machine.filtered_hours, Decimal('0'))
-        self.assertEqual(len(response.context['page_obj'].object_list), 0)
+        self.assertEqual(len(response.context['rows']), 0)
 
     def test_material_totals_follow_the_work(self):
         self._back_dated_job()
@@ -95,7 +95,7 @@ class ReportsUsePerformedOnTests(TestCase):
         response = self.client.get(reverse('material_dashboard'), self._last_week())
         produced = next(row for row in response.context['materials'] if row == self.material_finished)
         self.assertIsNone(produced.filtered_produced)
-        self.assertEqual(len(response.context['page_obj'].object_list), 0)
+        self.assertEqual(len(response.context['rows']), 0)
 
     def test_the_line_item_is_dated_by_its_job(self):
         # A StockMovement has no timestamp of its own at all — its date is its
@@ -114,11 +114,11 @@ class ReportsUsePerformedOnTests(TestCase):
     def test_the_review_dashboard_filters_and_dates_by_the_work(self):
         work_order = self._back_dated_job()
         self.assertEqual(
-            list(self.client.get(reverse('job_dashboard'), self._that_month()).context['page_obj'].object_list),
+            list(self.client.get(reverse('job_dashboard'), self._that_month()).context['rows']),
             [work_order],
         )
         self.assertEqual(
-            list(self.client.get(reverse('job_dashboard'), self._last_week()).context['page_obj'].object_list),
+            list(self.client.get(reverse('job_dashboard'), self._last_week()).context['rows']),
             [],
         )
         self.assertContains(self.client.get(reverse('job_dashboard')), self.long_ago.isoformat())
@@ -134,7 +134,7 @@ class ReportsUsePerformedOnTests(TestCase):
         )
         newer = WorkOrder.objects.exclude(pk=older.pk).get()
         response = self.client.get(reverse('job_dashboard'))
-        self.assertEqual(list(response.context['page_obj'].object_list), [newer, older])
+        self.assertEqual(list(response.context['rows']), [newer, older])
 
 
 class MachineDashboardTests(TestCase):
@@ -360,7 +360,7 @@ class MachineReadingTests(TestCase):
         return MachineUsage.objects.create(work_order=work_order, machine=machine or self.machine, hours=hours)
 
     def _run_hours(self, response):
-        return {usage.pk: usage.run_hours for usage in response.context['page_obj']}
+        return {usage.pk: usage.run_hours for usage in response.context['rows']}
 
     def test_summary_shows_the_highest_reading_and_prices_the_hours_run(self):
         self._reading(Decimal('1000'))
@@ -511,14 +511,14 @@ class MachineUsageDetailTests(TestCase):
         self._usage(self.manager)
         self.client.force_login(self.manager)
         response = self.client.get(reverse('machine_dashboard'))
-        self.assertEqual(len(response.context['page_obj'].object_list), 2)
+        self.assertEqual(len(response.context['rows']), 2)
 
     def test_detail_filters_by_machine(self):
         matching = self._usage(self.worker, machine=self.machine)
         self._usage(self.worker, machine=self.other_machine)
         self.client.force_login(self.manager)
         response = self.client.get(reverse('machine_dashboard'), {'machine': self.machine.pk})
-        usages = response.context['page_obj'].object_list
+        usages = response.context['rows']
         self.assertEqual(list(usages), [matching])
 
     def test_detail_shows_no_rows_when_filter_is_invalid(self):
@@ -527,7 +527,7 @@ class MachineUsageDetailTests(TestCase):
         response = self.client.get(reverse('machine_dashboard'), {'date_from': 'not-a-date'})
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.context['form'].is_valid())
-        self.assertEqual(len(response.context['page_obj'].object_list), 0)
+        self.assertEqual(len(response.context['rows']), 0)
 
 
 class MaterialDashboardTests(TestCase):
@@ -621,7 +621,7 @@ class MaterialDashboardTests(TestCase):
         response = self.client.get(reverse('material_dashboard'))
         self.assertIsNone(self._row(response, self.finished).filtered_produced)
         self.assertEqual(self._row(response, self.finished).filtered_net, Decimal('0'))
-        self.assertEqual(len(response.context['page_obj'].object_list), 0)
+        self.assertEqual(len(response.context['rows']), 0)
 
     def test_material_with_no_movements_still_appears(self):
         # "We made none last month" is an answer; a missing row is not.
@@ -640,7 +640,7 @@ class MaterialDashboardTests(TestCase):
         # Its history is still readable — that is what the filter is for.
         self.assertIn(self.retired, response.context['form'].fields['material'].queryset)
         narrowed = self.client.get(reverse('material_dashboard'), {'material': self.retired.pk})
-        self.assertEqual(len(narrowed.context['page_obj'].object_list), 1)
+        self.assertEqual(len(narrowed.context['rows']), 1)
 
     def test_totals_follow_the_date_filter(self):
         self._job(
@@ -653,7 +653,7 @@ class MaterialDashboardTests(TestCase):
             reverse('material_dashboard'), {'date_from': (date.today() - timedelta(days=7)).isoformat()}
         )
         self.assertEqual(self._row(response, self.finished).filtered_produced, Decimal('1.500'))
-        self.assertEqual(len(response.context['page_obj'].object_list), 2)
+        self.assertEqual(len(response.context['rows']), 2)
 
     def test_an_invalid_filter_shows_nothing(self):
         # A catalog of zeros under a "these are your filtered results" heading
@@ -663,12 +663,12 @@ class MaterialDashboardTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.context['form'].is_valid())
         self.assertEqual(list(response.context['materials']), [])
-        self.assertEqual(len(response.context['page_obj'].object_list), 0)
+        self.assertEqual(len(response.context['rows']), 0)
 
     def test_detail_rows_name_the_direction_and_the_author(self):
         self._job(consumed=[(self.raw, Decimal('5'))], produced=[(self.finished, Decimal('5'))])
         response = self.client.get(reverse('material_dashboard'))
-        self.assertEqual(len(response.context['page_obj'].object_list), 2)
+        self.assertEqual(len(response.context['rows']), 2)
         self.assertContains(response, 'Spotřeba')
         self.assertContains(response, 'Výroba')
         self.assertContains(response, self.worker.username)
@@ -683,7 +683,7 @@ class MaterialDashboardTests(TestCase):
         ):
             with self.subTest(movement_type=movement_type):
                 response = self.client.get(reverse('material_dashboard'), {'movement_type': movement_type})
-                rows = response.context['page_obj'].object_list
+                rows = response.context['rows']
                 self.assertEqual([(row.movement_type, row.material) for row in rows], [(movement_type, material)])
                 self.assertEqual(self._row(response, self.finished).filtered_produced, Decimal('5.000'))
                 self.assertEqual(self._row(response, self.raw).filtered_consumed, Decimal('5.000'))
@@ -700,7 +700,7 @@ class MaterialDashboardTests(TestCase):
         response = self.client.get(reverse('material_dashboard'), {'movement_type': 'ADJUSTMENT'})
         self.assertFalse(response.context['form'].is_valid())
         self.assertEqual(list(response.context['materials']), [])
-        self.assertEqual(len(response.context['page_obj'].object_list), 0)
+        self.assertEqual(len(response.context['rows']), 0)
 
 
 class TimeWorkedTests(TestCase):
@@ -794,7 +794,7 @@ class TimeWorkedTests(TestCase):
         row = self._summary_for(response, self.worker)
         self.assertEqual(row['hours'], Decimal('3.00'))
         self.assertEqual(row['orders'], 1)
-        listed = response.context['page_obj'].object_list
+        listed = response.context['rows']
         self.assertEqual([o.pk for o in listed], [work_order.pk])
         self.assertEqual(listed[0].total_hours, Decimal('5.00'))
 
@@ -815,8 +815,8 @@ class TimeWorkedTests(TestCase):
         )
         self.assertEqual(response.context['total_hours'], Decimal('3.00'))
         # The job list still shows the whole job.
-        self.assertEqual([o.pk for o in response.context['page_obj'].object_list], [work_order.pk])
-        self.assertEqual(response.context['page_obj'].object_list[0].total_hours, Decimal('5.00'))
+        self.assertEqual([o.pk for o in response.context['rows']], [work_order.pk])
+        self.assertEqual(response.context['rows'][0].total_hours, Decimal('5.00'))
 
     def test_manager_sees_every_worker(self):
         self._job(self.worker, Decimal('2'))
@@ -834,8 +834,8 @@ class TimeWorkedTests(TestCase):
         response = self.client.get(reverse('time_worked'))
         self.assertEqual(response.context['summary'], [])
         # It still belongs to the worker, so the job itself stays listed.
-        self.assertEqual([o.pk for o in response.context['page_obj'].object_list], [work_order.pk])
-        self.assertIsNone(response.context['page_obj'].object_list[0].total_hours)
+        self.assertEqual([o.pk for o in response.context['rows']], [work_order.pk])
+        self.assertIsNone(response.context['rows'][0].total_hours)
 
     def test_worker_filter_hidden_from_worker(self):
         self.client.force_login(self.worker)
@@ -878,14 +878,14 @@ class TimeWorkedTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.context['form'].is_valid())
         self.assertEqual(response.context['summary'], [])
-        self.assertEqual(len(response.context['page_obj'].object_list), 0)
+        self.assertEqual(len(response.context['rows']), 0)
 
     def test_detail_list_scoped_to_worker(self):
         own = self._job(self.worker, Decimal('2'))
         self._job(self.other_worker, Decimal('8'))
         self.client.force_login(self.worker)
         response = self.client.get(reverse('time_worked'))
-        self.assertEqual([o.pk for o in response.context['page_obj'].object_list], [own.pk])
+        self.assertEqual([o.pk for o in response.context['rows']], [own.pk])
 
 
 class SouhrnFleetTests(TestCase):
@@ -936,7 +936,7 @@ class SouhrnFleetTests(TestCase):
         WorkerHours.objects.create(work_order=WorkOrder.objects.get(), user=self.other_worker, hours=Decimal('8'))
         response = self.client.get(reverse('time_worked'))
         self.assertEqual(response.context['summary'], [])
-        self.assertEqual(len(response.context['page_obj'].object_list), 0)
+        self.assertEqual(len(response.context['rows']), 0)
         self.assertEqual(response.context['fleet']['machines'][0].filtered_tons, Decimal('10.00'))
 
     def test_pending_entries_are_not_counted(self):
@@ -994,8 +994,8 @@ class SouhrnFleetTests(TestCase):
 APPROVED = WorkOrder.Status.APPROVED
 
 
-class ShowAllTests(TestCase):
-    """Report tables start at PREVIEW_ROWS rows; „Zobrazit vše" shows the rest, and exports always hold every row."""
+class ShowMoreTests(TestCase):
+    """Report tables start at PREVIEW_ROWS rows; each „Zobrazit více" adds MORE_ROWS, and exports always hold every row."""
 
     MANY = PREVIEW_ROWS + 2
 
@@ -1039,82 +1039,93 @@ class ShowAllTests(TestCase):
                     table = tables[key]
                     self.assertEqual(len(table['rows']), PREVIEW_ROWS)
                     self.assertEqual(table['total'], self.MANY)
-                    self.assertTrue(table['has_more'])
+                    self.assertEqual(table['more'], self.MANY - PREVIEW_ROWS)
                     self.assertContains(response, f'id="{table["anchor"]}"')
-                    self.assertContains(response, f'Zobrazit vše ({self.MANY})')
+                    self.assertContains(response, f'Zobrazit více ({self.MANY - PREVIEW_ROWS})')
+                    self.assertContains(response, f'Zobrazeno {PREVIEW_ROWS} z {self.MANY} záznamů')
 
     def test_a_short_table_has_no_button(self):
-        _, tables = self._tables('material_dashboard', self.manager)
+        response, tables = self._tables('material_dashboard', self.manager)
         self.assertEqual(len(tables['materials']['rows']), 1)
-        self.assertFalse(tables['materials']['has_more'])
+        self.assertEqual(tables['materials']['more'], 0)
+        self.assertContains(response, 'Zobrazeno 1 z 1 záznamu')
         _, tables = self._tables('time_worked', self.worker)
-        self.assertFalse(tables['hours']['has_more'])
+        self.assertEqual(tables['hours']['more'], 0)
 
-    def test_show_all_expands_only_its_own_table(self):
-        _, tables = self._tables('machine_dashboard', self.manager, {EXPAND_PARAM: 'usages'})
-        self.assertEqual(len(tables['usages']['rows']), self.MANY)
-        self.assertTrue(tables['usages']['expanded'])
-        self.assertFalse(tables['usages']['has_more'])
-        self.assertEqual(len(tables['machines']['rows']), PREVIEW_ROWS)
-
-    def test_the_link_keeps_the_filters_and_the_tables_already_expanded(self):
-        date_from = (date.today() - timedelta(days=7)).isoformat()
-        response, tables = self._tables(
-            'machine_dashboard', self.manager, {'date_from': date_from, EXPAND_PARAM: 'usages'}
-        )
-        querystring = tables['machines']['expand_querystring']
-        self.assertIn(f'date_from={date_from}', querystring)
-        self.assertIn(f'{EXPAND_PARAM}=usages', querystring)
-        self.assertIn(f'{EXPAND_PARAM}=machines', querystring)
-        self.assertContains(response, f'href="?{querystring.replace("&", "&amp;")}#tabulka-machines"')
-        # Expanding a second table keeps the first one open.
-        _, tables = self._tables('machine_dashboard', self.manager, querystring)
-        self.assertTrue(tables['usages']['expanded'])
-        self.assertTrue(tables['machines']['expanded'])
-
-    def test_a_paginated_table_shows_its_page_links_only_once_expanded(self):
+    def _bulk_usages(self, count):
         work_order = WorkOrder.objects.create(created_by=self.worker, description='bulk', status=APPROVED)
         MachineUsage.objects.bulk_create(
-            MachineUsage(work_order=work_order, machine=self.machines[1], hours=1000 + i)
-            for i in range(HISTORY_PAGE_SIZE)
+            MachineUsage(work_order=work_order, machine=self.machines[1], hours=1000 + i) for i in range(count)
         )
-        response, tables = self._tables('machine_dashboard', self.manager)
-        self.assertEqual(tables['usages']['total'], self.MANY + HISTORY_PAGE_SIZE)
-        self.assertNotContains(response, 'Další</a>')
-        response, tables = self._tables('machine_dashboard', self.manager, {EXPAND_PARAM: 'usages'})
-        self.assertEqual(len(tables['usages']['rows']), HISTORY_PAGE_SIZE)
-        # The page links carry the expansion, so page two is expanded too.
-        self.assertContains(response, f'href="?{EXPAND_PARAM}=usages&page=2">Další</a>')
 
-    def test_an_expanded_table_offers_to_collapse(self):
-        response, tables = self._tables('time_worked', self.worker, {EXPAND_PARAM: ['jobs', 'machines']})
+    def test_each_click_shows_at_most_more_rows(self):
+        self._bulk_usages(MORE_ROWS + 30)
+        total = self.MANY + MORE_ROWS + 30
+        response, tables = self._tables('machine_dashboard', self.manager)
+        self.assertContains(response, f'Zobrazit více ({MORE_ROWS})')
+        response, tables = self._tables('machine_dashboard', self.manager, tables['usages']['more_querystring'])
+        table = tables['usages']
+        self.assertEqual(len(table['rows']), PREVIEW_ROWS + MORE_ROWS)
+        self.assertEqual(table['more'], total - PREVIEW_ROWS - MORE_ROWS)
+        self.assertContains(response, f'Zobrazit více ({total - PREVIEW_ROWS - MORE_ROWS})')
+        self.assertContains(response, f'Zobrazeno {PREVIEW_ROWS + MORE_ROWS} z {total} záznamů')
+        response, tables = self._tables('machine_dashboard', self.manager, tables['usages']['more_querystring'])
+        self.assertEqual(len(tables['usages']['rows']), total)
+        self.assertEqual(tables['usages']['more'], 0)
+        self.assertNotContains(response, '#tabulka-usages">Zobrazit více')
+
+    def test_more_grows_only_its_own_table(self):
+        _, tables = self._tables('machine_dashboard', self.manager, {'vice_usages': '1'})
+        self.assertEqual(len(tables['usages']['rows']), self.MANY)
+        self.assertEqual(len(tables['machines']['rows']), PREVIEW_ROWS)
+
+    def test_the_link_keeps_the_filters_and_the_tables_already_grown(self):
+        date_from = (date.today() - timedelta(days=7)).isoformat()
+        response, tables = self._tables('machine_dashboard', self.manager, {'date_from': date_from, 'vice_usages': '1'})
+        querystring = tables['machines']['more_querystring']
+        self.assertIn(f'date_from={date_from}', querystring)
+        self.assertIn('vice_usages=1', querystring)
+        self.assertIn('vice_machines=1', querystring)
+        self.assertContains(response, f'href="?{querystring.replace("&", "&amp;")}#tabulka-machines"')
+        _, tables = self._tables('machine_dashboard', self.manager, querystring)
+        self.assertEqual(len(tables['usages']['rows']), self.MANY)
+        self.assertEqual(len(tables['machines']['rows']), self.MANY)
+
+    def test_the_export_links_ignore_the_table_sizes(self):
+        response, _ = self._tables('material_dashboard', self.manager, {'vice_movements': '1', 'location': ''})
+        self.assertEqual(response.context['querystring'], 'location=')
+
+    def test_a_tampered_count_is_clamped(self):
+        for value in ('-3', 'x', '99999999999999999999999'):
+            with self.subTest(value=value):
+                _, tables = self._tables('machine_dashboard', self.manager, {'vice_usages': value})
+                self.assertIn(len(tables['usages']['rows']), (PREVIEW_ROWS, self.MANY))
+        _, tables = self._tables('machine_dashboard', self.manager, {'vice_usages': '99999999999999999999999'})
+        self.assertEqual(tables['usages']['more_querystring'], 'vice_usages=2')
+
+    def test_a_grown_table_offers_to_collapse(self):
+        response, tables = self._tables('time_worked', self.worker, {'vice_jobs': '1', 'vice_machines': '1'})
         table = tables['jobs']
         self.assertTrue(table['can_collapse'])
         self.assertContains(response, 'Zobrazit méně')
-        # Collapsing takes out only this table's key.
-        self.assertEqual(table['collapse_querystring'], f'{EXPAND_PARAM}=machines')
+        # Collapsing takes out only this table's count.
+        self.assertEqual(table['collapse_querystring'], 'vice_machines=1')
         _, tables = self._tables('time_worked', self.worker, table['collapse_querystring'])
         self.assertEqual(len(tables['jobs']['rows']), PREVIEW_ROWS)
-        self.assertTrue(tables['machines']['expanded'])
+        self.assertEqual(len(tables['machines']['rows']), self.MANY)
 
-    def test_collapsing_a_paginated_table_drops_its_page_but_not_the_other(self):
-        params = f'{EXPAND_PARAM}=refuel_rows&{EXPAND_PARAM}=usages&page=1&fuel_page=1'
-        _, tables = self._tables('machine_dashboard', self.manager, params)
-        self.assertEqual(tables['usages']['collapse_querystring'], f'{EXPAND_PARAM}=refuel_rows&fuel_page=1')
-        self.assertEqual(tables['refuel_rows']['collapse_querystring'], f'{EXPAND_PARAM}=usages&page=1')
-
-    def test_a_short_expanded_table_has_no_collapse_button(self):
-        response, tables = self._tables('material_dashboard', self.manager, {EXPAND_PARAM: 'materials'})
+    def test_a_short_table_has_no_collapse_button(self):
+        response, tables = self._tables('material_dashboard', self.manager, {'vice_materials': '1'})
         self.assertFalse(tables['materials']['can_collapse'])
         self.assertNotContains(response, 'Zobrazit méně')
 
-    def test_prehled_lists_start_cut_and_expand(self):
+    def test_prehled_lists_start_cut_and_grow(self):
         for url_name, key in (('job_dashboard', 'jobs'), ('refuel_dashboard', 'refuellings')):
             with self.subTest(page=url_name):
                 response, tables = self._tables(url_name, self.manager)
                 self.assertEqual(len(tables[key]['rows']), PREVIEW_ROWS)
-                self.assertContains(response, f'Zobrazit vše ({self.MANY})')
-                response, tables = self._tables(url_name, self.manager, {EXPAND_PARAM: key})
+                self.assertContains(response, f'Zobrazit více ({self.MANY - PREVIEW_ROWS})')
+                response, tables = self._tables(url_name, self.manager, {f'vice_{key}': '1'})
                 self.assertEqual(len(tables[key]['rows']), self.MANY)
                 self.assertContains(response, 'Zobrazit méně')
 
@@ -1173,7 +1184,7 @@ class DatePresetTests(ReviewFixtureMixin, TestCase):
         self.client.force_login(self.manager)
         querystring = self.preset(self.client.get(reverse('job_dashboard')), '30d')['querystring']
         response = self.client.get(f'{reverse("job_dashboard")}?{querystring}')
-        self.assertEqual(list(response.context['page_obj'].object_list), [recent])
+        self.assertEqual(list(response.context['rows']), [recent])
 
     def test_vse_clears_the_range(self):
         self.client.force_login(self.manager)
@@ -1197,8 +1208,8 @@ class DatePresetTests(ReviewFixtureMixin, TestCase):
 
     def test_the_other_filters_survive_the_tap(self):
         self.client.force_login(self.manager)
-        response = self.client.get(reverse('job_dashboard'), {'created_by': self.worker.pk, 'page': '2'})
+        response = self.client.get(reverse('job_dashboard'), {'created_by': self.worker.pk, 'vice_jobs': '2'})
         querystring = self.preset(response, '7d')['querystring']
         self.assertIn(f'created_by={self.worker.pk}', querystring)
-        # A new range starts at page one.
-        self.assertNotIn('page=', querystring)
+        # A new range starts with the tables cut back.
+        self.assertNotIn('vice_', querystring)

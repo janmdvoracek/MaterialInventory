@@ -166,7 +166,7 @@ class AdminCollaboratorsTests(ReviewFixtureMixin, TestCase):
         # And so the job reaches that worker's Souhrn.
         self.client.force_login(self.other_worker)
         response = self.client.get(reverse('time_worked'))
-        self.assertEqual([job.pk for job in response.context['page_obj'].object_list], [self.job.pk])
+        self.assertEqual([job.pk for job in response.context['rows']], [self.job.pk])
 
     def test_a_removed_hours_row_drops_the_collaborator(self):
         rows = [{**row, 'DELETE': 'on'} if row['user'] == self.worker.pk else row for row in self._stored_hours()]

@@ -349,14 +349,14 @@ Service workers need HTTPS or `localhost`. To test on Android against the dev se
 
 Souhrn, Stroje and Materiál share one shape: a filter, a summary table, and the detail rows the summary is made of. One dataset at two zoom levels, under one filter. Every summary is built from the filtered rows (`<rel>__in=rows.values('pk')`), so the two tables can't disagree.
 
-**Tables start short.** Every report table, and the Přehled and Přehled tankování lists, shows its first `PREVIEW_ROWS` (5) rows, so a phone gets all the cards on one screen. Below a cut table, „Zobrazit vše (n)" (`_show_all.html`) shows the rest, and once it is expanded „Zobrazit méně" cuts it again:
+**Tables start short.** Every report table, and the Přehled and Přehled tankování lists, shows its first `PREVIEW_ROWS` (5) rows, so a phone gets all the cards on one screen. Above each table, „Zobrazeno n z m záznamů" (`_shown_count.html`) says how much of it is showing. Below a cut table, „Zobrazit více (n)" (`_show_more.html`) shows `MORE_ROWS` (50) more, or however many are left, on the same page; once it has grown, „Zobrazit méně" cuts it back. There is no pagination: page two of the same report looked like a different set of tables.
 
-- It is a plain link, not a script, like the date presets. It appends the table's key to `?vse=` (`EXPAND_PARAM`), keeps every other parameter (filters, page numbers, tables already expanded), and ends in `#tabulka-<key>` so the page lands back on that card.
-- „Zobrazit méně" removes only its own key from `vse`, plus that table's page param (`page` or `fuel_page`), so the next expansion starts on page one. It shows only when there is something to hide (more than 5 rows).
-- `_previews(request, key=rows, …)` builds `tables` in the context; each entry has `rows`, `total`, `has_more`, `can_collapse`, `expanded`, `expand_querystring`, `collapse_querystring` and `anchor`. A paginated table is passed as its `_paginated` dict (`page_obj` + `page_param`), not the bare page. Templates loop over `tables.<key>.rows`. The raw context (`machines`, `summary`, `page_obj`, …) is unchanged.
-- A paginated table, once expanded, is the usual 50-row page with its page links; collapsed, it shows no page links. `total` counts all its pages.
-- Submitting the filter form drops `vse`, so a new filter starts collapsed.
-- **Exports are unaffected**: they never read `vse` and always hold every filtered row.
+- It is a plain link, not a script, like the date presets. It counts its clicks in `?vice_<key>=` (`MORE_PARAM_PREFIX`), keeps every other parameter (filters, other tables' counts), and ends in `#tabulka-<key>` so the page lands back on that card.
+- The count is untrusted: unparsable or negative is 0, and it is capped at the clicks it takes to show every row.
+- „Zobrazit méně" removes only its own `vice_<key>`. It shows only once the table has grown.
+- `_previews(request, key=rows, …)` builds `tables` in the context; each entry has `rows`, `shown`, `total`, `more`, `can_collapse`, `more_querystring`, `collapse_querystring` and `anchor`. A queryset is counted with `count()` and sliced, so a long detail table is never loaded whole. Templates loop over `tables.<key>.rows`. The raw context (`machines`, `summary`, `rows`, …) holds every row.
+- Submitting the filter form, or a quick date range, drops the counts, so a new filter starts short.
+- **Exports are unaffected**: they never read the counts (`querystring` leaves them out) and always hold every filtered row.
 
 ### Stroje
 
@@ -393,7 +393,7 @@ The distinction throughout is unknown versus zero:
 
 **Fuel.** The *Tankování* card (`MachineReport.fuel_summary`) shows litres and fill-up count per machine from approved refuellings, under the same filter and with the same two listing rules. `RefuelFilterForm` is `MachineFilterForm` with its date and author read off the refuelling. Its zeros are real (`Coalesce`), so it stays a queryset. „Detail tankování" shows each fill-up's source and links to its refuelling.
 
-The two detail tables paginate independently. `_paginated(request, rows, param)` gives each its own page parameter and keeps the other table's page in its links. `MachineRefuelReportTests` covers this.
+The two detail tables grow independently: each has its own `vice_<key>`, and its link keeps the other's. `MachineRefuelReportTests` covers this.
 
 ### Materiál
 
@@ -542,12 +542,12 @@ Returning everything for a bad filter, under a "filtered results" heading, would
 
 **Worker scoping** is done in the queryset, never by hiding fields. Only `time_worked` needs it, being the only filtered page a worker can open, and only for its labour tables: its machine and fuel tables are shared on purpose (see [Souhrn](#souhrn)). `TimeWorkedFilterForm` deleting its `worker` field for a worker is cosmetic; the queryset filter is what makes `?worker=<someone>` a no-op (`test_worker_cannot_bypass_restriction_via_worker_param`). Don't add scoping to `role_required` views.
 
-**Quick date ranges.** Vše, posledních 7 dní, posledních 30 dní and minulý měsíc come from `DATE_PRESETS` / `_date_preset_links`. They are plain links that set `date_from`/`date_to`, keep the other parameters and drop the page parameters. The spans include today, and the active one is highlighted.
+**Quick date ranges.** Vše, posledních 7 dní, posledních 30 dní and minulý měsíc come from `DATE_PRESETS` / `_date_preset_links`. They are plain links that set `date_from`/`date_to`, keep the other parameters and drop the tables' „Zobrazit více" counts. The spans include today, and the active one is highlighted.
 
 A new filtered page needs both:
 
-- `**_list_page_context(request, rows)`: `page_obj`, `querystring` and `date_presets`. Taking only part of it makes the filter vanish on page two.
-- The `_filter_card.html` and `_pagination.html` includes.
+- `**_list_page_context(request, rows)`: `rows`, `querystring` (the filter, for the export links) and `date_presets`.
+- The `_filter_card.html` include, and `_shown_count.html` / `_show_more.html` around each table.
 
 ## Deliberately absent
 

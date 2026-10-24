@@ -173,7 +173,7 @@ Bez filtru jsou vidět všechny stroje. Stroj s **0 h** v daném období neběž
 
 Nevyplněná sazba znamená „takhle se stroj neúčtuje", ne „zdarma". **Celkem** je pomlčka, když se cena spočítat nedá: stroj nemá sazbu, nebo je naceněný po tunách a tuny chybí. Naceněný stroj, který neběžel, má **0,00**.
 
-**Tankování** se bere z formuláře [Tankování](#tankování). Tady pomlčka není, **0,00 l** znamená, že se netankovalo. Obě detailní tabulky se stránkují zvlášť.
+**Tankování** se bere z formuláře [Tankování](#tankování). Tady pomlčka není, **0,00 l** znamená, že se netankovalo. Obě detailní tabulky se rozbalují zvlášť.
 
 ## Materiál
 
@@ -204,7 +204,7 @@ Obě tabulky řídí jen datum ve filtru. Vedoucí je tu nemá, stejná čísla 
 
 Nahoře je pět zakázek, které jste naposledy **zapsali vy**, seřazené podle času zápisu. Ukazují stav: žluté *Čeká na schválení*, nebo *Schváleno*. Tady zjistíte, proč vám hodiny zatím chybí. Smazaná zakázka zmizí. Zakázky, kde jste jen spolupracovník, tu nejsou, objeví se vám po schválení v Odpracovaných hodinách. Filtry tuto tabulku neovlivňují. Vedoucí ji nemá.
 
-> **Zobrazit vše:** tabulky v Souhrnu, Strojích, Materiálu i v Přehledu ukazují nejdřív **pět řádků**. Je-li jich víc, je pod tabulkou tlačítko **Zobrazit vše** s jejich počtem. **Zobrazit méně** tabulku zase zkrátí. Filtry zůstanou. Export do Excelu obsahuje vždy všechny řádky.
+> **Zobrazit více:** tabulky v Souhrnu, Strojích, Materiálu i v Přehledu ukazují nejdřív **pět řádků**. Nad tabulkou je vidět, kolik řádků je zobrazeno a kolik jich je celkem (např. *Zobrazeno 5 z 481 záznamů*). Je-li jich víc, je pod tabulkou tlačítko **Zobrazit více**: každé klepnutí přidá dalších **50 řádků**, nebo kolik jich zbývá (číslo je v závorce). **Zobrazit méně** tabulku zase zkrátí. Filtry zůstanou. Export do Excelu obsahuje vždy všechny řádky.
 
 > **Rychlé období:** nad každým filtrem jsou tlačítka **Vše**, **Posledních 7 dní**, **Posledních 30 dní** a **Minulý měsíc**. Ostatní filtry zůstanou. **Vše** filtr data zruší.
 
@@ -218,7 +218,7 @@ Pod tabulkami je tlačítko **Stáhnout do CSV / Excelu**. Stáhne se tabulka **
 | Stroje | Stav strojů, Tankování, Detail tankování, Detail používání strojů |
 | Materiál | Souhrn materiálů, Detail položek |
 
-- Stáhne se **celá tabulka**, i když jich je na stránce vidět jen pět. **Detailní tabulky** (Detail položek, Detail tankování, Detail používání strojů) se stáhnou celé, ne jen otevřená stránka. Hodí se k porovnání s dodacími listy a doklady za naftu.
+- Stáhne se **celá tabulka**, i když jich je na stránce vidět jen pět. **Detailní tabulky** (Detail položek, Detail tankování, Detail používání strojů) se stáhnou celé, ne jen zobrazené řádky. Hodí se k porovnání s dodacími listy a doklady za naftu.
 - Soubor otevřete poklepáním. Excel ho rozdělí do sloupců a čísla umí sečíst.
 - **Prázdná buňka znamená „nevíme"** (na stránce pomlčka). Nula se tam schválně nepíše, aby nepokazila součet.
 - Jsou v něm jen schválené zakázky a pracovník stáhne jen své hodiny. Při chybném filtru je soubor bez řádků.

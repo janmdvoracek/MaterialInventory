@@ -49,7 +49,7 @@ def refuel_dashboard(request):
         {
             'form': form,
             'pending_count': Refuelling.objects.filter(status=Refuelling.Status.PENDING).count(),
-            'tables': _previews(request, refuellings=listing),
+            'tables': _previews(request, refuellings=listing['rows']),
             **listing,
         },
     )

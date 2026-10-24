@@ -267,6 +267,8 @@ tr.row-pending > td { background: var(--row-pending-bg); }
 .btn.danger { background: var(--btn-danger-bg); color: var(--btn-danger-text); }
 .btn.danger:hover { background: var(--btn-danger-hover); }
 .muted { color: var(--text-muted); }
+/* „Zobrazeno 5 z 481 záznamů" above a report table. */
+.table-count { font-size: 0.875rem; margin: 0 0 0.5rem; }
 /* The row buttons under each job-form section: smaller and not full width. */
 .row-controls { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; }
 .row-controls button {

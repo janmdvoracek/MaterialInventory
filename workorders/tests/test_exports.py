@@ -12,7 +12,7 @@ from accounts.models import User
 from machines.models import Machine
 from materials.models import Material
 from workorders.models import MachineUsage, StockMovement, WorkerHours, WorkOrder
-from workorders.reports import HISTORY_PAGE_SIZE
+from workorders.reports import MORE_ROWS
 
 from .helpers import default_location
 
@@ -274,14 +274,13 @@ class TableExportTests(TestCase):
         self.assertContains(page, f'<a href="{reverse("job_detail", args=[first.pk])}">#{first.pk}</a>', count=2)
 
     def test_detail_export_is_every_row_not_one_page(self):
-        # The page paginates at HISTORY_PAGE_SIZE; a file holding the first 50
-        # of 60 rows under the heading of the whole filter would be worse than
-        # no file at all.
-        for _ in range(HISTORY_PAGE_SIZE):
+        # The page shows the rows a few at a time; a file holding only those
+        # under the heading of the whole filter would be worse than no file at all.
+        for _ in range(MORE_ROWS):
             self._job(quantity=Decimal('1'))
         self.client.force_login(self.manager)
         rows = self._rows(self.client.get(reverse('material_detail_export')))
-        self.assertEqual(len(rows) - 1, HISTORY_PAGE_SIZE * 2)
+        self.assertEqual(len(rows) - 1, MORE_ROWS * 2)
 
     def test_detail_export_follows_the_filter_and_hides_pending_jobs(self):
         # Same two rules as every other download, and for the same reason: it
@@ -357,11 +356,11 @@ class TableExportTests(TestCase):
         )
 
     def test_usage_detail_export_is_every_row_not_one_page(self):
-        for _ in range(HISTORY_PAGE_SIZE + 1):
+        for _ in range(MORE_ROWS + 1):
             self._job(usage=(None, Decimal('1')))
         self.client.force_login(self.manager)
         rows = self._rows(self.client.get(reverse('machine_usage_detail_export')))
-        self.assertEqual(len(rows) - 1, HISTORY_PAGE_SIZE + 1)
+        self.assertEqual(len(rows) - 1, MORE_ROWS + 1)
 
     def test_usage_detail_export_follows_the_filter_and_hides_pending_jobs(self):
         # The run time still counts from the unfiltered baseline, as on the page.
