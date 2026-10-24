@@ -165,7 +165,7 @@ It is shown and filtered on Přehled and Materiál only, plus `job_detail` and t
 - **Checked together first.** `WorkOrderForm._clean_photos` checks the count (stored minus removed plus new, at most `PHOTO_MAX_COUNT`) and the total (`PHOTO_MAX_TOTAL_BYTES`, 20 MB) before decoding anything. The 20 MB sits below the `Caddyfile`'s 25 MB `request_body` cap, so a refused batch gets a Czech error instead of a 413.
 - **The admin goes through the same check** (`JobPhotoForm`). `JobPhotoInline.max_num` repeats the count.
 - **Storage.** A `FileField`, not an `ImageField`, since the form already decodes. Files are named with a uuid under `job_photos/<year>/<month>/`, by upload month.
-- **Never public.** `MEDIA_URL` routes to `protected_media` (`role_required(MANAGER, ADMIN)`). Neither whitenoise nor Caddy serves `MEDIA_ROOT`.
+- **Never public.** `MEDIA_URL` routes to `protected_media`, open to managers and admins, and to a worker only for a photo of their own pending job (`JobKind.may_edit`, since `job_edit` shows it to them; `job_photo` follows the same rule). Anything else, a missing file included, is a 403 for a worker. Neither whitenoise nor Caddy serves `MEDIA_ROOT`.
 - **Two inputs.** `photo` (`accept="image/*"`, `multiple`) opens the gallery. `camera_photo` (`capture="environment"`) opens the camera; Chrome and Opera on Android offer no camera from a bare `accept` input, and `capture` removes the gallery. `clean()` merges the two into one list.
 - **`enctype="multipart/form-data"` is on each caller's `<form>`.** Without it the browser posts only the file name.
 - **File inputs lose their picks on every re-render** (an error, or a no-JS row button). That is why the field renders last, with a hint. Stored photos survive, as `remove_photos` checkboxes.
@@ -192,15 +192,19 @@ It is shown and filtered on Přehled and Materiál only, plus `job_detail` and t
 
 **An entry counts only once approved.** Souhrn, Stroje and Materiál report approved jobs and refuellings only. A worker's submission is saved `PENDING`; a manager's or admin's own is saved `APPROVED` with themselves as reviewer, since there's nobody above them (`_review_on_submit`, applied by `Kind.save` on create).
 
-The review pages under `/jobs/` and `/refuels/` are all `role_required(MANAGER, ADMIN)` and offer three actions: **approve, edit, delete**. Approve and edit are the generic `entry_approve` and `entry_edit`, with `_approve` shared; delete stays per kind, since its confirmation page differs. An entry is never handed back to its author, and editing does not approve. Přehled links to the refuelling list („Přehled tankování") with its pending count, and Stroje's „Detail tankování" links each fill-up to its refuelling.
+The review pages under `/jobs/` and `/refuels/` are all `role_required(MANAGER, ADMIN)` and offer three actions: **approve, edit, delete**. Approve and edit are the generic `entry_approve` and `entry_edit`, with `_approve` shared; delete stays per kind, since its confirmation page differs. An entry is never handed back to its author, and editing does not approve. The one exception to the gate is `job_edit` for a job's own author while it is pending (below).
+
+**An approval is of the version the reviewer read.** Since an author can edit a pending job, a manager could otherwise approve a version they never saw: open the detail, the author corrects it, click „Schválit". So both entries carry a `revision`, raised by every edit (`Kind.save`, and `save_model` in `WorkOrderAdmin` and `RefuellingAdmin`). The detail page posts the revision it rendered, and `_approve` approves in one conditional `UPDATE … WHERE pk, revision, status = PENDING`; nothing approved means the manager gets `changed_message` and the fresh page. A missing or unparsable revision is refused the same way, and approving an already-approved entry changes nothing. The other order is covered by `Kind.save`: an edit takes `select_for_update` on the entry and asks `may_edit` again, so an author's save that started before an approval is refused once it commits. Both are in the database, so no `TransactionTestCase` is needed. `StaleApprovalTests` covers this. Přehled links to the refuelling list („Přehled tankování") with its pending count, and Stroje's „Detail tankování" links each fill-up to its refuelling.
 
 ### What a worker sees
 
-A pending job is invisible in every report, so `my_jobs` is the only feedback. It sits at the top of Souhrn and shows the worker's last `MY_JOBS_LIMIT` (5) submissions with a status badge and their own hours.
+A pending job is invisible in every report, so `my_jobs` and the pending banner below are the only feedback. `my_jobs` sits at the top of Souhrn and shows the worker's last `MY_JOBS_LIMIT` (5) submissions with a status badge and their own hours.
 
 - It is scoped by `created_by` only. Being named on someone else's job is not recording one.
 - It ignores the filter form, which scopes the approved-hours report.
 - It is empty for managers, who have Přehled.
+
+Above the Zpracování form, `pending_jobs` (`_my_pending_jobs`, from `JobKind.extra_context`) links every job of the user's that is still `PENDING`, oldest first, to `job_edit`. **The author may correct a pending job** until it is approved: `entry_edit` asks `Kind.may_edit`, which lets a reviewer edit anything and, for a kind with `author_edits_pending` (only `JOB`), the job's `created_by` while it is pending. Being a collaborator is not enough. The edit is the reviewer's edit (same kind, mass balance, no „Zapsat za"), except that it returns to the form rather than to `job_detail`, which stays a reviewer's page. Approval closes it again with a 403. `PendingJobEditTests` covers this.
 
 Refuellings get the same thing on their own page: `my_refuellings` (`_my_recent_refuellings`) lists a worker's last `MY_JOBS_LIMIT` refuellings under the Tankování form.
 
@@ -470,7 +474,7 @@ All URLs are in `workorders/urls.py`, mounted at the root. Login and password ch
 | `/machines/fuel/detail/export/` | `machine_refuel_detail_export` | CSV |
 | `/materials/export/` | `material_dashboard_export` | CSV |
 | `/materials/detail/export/` | `material_detail_export` | CSV |
-| `/media/<path>` | `protected_media` | Job photos, manager only |
+| `/media/<path>` | `protected_media` | Job photos, manager only (and a pending job's author) |
 | `/manifest.webmanifest`, `/sw.js`, `/offline/` | `web_manifest`, `service_worker`, `offline` | PWA, public |
 
 `entry.py` holds `EntryPage`, the entry page both forms are built on: the row and sum buttons, the unbound rebuild, the error banner, the page context and writing the rows. `sections.py` holds the sections (`JOB_SECTIONS`, `REFUEL_SECTIONS`), each owning its rows end to end: how they render, how they come off a recorded entry, which retired records they keep pickable, and how they are stored. `kinds.py` holds the entry kinds, `JOB` and `REFUELLING`: what each entry is (model, form, sections, own fields, templates, messages), the hooks where the two differ (author, form kwargs, edit pre-fill, page-level rule, extra rows, extra context), the shared `page` / `is_valid` / `save`, and the review helpers (`_review_on_submit`, `_approve`). `views.py` holds the generic `entry_create`, `entry_edit` and `entry_approve`, which `urls.py` wires to each kind under the URL names in the table above, plus the job's read-only pages. `refuels.py` holds the refuelling's read-only pages. `reports.py` holds the reports, exports and list helpers. `REVIEWER_ROLES` lives in `accounts/decorators.py`, so neither module imports the other for it.
@@ -500,7 +504,7 @@ Separate desktop templates chosen by user agent were considered and rejected: th
 
 The gates:
 
-- **`role_required(*roles)`** on views. Anonymous users get the login redirect; the wrong role gets a 403. The `/jobs/` pages, Stroje, Materiál and `protected_media` all use it. Hiding a nav link is not access control.
+- **`role_required(*roles)`** on views. Anonymous users get the login redirect; the wrong role gets a 403. The `/jobs/` pages (except `job_edit` and `job_photo`), Stroje and Materiál all use it. `job_edit`, `job_photo` and `protected_media` are `login_required` and ask `Kind.may_edit`, which also admits a pending job's author. Hiding a nav link is not access control.
 - **`User.is_manager_or_admin`** for the nav and query scoping.
 - **`AdminSessionRequiredMiddleware`** on `/admin/` (below).
 

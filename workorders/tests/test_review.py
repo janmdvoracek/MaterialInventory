@@ -7,10 +7,10 @@ from django.urls import NoReverseMatch, reverse
 
 from accounts.models import User
 from materials.models import Material
-from workorders.models import MachineUsage, StockMovement, WorkerHours, WorkOrder
+from workorders.models import MachineUsage, Refuelling, StockMovement, WorkerHours, WorkOrder
 from workorders.reports import MY_JOBS_LIMIT
 
-from .helpers import ReviewFixtureMixin, job_payload
+from .helpers import ReviewFixtureMixin, job_payload, refuel_payload
 
 
 class JobReviewTests(ReviewFixtureMixin, TestCase):
@@ -63,7 +63,7 @@ class JobReviewTests(ReviewFixtureMixin, TestCase):
     def test_approval_lets_the_job_into_the_reports(self):
         work_order = self.submit_job(self.worker, hours='3', machine_rows=[{'machine': self.machine_a, 'hours': '2'}])
         self.client.force_login(self.manager)
-        self.client.post(reverse('job_approve', args=[work_order.pk]))
+        self.client.post(reverse('job_approve', args=[work_order.pk]), {'revision': work_order.revision})
 
         response = self.client.get(reverse('time_worked'))
         self.assertEqual([row['user'] for row in response.context['summary']], [self.worker])
@@ -75,7 +75,7 @@ class JobReviewTests(ReviewFixtureMixin, TestCase):
     def test_approve_records_who_signed_it_off(self):
         work_order = self.submit_job(self.worker)
         self.client.force_login(self.manager)
-        response = self.client.post(reverse('job_approve', args=[work_order.pk]))
+        response = self.client.post(reverse('job_approve', args=[work_order.pk]), {'revision': work_order.revision})
         self.assertRedirects(response, reverse('job_detail', args=[work_order.pk]))
         work_order.refresh_from_db()
         self.assertEqual(work_order.status, WorkOrder.Status.APPROVED)
@@ -117,7 +117,8 @@ class JobReviewTests(ReviewFixtureMixin, TestCase):
 
     def test_review_pages_are_closed_to_workers(self):
         # Hiding the nav entry is not access control: the views are gated too.
-        work_order = self.submit_job(self.worker)
+        # Someone else's job, so `job_edit` is closed as well (PendingJobEditTests).
+        work_order = self.submit_job(self.other_worker)
         self.client.force_login(self.worker)
         for name, method in (
             ('job_dashboard', 'get'),
@@ -135,6 +136,166 @@ class JobReviewTests(ReviewFixtureMixin, TestCase):
         response = self.client.get(reverse('job_dashboard'))
         self.assertEqual(response.status_code, 302)
         self.assertIn('/login/', response.url)
+
+
+class PendingJobEditTests(ReviewFixtureMixin, TestCase):
+    """A worker's own jobs awaiting approval: listed above the form, and theirs to correct until approved."""
+
+    def _balanced(self, quantity='7', **kwargs):
+        return job_payload(
+            [{'material': self.material_raw, 'quantity': Decimal(quantity)}],
+            [{'material': self.material_finished, 'quantity': Decimal(quantity)}],
+            **kwargs,
+        )
+
+    def test_the_form_links_the_users_pending_jobs(self):
+        first = self.submit_job(self.worker)
+        second = self.submit_job(self.worker)
+        self.submit_job(self.other_worker)
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('transform_create'))
+        self.assertEqual(list(response.context['pending_jobs']), [first, second])
+        self.assertContains(response, '2 zpracování čekající na schválení')
+        self.assertContains(response, f'href="{reverse("job_edit", args=[first.pk])}"')
+
+    def test_an_approved_job_leaves_the_list(self):
+        work_order = self.submit_job(self.worker)
+        self.client.force_login(self.manager)
+        self.client.post(reverse('job_approve', args=[work_order.pk]), {'revision': work_order.revision})
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('transform_create'))
+        self.assertEqual(list(response.context['pending_jobs']), [])
+        self.assertNotContains(response, 'čekající na schválení')
+
+    def test_the_author_corrects_their_pending_job(self):
+        work_order = self.submit_job(self.worker)
+        self.client.force_login(self.worker)
+        url = reverse('job_edit', args=[work_order.pk])
+        self.assertEqual(self.client.get(url).status_code, 200)
+        response = self.client.post(url, self._balanced(description='Opraveno'))
+        # Back to the form: `job_detail` is a reviewer's page.
+        self.assertRedirects(response, reverse('transform_create'))
+        work_order.refresh_from_db()
+        self.assertEqual(work_order.description, 'Opraveno')
+        self.assertEqual(work_order.status, WorkOrder.Status.PENDING)
+        self.assertEqual(
+            work_order.movements.get(movement_type=StockMovement.MovementType.TRANSFORM_CONSUME).quantity, Decimal('-7')
+        )
+
+    def test_the_authors_correction_is_mass_balanced_too(self):
+        work_order = self.submit_job(self.worker)
+        self.client.force_login(self.worker)
+        payload = job_payload(
+            [{'material': self.material_raw, 'quantity': Decimal('7')}],
+            [{'material': self.material_finished, 'quantity': Decimal('6')}],
+        )
+        response = self.client.post(reverse('job_edit', args=[work_order.pk]), payload)
+        self.assertEqual(response.status_code, 200)
+        work_order.refresh_from_db()
+        self.assertEqual(
+            work_order.movements.get(movement_type=StockMovement.MovementType.TRANSFORM_CONSUME).quantity, Decimal('-5')
+        )
+
+    def test_an_approved_job_is_closed_to_its_author(self):
+        work_order = self.submit_job(self.worker)
+        self.client.force_login(self.manager)
+        self.client.post(reverse('job_approve', args=[work_order.pk]), {'revision': work_order.revision})
+        self.client.force_login(self.worker)
+        url = reverse('job_edit', args=[work_order.pk])
+        self.assertEqual(self.client.get(url).status_code, 403)
+        self.assertEqual(self.client.post(url, self._balanced(description='Pozdě')).status_code, 403)
+        work_order.refresh_from_db()
+        self.assertNotEqual(work_order.description, 'Pozdě')
+
+    def test_a_collaborator_cannot_edit_the_authors_job(self):
+        # Named in the hours rows, but the job is not theirs.
+        work_order = self.submit_job(self.worker, worker_rows=[{'user': self.other_worker, 'hours': '2'}])
+        self.client.force_login(self.other_worker)
+        self.assertEqual(self.client.get(reverse('job_edit', args=[work_order.pk])).status_code, 403)
+
+    def test_a_worker_still_cannot_edit_a_pending_refuelling(self):
+        # Only the job opens to its author.
+        self.client.force_login(self.worker)
+        self.client.post(reverse('refuel_create'), refuel_payload([{'machine': self.machine_a, 'litres': '10'}]))
+        refuelling = Refuelling.objects.get()
+        self.assertEqual(refuelling.status, Refuelling.Status.PENDING)
+        self.assertEqual(self.client.get(reverse('refuel_edit', args=[refuelling.pk])).status_code, 403)
+
+
+class StaleApprovalTests(ReviewFixtureMixin, TestCase):
+    """„Schválit" approves the version its reviewer read, never one edited since (`revision`)."""
+
+    def _correct(self, work_order, user, quantity='9'):
+        self.client.force_login(user)
+        response = self.client.post(
+            reverse('job_edit', args=[work_order.pk]),
+            job_payload(
+                [{'material': self.material_raw, 'quantity': Decimal(quantity)}],
+                [{'material': self.material_finished, 'quantity': Decimal(quantity)}],
+            ),
+        )
+        self.assertEqual(response.status_code, 302)
+
+    def test_the_detail_page_posts_the_revision_it_shows(self):
+        work_order = self.submit_job(self.worker)
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('job_detail', args=[work_order.pk]))
+        self.assertContains(response, '<input type="hidden" name="revision" value="0">', html=True)
+
+    def test_every_edit_raises_the_revision(self):
+        work_order = self.submit_job(self.worker)
+        self._correct(work_order, self.worker)
+        self._correct(work_order, self.manager)
+        work_order.refresh_from_db()
+        self.assertEqual(work_order.revision, 2)
+
+    def test_an_edit_made_after_the_page_was_read_is_not_approved(self):
+        work_order = self.submit_job(self.worker)
+        seen = work_order.revision
+        # The worker corrects the job while the manager has it open.
+        self._correct(work_order, self.worker)
+        self.client.force_login(self.manager)
+        response = self.client.post(reverse('job_approve', args=[work_order.pk]), {'revision': seen}, follow=True)
+        self.assertContains(response, 'se mezitím změnilo')
+        work_order.refresh_from_db()
+        self.assertEqual(work_order.status, WorkOrder.Status.PENDING)
+        self.assertIsNone(work_order.reviewed_by)
+        # Read again, it approves.
+        self.client.post(reverse('job_approve', args=[work_order.pk]), {'revision': work_order.revision})
+        work_order.refresh_from_db()
+        self.assertEqual(work_order.status, WorkOrder.Status.APPROVED)
+
+    def test_an_approval_without_a_revision_is_refused(self):
+        work_order = self.submit_job(self.worker)
+        self.client.force_login(self.manager)
+        for data in ({}, {'revision': 'x'}):
+            with self.subTest(data=data):
+                self.client.post(reverse('job_approve', args=[work_order.pk]), data)
+                work_order.refresh_from_db()
+                self.assertEqual(work_order.status, WorkOrder.Status.PENDING)
+
+    def test_approving_twice_keeps_the_first_reviewer(self):
+        work_order = self.submit_job(self.worker)
+        self.client.force_login(self.manager)
+        self.client.post(reverse('job_approve', args=[work_order.pk]), {'revision': work_order.revision})
+        second = User.objects.create_user(username='manager2', password='pw', role=User.Role.MANAGER)
+        self.client.force_login(second)
+        response = self.client.post(reverse('job_approve', args=[work_order.pk]), {'revision': work_order.revision})
+        self.assertRedirects(response, reverse('job_detail', args=[work_order.pk]))
+        work_order.refresh_from_db()
+        self.assertEqual(work_order.reviewed_by, self.manager)
+
+    def test_a_stale_refuelling_is_not_approved_either(self):
+        self.client.force_login(self.worker)
+        self.client.post(reverse('refuel_create'), refuel_payload([{'machine': self.machine_a, 'litres': '10'}]))
+        refuelling = Refuelling.objects.get()
+        self.client.force_login(self.manager)
+        self.client.post(
+            reverse('refuel_edit', args=[refuelling.pk]), refuel_payload([{'machine': self.machine_a, 'litres': '12'}])
+        )
+        self.client.post(reverse('refuel_approve', args=[refuelling.pk]), {'revision': refuelling.revision})
+        refuelling.refresh_from_db()
+        self.assertEqual(refuelling.status, Refuelling.Status.PENDING)
 
 
 class MyJobsTests(ReviewFixtureMixin, TestCase):
@@ -163,7 +324,7 @@ class MyJobsTests(ReviewFixtureMixin, TestCase):
     def test_the_status_follows_the_review(self):
         work_order = self.submit_job(self.worker)
         self.client.force_login(self.manager)
-        self.client.post(reverse('job_approve', args=[work_order.pk]))
+        self.client.post(reverse('job_approve', args=[work_order.pk]), {'revision': work_order.revision})
         self.client.force_login(self.worker)
         response = self.client.get(reverse('time_worked'))
         self.assertContains(response, 'Schváleno')

@@ -116,6 +116,8 @@
         {% if not work_order.is_approved %}
             <form method="post" action="{% url 'job_approve' work_order.pk %}">
                 {% csrf_token %}
+                {# The version on screen: approving is refused if the entry has changed since. #}
+                <input type="hidden" name="revision" value="{{ work_order.revision }}">
                 <button type="submit">Schválit</button>
             </form>
         {% endif %}

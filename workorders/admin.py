@@ -9,6 +9,7 @@ from django.core.validators import (
     MinValueValidator,
     StepValueValidator,
 )
+from django.db.models import F
 
 from .forms import (
     DESCRIPTION_MAX_LENGTH,
@@ -188,7 +189,12 @@ class WorkOrderAdmin(admin.ModelAdmin):
     def save_model(self, request, obj, form, change):
         if not obj.pk and not obj.created_by_id:
             obj.created_by = request.user
+        if change:
+            # Like an edit on the site, so a reviewer's open page can't approve the old version.
+            obj.revision = F('revision') + 1
         super().save_model(request, obj, form, change)
+        if change:
+            obj.refresh_from_db(fields=['revision'])
 
     def save_formset(self, request, form, formset, change):
         # A file swapped on a surviving row: the post_delete receiver can't see
@@ -224,4 +230,9 @@ class RefuellingAdmin(admin.ModelAdmin):
     def save_model(self, request, obj, form, change):
         if not obj.pk and not obj.created_by_id:
             obj.created_by = request.user
+        if change:
+            # Like an edit on the site, so a reviewer's open page can't approve the old version.
+            obj.revision = F('revision') + 1
         super().save_model(request, obj, form, change)
+        if change:
+            obj.refresh_from_db(fields=['revision'])

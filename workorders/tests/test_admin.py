@@ -160,6 +160,13 @@ class AdminCollaboratorsTests(ReviewFixtureMixin, TestCase):
     def _stored_hours(self):
         return [{'id': row.pk, 'user': row.user_id, 'hours': row.hours} for row in self.job.worker_hours.all()]
 
+    def test_an_admin_save_raises_the_revision(self):
+        # Like an edit on the site: a reviewer's open page must not approve the old version.
+        before = self.job.revision
+        self._save()
+        self.job.refresh_from_db()
+        self.assertEqual(self.job.revision, before + 1)
+
     def test_an_hours_row_added_here_makes_a_collaborator(self):
         self._save(hours=[*self._stored_hours(), {'user': self.other_worker.pk, 'hours': '3'}])
         self.assertEqual(set(self.job.collaborators.all()), {self.worker, self.other_worker})
