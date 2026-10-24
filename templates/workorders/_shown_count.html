@@ -1,0 +1,6 @@
+{% comment %}
+„Zobrazeno 5 z 481 záznamů" above a table cut by `_preview`. Needs `table`.
+{% endcomment %}
+{% if table.total %}
+<p class="table-count">Zobrazeno {{ table.shown }} z {{ table.total }} {% if table.total == 1 %}záznamu{% else %}záznamů{% endif %}</p>
+{% endif %}

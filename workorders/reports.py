@@ -7,8 +7,7 @@ from decimal import Decimal
 from functools import cached_property
 
 from django.contrib.auth.decorators import login_required
-from django.core.paginator import Paginator
-from django.db.models import Count, F, Max, OuterRef, Q, Subquery, Sum
+from django.db.models import Count, F, Max, OuterRef, Q, QuerySet, Subquery, Sum
 from django.db.models.functions import Abs, Coalesce
 from django.http import HttpResponse
 from django.shortcuts import render
@@ -23,7 +22,6 @@ from materials.models import Material
 from .forms import MachineFilterForm, MaterialFilterForm, RefuelFilterForm, TimeWorkedFilterForm, participation_filter
 from .models import MachineRefuel, MachineUsage, Refuelling, StockMovement, WorkerHours, WorkOrder
 
-HISTORY_PAGE_SIZE = 50
 # A worker's own recent jobs on Souhrn: a status check, not a history.
 MY_JOBS_LIMIT = 5
 
@@ -131,7 +129,7 @@ class MachineReport:
 
 @role_required(*REVIEWER_ROLES)
 def machine_dashboard(request):
-    """Stroje: one filter over per-machine totals, usage rows and fill-ups (two paginators)."""
+    """Stroje: one filter over per-machine totals, usage rows and fill-ups."""
     report = MachineReport(request.GET or None)
     listing = _list_page_context(request, report.usages)
     context = {
@@ -139,15 +137,15 @@ def machine_dashboard(request):
         'machines': report.summary,
         'refuel_machines': report.fuel_summary,
         'refuel_total_litres': report.total_litres,
-        'fuel_page': _paginated(request, report.fill_ups, FUEL_PAGE_PARAM),
+        'fill_ups': report.fill_ups,
         **listing,
     }
     context['tables'] = _previews(
         request,
         machines=context['machines'],
         refuels=context['refuel_machines'],
-        refuel_rows=context['fuel_page'],
-        usages=listing,
+        refuel_rows=context['fill_ups'],
+        usages=listing['rows'],
     )
     return render(request, 'workorders/machine_dashboard.html', context)
 
@@ -264,32 +262,16 @@ def material_dashboard(request):
     report = MaterialReport(request.GET or None)
     listing = _list_page_context(request, report.detail_rows)
     context = {'form': report.form, 'materials': report.summary, **listing}
-    context['tables'] = _previews(request, materials=context['materials'], movements=listing)
+    context['tables'] = _previews(request, materials=context['materials'], movements=listing['rows'])
     return render(request, 'workorders/material_dashboard.html', context)
 
 
-# One page parameter per paginated table: Stroje has two, which page independently.
-PAGE_PARAM = 'page'
-FUEL_PAGE_PARAM = 'fuel_page'
-PAGE_PARAMS = (PAGE_PARAM, FUEL_PAGE_PARAM)
-
-
-def _paginated(request, rows, param=PAGE_PARAM):
-    """One table's `page_obj`, its links' `querystring` (all but its own page param), and `page_param`."""
-    querystring = request.GET.copy()
-    querystring.pop(param, None)
-    return {
-        'page_obj': Paginator(rows, HISTORY_PAGE_SIZE).get_page(request.GET.get(param)),
-        'querystring': querystring.urlencode(),
-        'page_param': param,
-    }
-
-
-# A report or list table shows its first PREVIEW_ROWS rows until its „Zobrazit
-# vše" link adds the table's key to EXPAND_PARAM; „Zobrazit méně" takes it out.
-# Exports ignore both and hold every row.
+# A report or list table shows its first PREVIEW_ROWS rows. Each „Zobrazit
+# více" link shows MORE_ROWS more, by counting its clicks in `vice_<key>`;
+# „Zobrazit méně" drops that count. Exports ignore both and hold every row.
 PREVIEW_ROWS = 5
-EXPAND_PARAM = 'vse'
+MORE_ROWS = 50
+MORE_PARAM_PREFIX = 'vice_'
 
 
 def _previews(request, **tables):
@@ -298,54 +280,57 @@ def _previews(request, **tables):
 
 
 def _preview(request, key, rows):
-    """One table's `rows`, cut to PREVIEW_ROWS until the table is expanded.
+    """One table's `rows`, cut to PREVIEW_ROWS plus MORE_ROWS per „Zobrazit více" click.
 
-    `rows` is a list, a queryset, or a paginated table as `_paginated` returns
-    it. `total` is every row the expanded table holds, across all its pages; a
-    paginated table shows its page links only once expanded. Both links keep
-    the filters and the other tables' state, and jump back to this table
-    (`anchor`). Collapsing also drops the table's own page param, so expanding
-    it again starts on page one.
+    `rows` is a list or a queryset. The click count in the querystring is
+    untrusted: anything unparsable or negative is 0, and it is capped at the
+    clicks it takes to show every row. Both links keep the filters and the
+    other tables' state, and jump back to this table (`anchor`).
     """
-    expanded = key in request.GET.getlist(EXPAND_PARAM)
-    page_param = None
-    if isinstance(rows, dict):
-        page_param, page = rows['page_param'], rows['page_obj']
-        total, items = page.paginator.count, page.object_list
-    else:
-        total, items = len(rows), rows
-    shown = items if expanded else list(items[:PREVIEW_ROWS])
-    expand = request.GET.copy()
-    expand.appendlist(EXPAND_PARAM, key)
+    param = f'{MORE_PARAM_PREFIX}{key}'
+    total = rows.count() if isinstance(rows, QuerySet) else len(rows)
+    try:
+        clicks = max(int(request.GET.get(param, 0)), 0)
+    except ValueError:
+        clicks = 0
+    clicks = min(clicks, -(-max(total - PREVIEW_ROWS, 0) // MORE_ROWS))
+    shown = list(rows[: PREVIEW_ROWS + clicks * MORE_ROWS])
+    more = request.GET.copy()
+    more[param] = str(clicks + 1)
     collapse = request.GET.copy()
-    collapse.setlist(EXPAND_PARAM, [value for value in collapse.getlist(EXPAND_PARAM) if value != key])
-    if page_param:
-        collapse.pop(page_param, None)
+    collapse.pop(param, None)
     return {
         'rows': shown,
-        'expanded': expanded,
+        'shown': len(shown),
         'total': total,
-        'has_more': not expanded and total > len(shown),
-        'can_collapse': expanded and total > PREVIEW_ROWS,
-        'expand_querystring': expand.urlencode(),
+        'more': min(total - len(shown), MORE_ROWS),
+        'can_collapse': clicks > 0,
+        'more_querystring': more.urlencode(),
         'collapse_querystring': collapse.urlencode(),
         'anchor': f'tabulka-{key}',
     }
 
 
+def _without_more_params(request):
+    """The page's querystring minus every table's „Zobrazit více" count."""
+    params = request.GET.copy()
+    for param in list(params):
+        if param.startswith(MORE_PARAM_PREFIX):
+            params.pop(param)
+    return params
+
+
 def _date_preset_links(request):
     """One quick-range link per `DATE_PRESETS` entry.
 
-    Keeps the other filters, drops `page`, and writes ISO dates. `active` marks
-    the range currently applied.
+    Keeps the other filters, drops the tables' „Zobrazit více" counts, and
+    writes ISO dates. `active` marks the range currently applied.
     """
     today = timezone.localdate()
     current = (request.GET.get('date_from', ''), request.GET.get('date_to', ''))
     links = []
     for key, label, span in DATE_PRESETS:
-        params = request.GET.copy()
-        for param in PAGE_PARAMS:
-            params.pop(param, None)
+        params = _without_more_params(request)
         value = []
         for field, day in zip(('date_from', 'date_to'), span(today), strict=True):
             if day is None:
@@ -366,12 +351,13 @@ def _date_preset_links(request):
 
 
 def _list_page_context(request, rows):
-    """A filtered list page's context: `page_obj`, `querystring`, `page_param` and `date_presets`.
+    """A filtered list page's context: its filtered `rows`, `querystring` and `date_presets`.
 
-    Take all of it; without `querystring` the filter vanishes on page two.
+    `querystring` is the filter alone, for the export links.
     """
     return {
-        **_paginated(request, rows),
+        'rows': rows,
+        'querystring': _without_more_params(request).urlencode(),
         'date_presets': _date_preset_links(request),
     }
 
@@ -624,7 +610,7 @@ def time_worked(request):
         'fleet': None if request.user.is_manager_or_admin else _fleet_totals(request),
         **listing,
     }
-    tables = {'hours': report.summary, 'jobs': listing}
+    tables = {'hours': report.summary, 'jobs': listing['rows']}
     if context['fleet']:
         tables.update(machines=context['fleet']['machines'], refuels=context['fleet']['refuel_machines'])
     context['tables'] = _previews(request, **tables)

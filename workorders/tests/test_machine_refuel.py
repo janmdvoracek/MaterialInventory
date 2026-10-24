@@ -15,7 +15,7 @@ from workorders.entry import FORM_ERRORS_MESSAGE
 from workorders.forms import LITRES_MAX
 from workorders.kinds import NO_ROWS_ERROR
 from workorders.models import MachineRefuel, Refuelling, WorkOrder
-from workorders.reports import FUEL_PAGE_PARAM, HISTORY_PAGE_SIZE, MY_JOBS_LIMIT
+from workorders.reports import MORE_ROWS, MY_JOBS_LIMIT, PREVIEW_ROWS
 
 from .helpers import ReviewFixtureMixin, refuel_payload
 
@@ -215,7 +215,7 @@ class RefuellingReviewTests(RefuelFixtureMixin, TestCase):
         self.record(self.worker)
         self.record(self.manager)
         response = self.client.get(reverse('refuel_dashboard'))
-        self.assertEqual(len(response.context['page_obj']), 2)
+        self.assertEqual(len(response.context['rows']), 2)
         self.assertEqual(response.context['pending_count'], 1)
         self.assertContains(response, 'Crusher A')
         self.assertContains(response, '40,00 l')
@@ -224,7 +224,7 @@ class RefuellingReviewTests(RefuelFixtureMixin, TestCase):
         self.record(self.worker)
         self.record(self.manager)
         response = self.client.get(reverse('refuel_dashboard'), {'status': Refuelling.Status.PENDING})
-        self.assertEqual([r.created_by for r in response.context['page_obj']], [self.worker])
+        self.assertEqual([r.created_by for r in response.context['rows']], [self.worker])
 
     def test_prehled_points_to_pending_refuellings(self):
         self.record(self.worker)
@@ -406,31 +406,28 @@ class MachineRefuelReportTests(TestCase):
         refuel = self._refuel(Decimal('40'))
         response = self.client.get(reverse('machine_dashboard'))
         self.assertContains(response, 'Detail tankování')
-        self.assertEqual(len(response.context['fuel_page']['page_obj'].object_list), 1)
+        self.assertEqual(len(response.context['fill_ups']), 1)
         self.assertContains(response, '<td>Nádrž dílna</td>', html=False)
         self.assertContains(response, reverse('refuel_detail', args=[refuel.refuelling_id]))
 
-    def test_each_detail_table_pages_on_its_own_parameter(self):
-        """Stroje holds two paginated tables. One shared `page` would move both,
-        so the fill-ups carry their own — and its links have to keep the other
-        table's parameter and the filters."""
-        for _ in range(HISTORY_PAGE_SIZE + 1):
+    def test_each_detail_table_grows_on_its_own_parameter(self):
+        """Stroje holds two long detail tables. „Zobrazit více" under the
+        fill-ups must grow only them, and keep the other table's count and the
+        filters."""
+        for _ in range(MORE_ROWS + PREVIEW_ROWS + 1):
             self._refuel(Decimal('1'))
-        response = self.client.get(reverse('machine_dashboard'), {FUEL_PAGE_PARAM: '2', 'page': '1'})
-        fuel_page = response.context['fuel_page']
-        self.assertEqual(fuel_page['page_obj'].number, 2)
-        self.assertEqual(fuel_page['page_param'], FUEL_PAGE_PARAM)
-        # Its own parameter dropped, the other table's kept.
-        self.assertNotIn(FUEL_PAGE_PARAM, fuel_page['querystring'])
-        self.assertIn('page=1', fuel_page['querystring'])
-        # And the usage table is unmoved by a fuel page link.
-        self.assertEqual(response.context['page_obj'].number, 1)
+        response = self.client.get(reverse('machine_dashboard'), {'vice_refuel_rows': '1', 'vice_usages': '1'})
+        tables = response.context['tables']
+        self.assertEqual(len(tables['refuel_rows']['rows']), PREVIEW_ROWS + MORE_ROWS)
+        querystring = tables['refuel_rows']['more_querystring']
+        self.assertIn('vice_refuel_rows=2', querystring)
+        self.assertIn('vice_usages=1', querystring)
 
-    def test_a_date_preset_resets_both_tables_to_page_one(self):
-        response = self.client.get(reverse('machine_dashboard'), {'page': '2', FUEL_PAGE_PARAM: '3'})
+    def test_a_date_preset_cuts_the_tables_back(self):
+        response = self.client.get(reverse('machine_dashboard'), {'vice_usages': '2', 'vice_refuel_rows': '3'})
         for preset in response.context['date_presets']:
             with self.subTest(preset=preset['key']):
-                self.assertNotIn('page=', preset['querystring'])
+                self.assertNotIn('vice_', preset['querystring'])
 
     def test_the_export_carries_the_summary_table(self):
         self._refuel(Decimal('40'))
@@ -483,9 +480,9 @@ class MachineRefuelReportTests(TestCase):
         )
 
     def test_the_detail_export_is_every_row_not_one_page(self):
-        for _ in range(HISTORY_PAGE_SIZE + 1):
+        for _ in range(MORE_ROWS + 1):
             self._refuel(Decimal('1'))
-        self.assertEqual(len(self._detail_rows()), HISTORY_PAGE_SIZE + 2)
+        self.assertEqual(len(self._detail_rows()), MORE_ROWS + 2)
 
     def test_the_detail_export_follows_the_filter_and_hides_pending_refuellings(self):
         self._refuel(Decimal('40'), performed_on=date.today() - timedelta(days=40))

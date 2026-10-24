@@ -1079,7 +1079,7 @@ class LocationTests(ReviewFixtureMixin, TestCase):
         south_job = self._job_at(self.south)
         self.client.force_login(self.manager)
         response = self.client.get(reverse('job_dashboard'), {'location': self.south.pk})
-        self.assertEqual([job.pk for job in response.context['page_obj']], [south_job.pk])
+        self.assertEqual([job.pk for job in response.context['rows']], [south_job.pk])
         self.assertContains(response, '<td>Lom Jih</td>', html=True)
 
     def test_material_dashboard_filters_summary_and_rows_by_location(self):
@@ -1089,7 +1089,7 @@ class LocationTests(ReviewFixtureMixin, TestCase):
         response = self.client.get(reverse('material_dashboard'), {'location': self.south.pk})
         raw = next(material for material in response.context['materials'] if material == self.material_raw)
         self.assertEqual(raw.filtered_consumed, Decimal('7'))
-        self.assertEqual({movement.work_order.location for movement in response.context['page_obj']}, {self.south})
+        self.assertEqual({movement.work_order.location for movement in response.context['rows']}, {self.south})
         self.assertContains(response, '<td>Lom Jih</td>', html=True)
 
     def test_a_used_location_cannot_be_deleted(self):

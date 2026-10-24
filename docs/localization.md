@@ -25,7 +25,7 @@ The interface is entirely Czech, through three mechanisms:
 
 ## Dates
 
-Czech `DATE_INPUT_FORMATS` doesn't list ISO, but Django appends `%Y-%m-%d` to every locale, so `<input type="date">` values parse. Bound forms re-render the submitted string, so filters survive pagination.
+Czech `DATE_INPUT_FORMATS` doesn't list ISO, but Django appends `%Y-%m-%d` to every locale, so `<input type="date">` values parse. Bound forms re-render the submitted string, so filters survive „Zobrazit více".
 
 **The trap:** an *unbound* date field with a Python `date` as initial renders `14.08.2026`, which `<input type="date">` shows as blank. `WorkOrderForm.performed_on` is exactly that case, so its widget sets the format:
 

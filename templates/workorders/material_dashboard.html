@@ -6,6 +6,7 @@
 {% include "workorders/_filter_card.html" %}
 <div class="card" id="{{ tables.materials.anchor }}">
     <h2>Souhrn materiálů</h2>
+    {% include "workorders/_shown_count.html" with table=tables.materials %}
     <div class="table-scroll">
     <table>
         <thead>
@@ -25,12 +26,13 @@
         </tbody>
     </table>
     </div>
-    {% include "workorders/_show_all.html" with table=tables.materials %}
+    {% include "workorders/_show_more.html" with table=tables.materials %}
     {# The filter goes with the download, so the file is every row, not just those shown. #}
     <a class="btn" href="{% url 'material_dashboard_export' %}?{{ querystring }}">Stáhnout do CSV / Excelu</a>
 </div>
 <div class="card" id="{{ tables.movements.anchor }}">
     <h2>Detail položek</h2>
+    {% include "workorders/_shown_count.html" with table=tables.movements %}
     <div class="table-scroll">
     <table>
         <thead>
@@ -54,9 +56,8 @@
         </tbody>
     </table>
     </div>
-    {% include "workorders/_show_all.html" with table=tables.movements %}
-    {# Every row the filter allows, not just this page of them. #}
+    {% include "workorders/_show_more.html" with table=tables.movements %}
+    {# Every row the filter allows, not just those shown. #}
     <a class="btn" href="{% url 'material_detail_export' %}?{{ querystring }}">Stáhnout do CSV / Excelu</a>
 </div>
-{% if tables.movements.expanded %}{% include "workorders/_pagination.html" %}{% endif %}
 {% endblock %}

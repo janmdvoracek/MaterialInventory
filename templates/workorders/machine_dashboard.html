@@ -6,6 +6,7 @@
 {% include "workorders/_filter_card.html" %}
 <div class="card" id="{{ tables.machines.anchor }}">
     <h2>Stav strojů</h2>
+    {% include "workorders/_shown_count.html" with table=tables.machines %}
     <div class="table-scroll">
     <table>
         <thead>
@@ -32,13 +33,14 @@
         </tbody>
     </table>
     </div>
-    {% include "workorders/_show_all.html" with table=tables.machines %}
+    {% include "workorders/_show_more.html" with table=tables.machines %}
     {# The filter goes with the download, so the file is every row, not just those shown. #}
     <a class="btn" href="{% url 'machine_dashboard_export' %}?{{ querystring }}">Stáhnout do CSV / Excelu</a>
 </div>
 <div class="card" id="{{ tables.refuels.anchor }}">
     <h2>Tankování</h2>
     {# Fuel is independent of usage, and its zeros are real (litres is never null). #}
+    {% include "workorders/_shown_count.html" with table=tables.refuels %}
     <div class="table-scroll">
     <table>
         <thead>
@@ -60,11 +62,12 @@
         </tfoot>
     </table>
     </div>
-    {% include "workorders/_show_all.html" with table=tables.refuels %}
+    {% include "workorders/_show_more.html" with table=tables.refuels %}
     <a class="btn" href="{% url 'machine_refuel_export' %}?{{ querystring }}">Stáhnout do CSV / Excelu</a>
 </div>
 <div class="card" id="{{ tables.refuel_rows.anchor }}">
     <h2>Detail tankování</h2>
+    {% include "workorders/_shown_count.html" with table=tables.refuel_rows %}
     <div class="table-scroll">
     <table>
         <thead>
@@ -86,13 +89,12 @@
         </tbody>
     </table>
     </div>
-    {% include "workorders/_show_all.html" with table=tables.refuel_rows %}
+    {% include "workorders/_show_more.html" with table=tables.refuel_rows %}
     <a class="btn" href="{% url 'machine_refuel_detail_export' %}?{{ querystring }}">Stáhnout do CSV / Excelu</a>
 </div>
-{# Its own page parameter, so paging the fill-ups leaves the usage rows put. #}
-{% if tables.refuel_rows.expanded %}{% include "workorders/_pagination.html" with page_obj=fuel_page.page_obj querystring=fuel_page.querystring page_param=fuel_page.page_param %}{% endif %}
 <div class="card" id="{{ tables.usages.anchor }}">
     <h2>Detail používání strojů</h2>
+    {% include "workorders/_shown_count.html" with table=tables.usages %}
     <div class="table-scroll">
     <table>
         <thead>
@@ -115,8 +117,7 @@
         </tbody>
     </table>
     </div>
-    {% include "workorders/_show_all.html" with table=tables.usages %}
+    {% include "workorders/_show_more.html" with table=tables.usages %}
     <a class="btn" href="{% url 'machine_usage_detail_export' %}?{{ querystring }}">Stáhnout do CSV / Excelu</a>
 </div>
-{% if tables.usages.expanded %}{% include "workorders/_pagination.html" %}{% endif %}
 {% endblock %}

@@ -9,6 +9,7 @@
 <p><a href="{% url 'job_dashboard' %}">← Přehled zpracování</a></p>
 {% include "workorders/_filter_card.html" %}
 <div class="card" id="{{ tables.refuellings.anchor }}">
+    {% include "workorders/_shown_count.html" with table=tables.refuellings %}
     <div class="table-scroll">
     <table>
         <thead>
@@ -30,7 +31,6 @@
         </tbody>
     </table>
     </div>
-    {% include "workorders/_show_all.html" with table=tables.refuellings %}
+    {% include "workorders/_show_more.html" with table=tables.refuellings %}
 </div>
-{% if tables.refuellings.expanded %}{% include "workorders/_pagination.html" %}{% endif %}
 {% endblock %}
