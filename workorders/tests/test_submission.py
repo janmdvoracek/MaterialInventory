@@ -614,7 +614,7 @@ class PerformedOnTests(TestCase):
 
     def _approve(self, work_order):
         self.client.force_login(self.manager)
-        self.client.post(reverse('job_approve', args=[work_order.pk]))
+        self.client.post(reverse('job_approve', args=[work_order.pk]), {'revision': work_order.revision})
 
     def test_the_field_arrives_pre_filled_with_today(self):
         # A field-level `initial` callable, so it resolves through the bound

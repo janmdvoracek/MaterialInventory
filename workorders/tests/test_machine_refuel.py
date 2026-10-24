@@ -208,7 +208,12 @@ class RefuellingReviewTests(RefuelFixtureMixin, TestCase):
         for url in urls:
             with self.subTest(url=url):
                 self.assertEqual(self.client.get(url).status_code, 403)
-        self.assertEqual(self.client.post(reverse('refuel_approve', args=[refuelling.pk])).status_code, 403)
+        self.assertEqual(
+            self.client.post(
+                reverse('refuel_approve', args=[refuelling.pk]), {'revision': refuelling.revision}
+            ).status_code,
+            403,
+        )
         self.assertEqual(Refuelling.objects.get().status, Refuelling.Status.PENDING)
 
     def test_the_list_shows_every_refuelling_and_the_pending_count(self):
@@ -252,7 +257,7 @@ class RefuellingReviewTests(RefuelFixtureMixin, TestCase):
     def test_approving_counts_it(self):
         refuelling = self.record(self.worker)
         self.client.force_login(self.manager)
-        response = self.client.post(reverse('refuel_approve', args=[refuelling.pk]))
+        response = self.client.post(reverse('refuel_approve', args=[refuelling.pk]), {'revision': refuelling.revision})
         self.assertRedirects(response, reverse('refuel_detail', args=[refuelling.pk]))
         refuelling.refresh_from_db()
         self.assertEqual(refuelling.status, Refuelling.Status.APPROVED)

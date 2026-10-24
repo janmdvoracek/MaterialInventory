@@ -167,7 +167,7 @@ Easy to break:
 - **`enctype="multipart/form-data"`** belongs on each caller's `<form>` tag. The shared partial can't supply it.
 - **File inputs lose their picks on every re-render**, so the photo field renders last, with a hint. Stored photos survive re-renders via the `remove_photos` checkboxes; the no-JS rebuild reads them back with `getlist`.
 - **Files are deleted by a `post_delete` receiver**, deferred to `transaction.on_commit`. Tests asserting that a file is gone need `captureOnCommitCallbacks`. `WorkOrderAdmin.save_formset` handles the one case the receiver can't see: an admin inline swapping the file on a surviving row.
-- **Photos are never public.** `MEDIA_URL` routes to `protected_media` (`role_required(MANAGER, ADMIN)`); neither whitenoise nor Caddy serves `MEDIA_ROOT`.
+- **Photos are never public.** `MEDIA_URL` routes to `protected_media` (managers and admins, plus a pending job's author via `JOB.may_edit`; a worker gets 403 even for a missing file); neither whitenoise nor Caddy serves `MEDIA_ROOT`.
 - **Never link the bare file**: an installed app has no address bar, so it was a dead end. Phones follow „Fotka n" to `job_photo` (`/jobs/<pk>/fotky/<n>/`). On desktop, `job_detail` and `job_edit` pin every photo in `_photo_panel.html` at the right, switched by `#fotka-<n>` anchors and `:target` CSS, with no script and no reload (a reload would lose `job_edit`'s input). The panel is `position: fixed`, not `sticky`, or each jump scrolls the page. Each „Fotka n" renders twice (`_photo_links.html`), one hidden per width. Full size is the `:target` overlay `_photo_full.html`.
 
 `JobPhotoTests` covers this.
@@ -181,7 +181,9 @@ Easy to break:
 **Approval.** A worker's job or refuelling is saved `PENDING`; a manager's or admin's own is saved `APPROVED` with themselves as reviewer. **Every report counts only `APPROVED` entries.**
 
 - **Review actions.** There are exactly three: approve, edit, delete. There is no "returned" status. Editing does not approve.
-- **Worker feedback.** `my_jobs` (`_my_recent_jobs`, top of Souhrn, last `MY_JOBS_LIMIT` = 5) is a worker's only view of a job's review status. It is scoped by `created_by` only, ignores the filter form, and is empty for managers. `my_refuellings` does the same for refuellings, under the Tankování form.
+- **Approval names a revision.** Every edit raises the entry's `revision` (`Kind.save`, and `save_model` in both admins), and „Schválit" posts the one on screen. `_approve` is a single conditional `UPDATE` (pk, revision, `PENDING`), so a version nobody read is never approved; a stale or missing revision gets the kind's `changed_message`. `Kind.save` also re-checks `may_edit` under `select_for_update`, so an author's edit can't land after an approval. `StaleApprovalTests` covers this.
+- **Correcting before approval.** Above the Zpracování form, `pending_jobs` (`_my_pending_jobs`) links the user's own `PENDING` jobs to `job_edit`. Their author (`created_by`, not a collaborator) may edit them until approved: `entry_edit`, `job_photo` and `protected_media` ask `Kind.may_edit` instead of `role_required`, and only `JOB` sets `author_edits_pending`. A worker's save returns to the form, not to `job_detail`. `PendingJobEditTests` covers this.
+- **Worker feedback.** `my_jobs` (`_my_recent_jobs`, top of Souhrn, last `MY_JOBS_LIMIT` = 5) is, beside that banner, a worker's only view of a job's review status. It is scoped by `created_by` only, ignores the filter form, and is empty for managers. `my_refuellings` does the same for refuellings, under the Tankování form.
 
 **Recording for someone else.** Managers and admins get an `author` field („Zapsat za"). The job then belongs to the author, but approval follows the submitter. `JobKind.author` resolves it from the POST (`_submitted_author`) before any formset is built.
 
@@ -190,7 +192,7 @@ Easy to break:
 - `user` is the author, and is excluded from the list.
 - `viewer` is whoever fills in the form. A plain worker viewer may name only workers.
 
-**Editing (`job_edit`).** It goes through the same `JOB` kind as the submission (`page`, `is_valid`, `save`), so corrections are mass-balanced too. The author's own hours are the job's field, written by `JobKind.write_rows`; the workers section holds only the collaborators. Rows are written as the author, and the collaborator list uses (author, editing manager).
+**Editing (`job_edit`).** It goes through the same `JOB` kind as the submission (`page`, `is_valid`, `save`), so corrections are mass-balanced too. The author's own hours are the job's field, written by `JobKind.write_rows`; the workers section holds only the collaborators. Rows are written as the author, and the collaborator list uses (author, editor); the editor is a manager or the pending job's own author.
 
 It must also widen the catalog pickers to the retired records the job already names. Otherwise a row renders blank and saving silently deletes it. The mechanism: each section's `row_form_kwargs` derives `keep` from its `recorded_rows` and it reaches `_offer_recorded`; `keep_location` does the same for the location. `RetiredCatalogOnEditTests` covers this.
 

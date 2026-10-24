@@ -4,6 +4,7 @@ photos attached to a job. The refuelling's own pages are in `refuels.py`."""
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.exceptions import PermissionDenied
 from django.core.files.storage import default_storage
 from django.db.models import Sum
 from django.http import FileResponse, Http404
@@ -13,8 +14,8 @@ from django.views.decorators.http import require_POST
 from accounts.decorators import REVIEWER_ROLES, role_required
 
 from .forms import JobFilterForm
-from .kinds import _approve
-from .models import Refuelling, StockMovement, WorkOrder
+from .kinds import JOB, _approve
+from .models import JobPhoto, Refuelling, StockMovement, WorkOrder
 from .reports import _list_page_context, _previews
 
 
@@ -29,15 +30,23 @@ def entry_create(request, kind):
     return render(request, kind.create_template, page.context(**kind.extra_context(request, None)))
 
 
-@role_required(*REVIEWER_ROLES)
+@login_required
 def entry_edit(request, pk, kind):
-    """Correct a recorded entry of `kind`. Does not approve it."""
+    """Correct a recorded entry of `kind`. Does not approve it.
+
+    A reviewer's page, which `kind.may_edit` also opens to the author of a
+    pending job. They go back to the form, since the detail page is a reviewer's.
+    """
     entry = get_object_or_404(kind.model.objects.select_related('created_by'), pk=pk)
+    if not kind.may_edit(request.user, entry):
+        raise PermissionDenied
     page = kind.page(request, entry)
     if page.submitted and kind.is_valid(page):
         kind.save(page, entry)
         messages.success(request, kind.edited_message)
-        return redirect(kind.detail_url, pk=entry.pk)
+        if request.user.is_manager_or_admin:
+            return redirect(kind.detail_url, pk=entry.pk)
+        return redirect(kind.create_url)
     return render(
         request,
         kind.edit_template,
@@ -48,20 +57,35 @@ def entry_edit(request, pk, kind):
 @role_required(*REVIEWER_ROLES)
 @require_POST
 def entry_approve(request, pk, kind):
+    """Approve the entry as the reviewer read it: the detail page posts the `revision` it showed."""
     entry = get_object_or_404(kind.model, pk=pk)
-    _approve(entry, request.user)
-    messages.success(request, kind.approved_message)
+    try:
+        revision = int(request.POST.get('revision', ''))
+    except ValueError:
+        revision = None
+    if entry.is_approved:
+        # Approved by someone else meanwhile; it is approved either way.
+        messages.success(request, kind.approved_message)
+    elif revision is not None and _approve(entry, revision, request.user):
+        messages.success(request, kind.approved_message)
+    else:
+        messages.error(request, kind.changed_message)
     return redirect(kind.detail_url, pk=entry.pk)
 
 
-@role_required(*REVIEWER_ROLES)
+@login_required
 def protected_media(request, path):
-    """Serve an uploaded job photo (MEDIA_URL) behind `job_detail`'s gate.
+    """Serve an uploaded job photo (MEDIA_URL) behind `job_detail`'s gate, or `job_edit`'s for its author.
 
     MEDIA_ROOT is never served by the proxy or whitenoise, which would make the
     photos public. The gate assumes job photos are all that live there.
     `FileSystemStorage` rejects path traversal itself (`safe_join`).
     """
+    if not request.user.is_manager_or_admin:
+        photo = JobPhoto.objects.select_related('work_order').filter(file=path).first()
+        # 403 for a missing file too, so a worker can't probe what exists.
+        if photo is None or not JOB.may_edit(request.user, photo.work_order):
+            raise PermissionDenied
     try:
         stored = default_storage.open(path)
     except OSError:
@@ -125,15 +149,18 @@ def job_detail(request, pk):
     )
 
 
-@role_required(*REVIEWER_ROLES)
+@login_required
 def job_photo(request, pk, number):
     """„Fotka <number>" of a job, inside the app's own page.
 
     A link straight to the file strands an installed app (no address bar, and
     no back gesture on an iPhone), so the job pages link here instead.
-    `number` is the 1-based position the job pages label it with.
+    `number` is the 1-based position the job pages label it with. Gated like
+    `job_edit`, which links here for a worker correcting their pending job.
     """
     work_order = get_object_or_404(WorkOrder, pk=pk)
+    if not JOB.may_edit(request.user, work_order):
+        raise PermissionDenied
     photos = list(work_order.photos.all())
     if not 1 <= number <= len(photos):
         raise Http404

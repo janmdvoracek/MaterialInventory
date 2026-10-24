@@ -10,6 +10,7 @@ edit pre-fill, page-level rule, extra rows, extra context). The generic views
 from decimal import Decimal
 
 from django.contrib import messages
+from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.utils import timezone
 from django.utils.formats import localize
@@ -31,12 +32,17 @@ def _review_on_submit(submitter):
     return {'status': ReviewStatus.PENDING}
 
 
-def _approve(entry, reviewer):
-    """Approve a job or a refuelling."""
-    entry.status = entry.Status.APPROVED
-    entry.reviewed_at = timezone.now()
-    entry.reviewed_by = reviewer
-    entry.save(update_fields=['status', 'reviewed_at', 'reviewed_by'])
+def _approve(entry, revision, reviewer):
+    """Approve a job or a refuelling, if it is still pending at the `revision` the reviewer read.
+
+    One conditional UPDATE, so an edit saved after the reviewer opened the
+    page can't be approved unseen. Returns whether it approved.
+    """
+    return bool(
+        type(entry)
+        .objects.filter(pk=entry.pk, revision=revision, status=ReviewStatus.PENDING)
+        .update(status=ReviewStatus.APPROVED, reviewed_at=timezone.now(), reviewed_by=reviewer)
+    )
 
 
 class Kind:
@@ -44,6 +50,7 @@ class Kind:
 
     `own_fields` are the cleaned fields copied onto the entry on create and on
     edit. `context_name` is what the edit template calls the entry.
+    `author_edits_pending` lets a worker correct their own entry until it is approved.
     """
 
     model = None
@@ -59,6 +66,14 @@ class Kind:
     pending_message = ''
     edited_message = ''
     approved_message = ''
+    changed_message = ''
+    author_edits_pending = False
+
+    def may_edit(self, user, entry):
+        """A reviewer edits any entry; with `author_edits_pending`, its author edits it while it is pending."""
+        if user.is_manager_or_admin:
+            return True
+        return self.author_edits_pending and entry.created_by_id == user.pk and not entry.is_approved
 
     def page(self, request, entry=None):
         """The entry page for a new entry, or for correcting `entry`."""
@@ -91,15 +106,24 @@ class Kind:
         return valid and not errors
 
     def save(self, page, entry=None):
-        """Create the entry (review on submit) or update `entry`, and write its rows, in one transaction."""
+        """Create the entry (review on submit) or update `entry`, and write its rows, in one transaction.
+
+        An edit locks the row and asks `may_edit` again, so an author's
+        correction can't land after an approval; it raises the `revision`, so
+        an approval of the version before it is refused.
+        """
         own = {name: page.order_form.cleaned_data[name] for name in self.own_fields}
         with transaction.atomic():
             if entry is None:
                 entry = self.model.objects.create(created_by=page.author, **own, **_review_on_submit(page.request.user))
             else:
+                locked = self.model.objects.select_for_update().get(pk=entry.pk)
+                if not self.may_edit(page.request.user, locked):
+                    raise PermissionDenied
                 for name, value in own.items():
                     setattr(entry, name, value)
-                entry.save(update_fields=list(self.own_fields))
+                entry.revision = locked.revision + 1
+                entry.save(update_fields=[*self.own_fields, 'revision'])
             self.write_rows(entry, page)
         return entry
 
@@ -141,6 +165,11 @@ def _balance_error(consumed_rows, produced_rows):
     return None
 
 
+def _my_pending_jobs(user):
+    """The user's own jobs awaiting approval, oldest first: the ones `JobKind.may_edit` lets them correct."""
+    return WorkOrder.objects.filter(created_by=user, status=WorkOrder.Status.PENDING).order_by('created_at')
+
+
 def _submitted_author(post_data, submitter):
     """Who „Zapsat za" names in this POST, else the submitter.
 
@@ -168,6 +197,8 @@ class JobKind(Kind):
     pending_message = 'Zpracování bylo zaznamenáno a čeká na schválení vedoucím.'
     edited_message = 'Zpracování bylo upraveno.'
     approved_message = 'Zpracování bylo schváleno.'
+    changed_message = 'Zpracování se mezitím změnilo, proto nebylo schváleno. Zkontrolujte ho prosím znovu.'
+    author_edits_pending = True
 
     def page(self, request, entry=None):
         page = super().page(request, entry)
@@ -223,7 +254,8 @@ class JobKind(Kind):
 
     def extra_context(self, request, entry):
         if entry is None:
-            return {'photo_max_count': PHOTO_MAX_COUNT}
+            # The jobs the user can still correct, as links above the form.
+            return {'photo_max_count': PHOTO_MAX_COUNT, 'pending_jobs': _my_pending_jobs(request.user)}
         return {'photo_max_count': PHOTO_MAX_COUNT, 'photos': list(entry.photos.all())}
 
 
@@ -243,6 +275,7 @@ class RefuellingKind(Kind):
     pending_message = 'Tankování bylo zaznamenáno a čeká na schválení vedoucím.'
     edited_message = 'Tankování bylo upraveno.'
     approved_message = 'Tankování bylo schváleno.'
+    changed_message = 'Tankování se mezitím změnilo, proto nebylo schváleno. Zkontrolujte ho prosím znovu.'
 
     def page_errors(self, page):
         return [] if page.filled_rows('refuels') else [NO_ROWS_ERROR]

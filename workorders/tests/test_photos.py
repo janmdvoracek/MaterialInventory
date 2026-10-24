@@ -346,6 +346,8 @@ class JobPhotoTests(ReviewFixtureMixin, TestCase):
     def test_the_photo_page_is_the_reviewers(self):
         work_order = self._job_with_photos(1)
         url = reverse('job_photo', args=[work_order.pk, 1])
+        # Another worker's job; its author's case is test_the_author_sees_the_photos_of_their_pending_job.
+        self.client.force_login(self.other_worker)
         self.assertEqual(self.client.get(url).status_code, 403)
         self.client.logout()
         self.assertIn('/login/', self.client.get(url).url)
@@ -370,11 +372,29 @@ class JobPhotoTests(ReviewFixtureMixin, TestCase):
         photo = self._job_with_photo().photos.get()
         # A worker may record a job, and photos with it, but the job pages are
         # the manager's — so this is the same 403 `job_detail` gives them.
+        self.client.force_login(self.other_worker)
         self.assertEqual(self.client.get(photo.file.url).status_code, 403)
         self.client.logout()
         response = self.client.get(photo.file.url)
         self.assertEqual(response.status_code, 302)
         self.assertIn('/login/', response.url)
+
+    def test_the_author_sees_the_photos_of_their_pending_job(self):
+        # `job_edit` shows them their stored photos, so the file and `job_photo` must open.
+        work_order = self._job_with_photo()
+        photo = work_order.photos.get()
+        self.assertEqual(self.client.get(photo.file.url).status_code, 200)
+        self.assertEqual(self.client.get(reverse('job_photo', args=[work_order.pk, 1])).status_code, 200)
+        self.client.force_login(self.manager)
+        self.client.post(reverse('job_approve', args=[work_order.pk]), {'revision': work_order.revision})
+        self.client.force_login(self.worker)
+        self.assertEqual(self.client.get(photo.file.url).status_code, 403)
+        self.assertEqual(self.client.get(reverse('job_photo', args=[work_order.pk, 1])).status_code, 403)
+
+    def test_a_worker_gets_403_for_a_missing_file(self):
+        # Not a 404, which would tell them what exists.
+        self._job_with_photo()
+        self.assertEqual(self.client.get(reverse('protected_media', args=['job_photos/nic.jpg'])).status_code, 403)
 
     def test_a_path_that_is_not_a_file_is_a_404_rather_than_a_500(self):
         self._job_with_photo()

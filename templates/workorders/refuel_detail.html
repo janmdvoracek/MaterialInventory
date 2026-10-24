@@ -47,6 +47,8 @@
         {% if not refuelling.is_approved %}
             <form method="post" action="{% url 'refuel_approve' refuelling.pk %}">
                 {% csrf_token %}
+                {# The version on screen: approving is refused if the entry has changed since. #}
+                <input type="hidden" name="revision" value="{{ refuelling.revision }}">
                 <button type="submit">Schválit</button>
             </form>
         {% endif %}

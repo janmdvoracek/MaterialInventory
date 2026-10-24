@@ -1,6 +1,13 @@
 {% extends "base.html" %}
 {% block title %}Zaznamenat zpracování{% endblock %}
 {% block content %}
+{# The user's jobs a manager has yet to approve: until then they may still correct them. #}
+{% if pending_jobs %}
+<p class="pending-notice">
+    {{ pending_jobs|length }} zpracování čekající na schválení:
+    {% for job in pending_jobs %}<a href="{% url 'job_edit' job.pk %}">#{{ job.pk }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}
+</p>
+{% endif %}
 <div class="card">
     <h1>Zaznamenat zpracování</h1>
     <form method="post" enctype="multipart/form-data">

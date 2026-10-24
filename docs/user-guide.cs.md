@@ -128,7 +128,9 @@ Pod formulářem jsou **Moje poslední tankování**: pět posledních, se stave
 
 **Zakázku i tankování pracovníka musí schválit vedoucí.** Do té doby se nepočítají do Souhrnu, Strojů ani Materiálu, proto tam své hodiny hned neuvidíte. Zápis vedoucího je schválený rovnou.
 
-Chybu opraví vedoucí přímo v zápisu, nebo ho smaže. Vy ho opravit nemůžete a zpátky se neposílá. Víte-li o chybě, řekněte vedoucímu, jak to bylo. Stav svých zakázek uvidíte v [Souhrnu](#souhrn), stav tankování pod formulářem [Tankování](#tankování).
+**Dokud vedoucí zakázku neschválí, můžete ji opravit sami.** Nad formulářem Zpracování je žlutý pruh, např. *2 zpracování čekající na schválení: #56, #59*. Klepnutím na číslo zakázku otevřete, opravíte a uložíte **Uložit změny**. Opravu kontroluje stejné pravidlo jako zápis (spotřeba a výroba se musí rovnat) a zakázka dál čeká na schválení. Po schválení už ji opravit nemůžete a číslo z pruhu zmizí. Zakázku, kde jste jen spolupracovník, opravit nemůžete. Tankování opravit nemůžete vůbec.
+
+Schválený zápis opraví vedoucí, nebo ho smaže; zpátky se neposílá. Víte-li o chybě, řekněte vedoucímu, jak to bylo. Stav svých zakázek uvidíte v [Souhrnu](#souhrn), stav tankování pod formulářem [Tankování](#tankování).
 
 ## Přehled (pro vedoucí)
 
@@ -138,7 +140,7 @@ Seznam všech zakázek: datum, autor, lokace, popis, hodiny a stav. Čekající 
 
 | Akce | Co udělá |
 |---|---|
-| **Schválit** | Zakázka se začne počítat do přehledů. |
+| **Schválit** | Zakázka se začne počítat do přehledů. Schválí se jen ta verze, kterou máte na obrazovce: pokud ji mezitím někdo upravil (třeba autor, dokud čeká na schválení), schválení se neprovede a stránka ukáže aktuální stav. Zkontrolujte ji a schvalte znovu. |
 | **Upravit** | Stejný formulář, předvyplněný. Platí stejná pravidla (součty). **Úprava neschvaluje**, po opravě je třeba schválit. Pole s hodinami patří autorovi zakázky. Nové fotky se přidají. Uloženou fotku odstraníte zaškrtnutím **Odebrat**, a to nevratně. |
 | **Smazat** | Nevratně smaže zakázku se vším, co k ní patří. |
 
@@ -265,4 +267,4 @@ Pošlete menší nebo méně fotek. Při úpravě případně nejdřív odeberte
 Zvolte **Vyfotit**.
 
 **Špatně zadaná zakázka.**
-Řekněte vedoucímu. Opraví ji v Přehledu, nebo ji smaže.
+Čeká-li ještě na schválení, opravte ji sami přes žlutý pruh nad formulářem Zpracování ([Schvalování](#schvalování)). Schválenou opraví vedoucí v Přehledu, nebo ji smaže; řekněte mu.
