@@ -20,7 +20,7 @@ dependencies = [
 # Installed by a plain `uv sync`; left out of the image with `--no-dev`.
 dev = [
     "coverage==7.16.2",
-    "pre-commit==4.6.2",
+    "pre-commit==4.7.0",
     "ruff==0.16.9",
 ]
 # Only for the `audit` job in .github/workflows/security.yml.
