@@ -241,6 +241,18 @@ Managers and admins get an `author` field („Zapsat za", default „Za sebe"). 
 
 The callers keep only the `<form>` tag (with `enctype`), the CSRF token, the heading, the submit button and the cancel link. „Zapsat za" renders only when the form has it.
 
+### One form, one entry
+
+A phone on a weak signal can save an entry and never receive the answer, so the person sends it again. One worker's job was saved 12 times in 8 minutes, most likely this way. So `transform_form.html` and `refuel_form.html` render a hidden `submission_token`, a fresh UUID per form, stored in a unique column on `WorkOrder` and `Refuelling`.
+
+- **A later copy** finds its token in `Kind.already_saved`, before validation, and redirects with the kind's `already_saved_message`. An error on the copy would suggest the first send had failed.
+- **Two copies in flight** both pass that check. `Kind._create_once` lets the unique column decide: the second waits for the first to commit and is then refused, inside a savepoint.
+- **Not a form field.** A bad value on a hidden input would be an error with nowhere to render. A missing or unreadable token saves unprotected, so a form opened before a deploy keeps its job.
+- **Same token until saved.** Row buttons and refused submissions render the posted token again, since nothing was saved. A fresh form gets a new one.
+- **Back and edit.** Going Back to a saved form and changing it to record other work counts as a repeat; the message says nothing was saved. The edit pages have no token: a repeated edit rewrites the same rows, though it can add its new photos twice.
+
+`SubmissionTokenTests` and `ConcurrentSubmissionTests` cover this.
+
 ### Errors must always render
 
 Nothing is written unless all five forms validate. An error with nowhere to render looks like a button that did nothing.
@@ -288,9 +300,9 @@ The machines usually process exactly what the job consumed, so each Použité st
 
 `TonnageMirrorTests` covers the server path.
 
-### The three scripts
+### The four scripts
 
-`job_rows.js` and `searchable_select.js` come with `_row_sections.html`, so they also run on the refuelling form; `photo_picker.js` is the job form's alone. All three are **progressive enhancement**. The test suite has no browser, so the server path must be complete by itself, and with any script blocked the form still works. Each script builds no markup of its own and reads everything off the server-rendered page. The tests cover the contract they read, not their behaviour.
+`job_rows.js`, `searchable_select.js` and `submit_feedback.js` come with `_row_sections.html`, so they also run on the refuelling form; `photo_picker.js` is the job form's alone. All four are **progressive enhancement**. The test suite has no browser, so the server path must be complete by itself, and with any script blocked the form still works. Each script builds no markup of its own and reads everything off the server-rendered page. The tests cover the contract they read, not their behaviour.
 
 **`static/js/job_rows.js`** resizes sections in the DOM. A new row is the section's `<template>` (Django's `formset.empty_form`) with `__prefix__` replaced, plus a `TOTAL_FORMS` increment.
 
@@ -325,6 +337,15 @@ Tests: `SearchablePickerTests`, including the three `.combo` CSS rules.
 - `app.css` needs `.photo-field [hidden] { display: none }`.
 
 Tests: `PhotoPickerTests`.
+
+**`static/js/submit_feedback.js`** changes the save button to its `data-sending-text` („Odesílám…") and disables it while the form is sent.
+
+- Only the unnamed save button carries the attribute. A row button's `name` is how the server tells it from a save, and disabling a button takes its name out of the POST.
+- A repeat press through the decoy (Enter) is cancelled.
+- The button comes back after `RETRY_AFTER_MS` (30 s), since a response can be lost and sending again is safe, and on `pageshow`, since Back can restore the page mid-send.
+- It doesn't stop duplicates; `submission_token` does (see above).
+
+Tests: `SubmitFeedbackTests`.
 
 ## Installing the app (VyrobaPK)
 

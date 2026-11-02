@@ -23,9 +23,15 @@ from .reports import _list_page_context, _previews
 def entry_create(request, kind):
     """Record a new entry of `kind`: Zpracování or Tankování."""
     page = kind.page(request)
+    if page.submitted and kind.already_saved(page):
+        messages.success(request, kind.already_saved_message)
+        return redirect(kind.create_url)
     if page.submitted and kind.is_valid(page):
         entry = kind.save(page)
-        messages.success(request, kind.saved_message if entry.is_approved else kind.pending_message)
+        if entry is None:
+            messages.success(request, kind.already_saved_message)
+        else:
+            messages.success(request, kind.saved_message if entry.is_approved else kind.pending_message)
         return redirect(kind.create_url)
     return render(request, kind.create_template, page.context(**kind.extra_context(request, None)))
 

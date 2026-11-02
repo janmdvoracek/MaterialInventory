@@ -17,7 +17,8 @@ kept equal to the other section's `mirror_source` total on every row that
 names a machine: job_rows.js live, EntryPage on each rebuild (_mirrored_rows).
 
 job_rows.js and searchable_select.js are loaded here and are pure
-enhancement; they clone the row <template>.
+enhancement; they clone the row <template>. So is submit_feedback.js, loaded
+here because every page with row sections has a `data-sending-text` button.
 {% endcomment %}
 {% for section, formset in sections %}
 <h2>{{ section.title }}</h2>
@@ -53,3 +54,4 @@ enhancement; they clone the row <template>.
 
 <script src="{% static 'js/job_rows.js' %}" defer></script>
 <script src="{% static 'js/searchable_select.js' %}" defer></script>
+<script src="{% static 'js/submit_feedback.js' %}" defer></script>

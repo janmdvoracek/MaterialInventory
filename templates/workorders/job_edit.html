@@ -18,7 +18,7 @@
         <button class="visually-hidden" type="submit" tabindex="-1" aria-hidden="true">Uložit změny</button>
         {% include "workorders/_job_form_fields.html" %}
 
-        <button type="submit">Uložit změny</button>
+        <button type="submit" data-sending-text="Odesílám…">Uložit změny</button>
     </form>
     {# A worker correcting their pending job has no detail page; they came from the form. #}
     <a class="btn secondary" href="{% if user.is_manager_or_admin %}{% url 'job_detail' work_order.pk %}{% else %}{% url 'transform_create' %}{% endif %}">Zpět bez uložení</a>

@@ -9,9 +9,10 @@ from django.test import TestCase
 from django.urls import reverse
 
 from workorders.entry import MAX_ROWS_PER_SECTION, MIN_ROWS_PER_SECTION
+from workorders.models import Refuelling
 from workorders.sections import JOB_SECTIONS
 
-from .helpers import ReviewFixtureMixin, job_payload
+from .helpers import ReviewFixtureMixin, job_payload, refuel_payload
 
 
 class RowTemplateTests(ReviewFixtureMixin, TestCase):
@@ -123,7 +124,7 @@ class RowTemplateTests(ReviewFixtureMixin, TestCase):
     def test_no_script_reaches_for_anything_off_the_server(self):
         """The htmx <script> this app used to carry pointed at unpkg.com, which
         the depot could not necessarily reach. Committed files, no CDN."""
-        for name in ('job_rows.js', 'searchable_select.js', 'photo_picker.js', 'pwa.js'):
+        for name in ('job_rows.js', 'searchable_select.js', 'photo_picker.js', 'submit_feedback.js', 'pwa.js'):
             source = (settings.BASE_DIR / 'static' / 'js' / name).read_text(encoding='utf-8')
             self.assertNotIn('http://', source, name)
             self.assertNotIn('https://', source, name)
@@ -134,6 +135,28 @@ class RowTemplateTests(ReviewFixtureMixin, TestCase):
         """
         css = (settings.BASE_DIR / 'static' / 'css' / 'app.css').read_text(encoding='utf-8')
         self.assertRegex(css, r'button\[hidden\][^{]*\{[^}]*display:\s*none')
+
+
+class SubmitFeedbackTests(ReviewFixtureMixin, TestCase):
+    """The contract `static/js/submit_feedback.js` reads off an entry page; the script itself is untested."""
+
+    def test_only_the_unnamed_save_button_says_it_is_sending(self):
+        """Disabling a named button would take its name out of the POST, and a
+        row button's name is how the server tells it from a save."""
+        job = self.submit_job(self.worker)
+        self.client.force_login(self.manager)
+        self.client.post(reverse('refuel_create'), refuel_payload([{'machine': self.machine_a, 'litres': '10'}]))
+        refuelling = Refuelling.objects.get()
+        for name, args in (
+            ('transform_create', []),
+            ('job_edit', [job.pk]),
+            ('refuel_create', []),
+            ('refuel_edit', [refuelling.pk]),
+        ):
+            response = self.client.get(reverse(name, args=args))
+            self.assertContains(response, '<button type="submit" data-sending-text="Odesílám…">', count=1)
+            self.assertContains(response, 'data-sending-text', count=1)
+            self.assertContains(response, 'js/submit_feedback.js')
 
 
 class SearchablePickerTests(ReviewFixtureMixin, TestCase):

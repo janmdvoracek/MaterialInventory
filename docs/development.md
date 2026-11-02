@@ -46,7 +46,7 @@ Things to know:
 - **Use `force_login`, never `Client.login()`.** See [configuration.md](configuration.md#login-rate-limiting).
 - **Photo file deletion runs on `transaction.on_commit`**, which a `TestCase` never reaches. Wrap those assertions in `self.captureOnCommitCallbacks(execute=True)`. `JobPhotoTests` points `MEDIA_ROOT` at a temp directory.
 - **`--parallel` clones the test database once per worker process**, and CI uses it. A test must not depend on state outside the database that another process could touch; that is why `JobPhotoTests` makes its own temporary `MEDIA_ROOT`.
-- **No `TransactionTestCase`.** There are no concurrent writes. Add a counter or any read-modify-write and its test needs one.
+- **`TransactionTestCase` only for real races.** `ConcurrentSubmissionTests` is the one case: two connections racing for a `submission_token`. Add a counter or any read-modify-write and its test needs one too.
 - **Migrations were reset** to one `0001_initial` per app before production had data. A dev database from before a reset needs recreating (`docker compose down -v`, **dev file only**). From now on, model changes get ordinary migrations.
 
 ### Coverage

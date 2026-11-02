@@ -53,19 +53,20 @@ docker compose up --build                               # dev stack only
 
 Django 6, PostgreSQL, server-rendered templates, Czech mobile-first UI, Django admin as the back office. No API, no JS framework, no build step, no `package.json`, no CDN. (`htmx`, `widget_tweaks` and `rest_framework` were removed as unused; add them back only on purpose.)
 
-**Scripts.** The app serves its own scripts from `static/` and never loads one from a third party. There are exactly three on the job form (the refuelling form uses the first two), plus `pwa.js` on every page:
+**Scripts.** The app serves its own scripts from `static/` and never loads one from a third party. There are exactly four on the job form (the refuelling form uses all but `photo_picker.js`), plus `pwa.js` on every page:
 
 - `static/js/job_rows.js`: adds and removes formset rows in the DOM. It hides taken choices only in the picker named by the section's `data-unique-field`.
 - `static/js/searchable_select.js`: puts a type-to-filter box in front of every `<select>` in a row.
 - `static/js/photo_picker.js`: one „Přidat fotku" button that keeps every photo picked.
+- `static/js/submit_feedback.js`: „Odesílám…" on the unnamed `data-sending-text` save button while the form is sent. It comes back after 30 s so a lost response can be retried. Duplicates are stopped by the server's `submission_token`, not by this.
 
-**All three are progressive enhancement, and that is a hard constraint.** The test suite drives views through `self.client` with no browser, so the server path must be complete on its own. Never move behaviour into a script that the server cannot perform. With every script blocked, the form must still work:
+**All four are progressive enhancement, and that is a hard constraint.** The test suite drives views through `self.client` with no browser, so the server path must be complete on its own. Never move behaviour into a script that the server cannot perform. With every script blocked, the form must still work:
 
 - The row buttons are real submits (`add_<prefix>` / `remove_<prefix>`, and „= součet výstupů" `sum_consumed`), and the server answers them by re-rendering.
 - The hidden `<select>` is still what gets posted. The search box has an `id` (`<select id>-search`) but **never a `name`**, and is capped at 40 characters on the client.
 - Each file input works on its own.
 
-The scripts build no markup of their own. They clone server-rendered `<template>`s (`formset.empty_form`, `data-photo-picker`, `data-photo-entry`) and read options, labels and `empty_label` off the rendered `<select>`. The scripts' own behaviour is untested by design. The tests cover only the contract they read off the page: `RowTemplateTests`, `SearchablePickerTests` and `PhotoPickerTests`. `RowTemplateTests` and `PwaTests` fail if a URL appears in a script.
+The scripts build no markup of their own. They clone server-rendered `<template>`s (`formset.empty_form`, `data-photo-picker`, `data-photo-entry`) and read options, labels and `empty_label` off the rendered `<select>`. The scripts' own behaviour is untested by design. The tests cover only the contract they read off the page: `RowTemplateTests`, `SearchablePickerTests`, `PhotoPickerTests` and `SubmitFeedbackTests`. `RowTemplateTests` and `PwaTests` fail if a URL appears in a script.
 
 **CSS.** All CSS lives in `static/css/app.css`. No inline `style=` attributes and no `<style>` blocks.
 
@@ -214,6 +215,8 @@ It must also widen the catalog pickers to the retired records the job already na
 - „Zapsat za" is behind `{% if order_form.author %}`.
 - The hours label is read off the form (`job_edit` sets „Hodiny – <author>").
 
+**One form, one entry.** Both create pages render a hidden `submission_token` (a fresh UUID per form, `EntryPage.context`), stored in a unique column on `WorkOrder` and `Refuelling`. Sending the same form again saves nothing and answers with the kind's `already_saved_message`: `Kind.already_saved` catches it before validation, and `Kind._create_once` catches two copies in flight through the unique column. The token is deliberately not a form field, because a bad value would be an error with nowhere to render; a missing or unreadable one saves unprotected, so a form opened before a deploy keeps its job. Row buttons and refused submissions carry the same token on. The edit pages have none, so a repeated `job_edit` can add its new photos twice. `SubmissionTokenTests` and `ConcurrentSubmissionTests` cover this.
+
 **Every error must render.** Nothing is written unless all five forms validate, so an error with nowhere to render looks like a button that did nothing.
 
 - Row errors go through `_row_errors.html`; section errors render via `non_form_errors`.
@@ -309,7 +312,7 @@ One `tests.py` per app, except `workorders/tests/`, which holds almost everythin
 
 - Postgres is required, and there is no test settings module, so `settings.py` changes affect the suite.
 - Use `force_login`, **never `Client.login()`**. The axes backend rejects `authenticate()` without a request. `AxesStandaloneBackend` defines no `get_user`, which is what keeps `force_login` working.
-- There are no concurrent writes, so no `TransactionTestCase`. Add a read-modify-write and you'll need one.
+- `TransactionTestCase` only where two connections must really race (`ConcurrentSubmissionTests`). Add a read-modify-write and you'll need one too.
 - CI runs `--parallel`: one cloned database per process. Nothing may share state outside the database (`JobPhotoTests` uses its own temporary `MEDIA_ROOT`). Coverage writes per-process files, so always `coverage combine` before `report`.
 
 ## Deployment

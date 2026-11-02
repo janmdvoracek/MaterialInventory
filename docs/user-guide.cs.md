@@ -266,5 +266,11 @@ Pošlete menší nebo méně fotek. Při úpravě případně nejdřív odeberte
 **„Vybrat z galerie" nenabízí fotoaparát.**
 Zvolte **Vyfotit**.
 
+**Tlačítko ukazuje „Odesílám…" a nic se neděje.**
+Počkejte. Při slabém signálu to může chvíli trvat. Pokud se tlačítko po půl minutě vrátí, klepněte na něj znovu. Nic se tím neuloží dvakrát.
+
+**„Toto zpracování už je zaznamenané, podruhé se neuložilo."** / **„Toto tankování už je zaznamenané, podruhé se neuložilo."**
+Stejný formulář už byl uložen, takže je zápis v pořádku a nemusíte nic dělat. Pokud jste se tlačítkem Zpět vrátili k uloženému formuláři, abyste zapsali další práci, změny se neuložily. Otevřete formulář znovu a vyplňte ho.
+
 **Špatně zadaná zakázka.**
 Čeká-li ještě na schválení, opravte ji sami přes žlutý pruh nad formulářem Zpracování ([Schvalování](#schvalování)). Schválenou opraví vedoucí v Přehledu, nebo ji smaže; řekněte mu.
