@@ -252,13 +252,15 @@ class TableExportTests(TestCase):
         work_order = self._job(quantity=Decimal('12.5'), location=default_location())
         self.client.force_login(self.manager)
         rows = self._rows(self.client.get(reverse('material_detail_export')))
-        self.assertEqual(rows[0], ['ID', 'Provedeno', 'Lokace', 'Materiál', 'Druh', 'Množství (t)', 'Zakázka', 'Kým'])
+        self.assertEqual(
+            rows[0], ['ID', 'Provedeno', 'Lokace', 'Kód (SKU)', 'Materiál', 'Druh', 'Množství (t)', 'Zakázka', 'Kým']
+        )
         today = date.today().isoformat()
         self.assertEqual(
             rows[1:],
             [
-                [str(work_order.pk), today, 'Lom Sever', 'Frakce 8/16', 'Výroba', '12,50', 'job', 'worker'],
-                [str(work_order.pk), today, 'Lom Sever', 'Štěrk', 'Spotřeba', '12,50', 'job', 'worker'],
+                [str(work_order.pk), today, 'Lom Sever', 'FIN', 'Frakce 8/16', 'Výroba', '12,50', 'job', 'worker'],
+                [str(work_order.pk), today, 'Lom Sever', 'RAW', 'Štěrk', 'Spotřeba', '12,50', 'job', 'worker'],
             ],
         )
         self.assertEqual(work_order.movements.count(), 2)
@@ -292,14 +294,14 @@ class TableExportTests(TestCase):
         response = self.client.get(
             reverse('material_detail_export'), {'date_from': (date.today() - timedelta(days=7)).isoformat()}
         )
-        quantities = [row[5] for row in self._rows(response)[1:]]
+        quantities = [row[6] for row in self._rows(response)[1:]]
         self.assertEqual(quantities, ['1,50', '1,50'])
 
     def test_detail_export_follows_the_movement_type_filter(self):
         self._job(quantity=Decimal('3'))
         self.client.force_login(self.manager)
         response = self.client.get(reverse('material_detail_export'), {'movement_type': 'TRANSFORM_CONSUME'})
-        self.assertEqual([row[4] for row in self._rows(response)[1:]], ['Spotřeba'])
+        self.assertEqual([row[5] for row in self._rows(response)[1:]], ['Spotřeba'])
         # The summary file keeps both directions, like the page's summary.
         summary = self._rows(
             self.client.get(reverse('material_dashboard_export'), {'movement_type': 'TRANSFORM_CONSUME'})
@@ -311,7 +313,7 @@ class TableExportTests(TestCase):
         # the reader filters on, and blank is the same statement without it.
         WorkOrder.objects.filter(pk=self._job(quantity=Decimal('2')).pk).update(description='')
         self.client.force_login(self.manager)
-        self.assertEqual(self._rows(self.client.get(reverse('material_detail_export')))[1][6], '')
+        self.assertEqual(self._rows(self.client.get(reverse('material_detail_export')))[1][7], '')
 
     def test_detail_export_leaves_a_missing_location_blank(self):
         # Jobs recorded before the column existed, and fuel-only ones, have none.

@@ -498,7 +498,7 @@ def material_detail_export(request):
     """„Detail položek" as a CSV: every filtered line item, not just the page on screen."""
     return _csv_response(
         'detail-polozek',
-        ['ID', 'Provedeno', 'Lokace', 'Materiál', 'Druh', 'Množství (t)', 'Zakázka', 'Kým'],
+        ['ID', 'Provedeno', 'Lokace', 'Kód (SKU)', 'Materiál', 'Druh', 'Množství (t)', 'Zakázka', 'Kým'],
         [
             [
                 # Which job the row belongs to: two jobs can share a date, description and author.
@@ -506,6 +506,7 @@ def material_detail_export(request):
                 movement.work_order.performed_on.isoformat(),
                 # Missing values are blank cells, not the page's „—".
                 movement.work_order.location.name if movement.work_order.location else '',
+                movement.material.sku,
                 movement.material.name,
                 movement.get_movement_type_display(),
                 # Positive, as typed; consumed rows are stored negative.

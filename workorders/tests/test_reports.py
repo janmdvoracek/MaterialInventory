@@ -673,6 +673,13 @@ class MaterialDashboardTests(TestCase):
         self.assertContains(response, 'Výroba')
         self.assertContains(response, self.worker.username)
 
+    def test_detail_rows_show_the_material_code(self):
+        self._job(consumed=[(self.raw, Decimal('5'))], produced=[(self.finished, Decimal('5'))])
+        response = self.client.get(reverse('material_dashboard'))
+        self.assertContains(response, '<th>Kód (SKU)</th>', html=True)
+        self.assertContains(response, f'<td>{self.raw.sku}</td>', html=True)
+        self.assertContains(response, f'<td>{self.finished.sku}</td>', html=True)
+
     def test_the_movement_type_filter_narrows_the_detail_rows_only(self):
         # The summary already splits the two directions into columns; narrowing
         # it too would zero one column and turn „Rozdíl" into nonsense.
