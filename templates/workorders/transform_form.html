@@ -14,8 +14,8 @@
         {% csrf_token %}
         {# One per rendered form, so sending this form twice saves one job (`Kind.save`). #}
         <input type="hidden" name="submission_token" value="{{ submission_token }}">
-        {# Decoy submit: Enter uses the first submit button, which would otherwise be „+ další řádek". #}
-        <button class="visually-hidden" type="submit" tabindex="-1" aria-hidden="true">Zaznamenat zpracování</button>
+        {# Enter presses the form's first submit button; while that one is disabled, Enter does nothing. #}
+        <button type="submit" disabled hidden></button>
         {% include "workorders/_job_form_fields.html" %}
 
         <button type="submit" data-sending-text="Odesílám…">Zaznamenat zpracování</button>

@@ -179,7 +179,7 @@
                 }
             } else if (event.key === 'Enter') {
                 if (list.hidden) {
-                    return; // Let it submit the form, like any other field.
+                    return; // Nothing to pick; the form ignores Enter, as in any other field.
                 }
                 event.preventDefault();
                 if (active >= 0) {

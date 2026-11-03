@@ -232,7 +232,7 @@ It must also widen the catalog pickers to the retired records the job already na
 - Both buttons need `formnovalidate`.
 - At the floor, „− odebrat řádek" is rendered with `hidden` (not omitted), so the script can unhide it.
 - `job_row_formset` builds a class per call, because `extra` is a class attribute.
-- Each `<form>` opens with an off-screen decoy submit, so Enter saves instead of adding a row.
+- Each `<form>` opens with a `disabled hidden` submit. Enter presses a form's first submit button and does nothing while that one is disabled, so only the real button saves. This is plain HTML, no script, with one exception: Chromium's date box skips a disabled button and presses „+ další řádek", so `job_rows.js` cancels Enter there (with scripts blocked it adds a row and still saves nothing). `EnterKeyTests` covers the markup.
 
 `RowButtonTests` covers this.
 

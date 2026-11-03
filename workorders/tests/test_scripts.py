@@ -159,6 +159,27 @@ class SubmitFeedbackTests(ReviewFixtureMixin, TestCase):
             self.assertContains(response, 'js/submit_feedback.js')
 
 
+class EnterKeyTests(ReviewFixtureMixin, TestCase):
+    """Enter in a field neither saves an entry nor adds a row. No script is involved."""
+
+    def test_the_first_button_of_every_entry_form_is_disabled(self):
+        """Enter presses a form's first submit button, and does nothing while
+        that one is disabled. Any other first button would be pressed instead."""
+        job = self.submit_job(self.worker)
+        self.client.force_login(self.manager)
+        self.client.post(reverse('refuel_create'), refuel_payload([{'machine': self.machine_a, 'litres': '10'}]))
+        refuelling = Refuelling.objects.get()
+        for name, args in (
+            ('transform_create', []),
+            ('job_edit', [job.pk]),
+            ('refuel_create', []),
+            ('refuel_edit', [refuelling.pk]),
+        ):
+            body = self.client.get(reverse(name, args=args)).content.decode()
+            entry_form = body[body.index('<form method="post"') :]
+            self.assertEqual(entry_form.index('<button'), entry_form.index('<button type="submit" disabled hidden>'))
+
+
 class SearchablePickerTests(ReviewFixtureMixin, TestCase):
     """The contract `static/js/searchable_select.js` reads off a row; the script itself is untested."""
 

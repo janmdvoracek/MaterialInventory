@@ -32,11 +32,6 @@
         if (!button || (event.submitter && event.submitter.name)) {
             return;
         }
-        if (button.dataset.idleText) {
-            // Enter goes through the decoy button, which is still enabled.
-            event.preventDefault();
-            return;
-        }
         button.dataset.idleText = button.textContent;
         button.textContent = button.dataset.sendingText;
         // Unnamed, so disabling it takes nothing out of the POST.

@@ -441,12 +441,6 @@ class RowButtonTests(ReviewFixtureMixin, TestCase):
         response = self._press('add_workers', url=reverse('job_edit', args=[work_order.pk]))
         self.assertEqual(response.context['order_form'].fields['hours'].label, f'Hodiny – {self.worker.username}')
 
-    def test_enter_still_saves_rather_than_adding_a_row(self):
-        """Enter submits through the first submit button, so a decoy must precede „+ další řádek"."""
-        self.client.force_login(self.worker)
-        body = self.client.get(reverse('transform_create')).content.decode()
-        self.assertLess(body.index('visually-hidden'), body.index('name="add_workers"'))
-
     # -------------------------------------------------------------- removing
 
     def test_the_named_section_loses_a_row_and_the_others_do_not(self):

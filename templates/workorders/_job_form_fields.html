@@ -2,7 +2,8 @@
 The Zpracování form body, shared by transform_form.html and job_edit.html: the
 job's fields, then the JOB_SECTIONS rows (_row_sections.html). The caller
 supplies the <form> tag (with enctype="multipart/form-data", or photos never
-arrive), the CSRF token, a leading decoy submit and the real submit button.
+arrive), the CSRF token, a leading disabled submit (so Enter does nothing) and
+the real submit button.
 
 photo_picker.js is loaded here; job_rows.js and searchable_select.js come with
 _row_sections.html. All three are pure enhancement.

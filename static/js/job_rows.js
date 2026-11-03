@@ -248,4 +248,12 @@
         }
         refreshChoices(section);
     });
+
+    // Chromium's date box skips the form's disabled first button and presses the
+    // next one, „+ další řádek". Without this script that is a harmless rebuild.
+    document.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter' && event.target.matches('input[type="date"]')) {
+            event.preventDefault();
+        }
+    });
 })();

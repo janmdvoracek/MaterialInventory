@@ -274,7 +274,7 @@ Each section has „+ další řádek" (`add_<prefix>`) and „− odebrat řád
 - **The remove button** is rendered with `hidden` at the floor, so the script can unhide it. That needs `button[hidden] { display: none }` in `app.css`.
 - **Both buttons carry `formnovalidate`**, or the browser blocks the submit on required fields.
 - **`job_row_formset` builds a class per call**, because `extra` is a class attribute.
-- **Each `<form>` starts with an off-screen decoy submit** (no `name`), so Enter saves instead of adding a row.
+- **Each `<form>` starts with a `disabled hidden` submit.** Enter in a field presses a form's first submit button, and does nothing while that one is disabled. So Enter neither saves nor adds a row; only pressing the real button saves. This is plain HTML and needs no script (`EnterKeyTests`). One exception: Chromium's date box skips a disabled button and presses the next one, „+ další řádek". `job_rows.js` cancels that Enter; with scripts blocked it adds a row through the server and still saves nothing.
 
 `RowButtonTests` covers this.
 
@@ -324,7 +324,7 @@ Tests: `RowTemplateTests`.
 - Options are re-read every time the list opens, so it agrees with `_hide_taken_choices` and `job_rows.js` for free. A pick dispatches `change`.
 - Matching is case- and diacritic-insensitive („ster" finds „Štěrk").
 - New rows are found with a `MutationObserver`, so neither script depends on the other.
-- Enter submits when the list is closed and picks when it is open.
+- Enter picks when the list is open and does nothing when it is closed.
 
 Tests: `SearchablePickerTests`, including the three `.combo` CSS rules.
 
@@ -341,7 +341,6 @@ Tests: `PhotoPickerTests`.
 **`static/js/submit_feedback.js`** changes the save button to its `data-sending-text` („Odesílám…") and disables it while the form is sent.
 
 - Only the unnamed save button carries the attribute. A row button's `name` is how the server tells it from a save, and disabling a button takes its name out of the POST.
-- A repeat press through the decoy (Enter) is cancelled.
 - The button comes back after `RETRY_AFTER_MS` (30 s), since a response can be lost and sending again is safe, and on `pageshow`, since Back can restore the page mid-send.
 - It doesn't stop duplicates; `submission_token` does (see above).
 
