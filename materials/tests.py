@@ -33,7 +33,7 @@ class SeedDataCommandTests(TestCase):
 
     def _write_csv(self, name, text):
         path = self.tmp_path / name
-        path.write_text(text)
+        path.write_text(text, encoding='utf-8')
         return str(path)
 
     def _run(self, materials='', machines='', users='', locations='', fuel_sources=''):

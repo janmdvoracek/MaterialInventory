@@ -1,8 +1,9 @@
 {% comment %}
 The Tankování form body, shared by refuel_form.html and refuel_edit.html: the
 refuelling's own fields, then the REFUEL_SECTIONS rows (_row_sections.html).
-The caller supplies the <form> tag, the CSRF token, a leading decoy submit and
-the real submit button. As on the job form, every error must render here.
+The caller supplies the <form> tag, the CSRF token, a leading disabled submit
+(so Enter does nothing) and the real submit button. As on the job form, every
+error must render here.
 {% endcomment %}
 {% for error in order_form.non_field_errors %}<p class="messages error">{{ error }}</p>{% endfor %}
 

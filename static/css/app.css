@@ -283,17 +283,6 @@ tr.row-pending > td { background: var(--row-pending-bg); }
 }
 /* „= součet výstupů" (sum the produced rows) sits at the right, under the quantity box it fills. */
 .row-controls .sum-rows { margin-left: auto; }
-/* Off-screen but submittable: the decoy that makes Enter save the job form. */
-.visually-hidden {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-}
 /* Searchable pickers (static/js/searchable_select.js). Without .combo
    relative and .combo-list absolute, the list renders inline and pushes the
    rows down. `select[hidden]` is a safeguard. */

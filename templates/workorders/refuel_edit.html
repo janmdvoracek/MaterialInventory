@@ -9,8 +9,8 @@
     </p>
     <form method="post">
         {% csrf_token %}
-        {# Decoy submit: Enter uses the first submit button, which would otherwise be „+ další řádek". #}
-        <button class="visually-hidden" type="submit" tabindex="-1" aria-hidden="true">Uložit změny</button>
+        {# Enter presses the form's first submit button; while that one is disabled, Enter does nothing. #}
+        <button type="submit" disabled hidden></button>
         {% include "workorders/_refuel_form_fields.html" %}
 
         <button type="submit" data-sending-text="Odesílám…">Uložit změny</button>
