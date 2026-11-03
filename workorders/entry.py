@@ -10,6 +10,7 @@ is the entry kind's (`kinds.Kind`).
 """
 
 from decimal import Decimal, InvalidOperation
+from uuid import UUID, uuid4
 
 from django.contrib import messages
 
@@ -42,6 +43,9 @@ class EntryPage:
     `order_kwargs` go to `form_class`. `author` is whose rows these are and
     `viewer` who fills the page in; each section turns them, and its recorded
     rows, into its row-form kwargs (see `Section.row_form_kwargs`).
+
+    `posted_token` is the `submission_token` this POST carried, if any. A page
+    re-rendered from a POST carries the same one on, since nothing was saved.
     """
 
     def __init__(self, request, *, form_class, sections, order_kwargs, author, viewer, entry=None, order_initial=None):
@@ -58,6 +62,7 @@ class EntryPage:
             for section in sections
         }
         post = request.POST if request.method == 'POST' else None
+        self.posted_token = _posted_token(post) if post is not None else None
         pressed = _pressed_row_button(post, sections) if post is not None else None
         summed = _pressed_sum_button(post, sections) if post is not None else None
         if pressed or summed:
@@ -123,9 +128,22 @@ class EntryPage:
             'sections': [(section, self.formsets[section.prefix]) for section in self.sections],
             'min_rows': MIN_ROWS_PER_SECTION,
             'max_rows': MAX_ROWS_PER_SECTION,
+            'submission_token': self.posted_token or uuid4(),
             **{section.context_name: self.formsets[section.prefix] for section in self.sections},
             **extra,
         }
+
+
+def _posted_token(post_data):
+    """The POST's `submission_token`, or None if it has none it can read.
+
+    Not a form field: a bad value on a hidden input would be an error with
+    nowhere to render. A page without one still saves, just unprotected.
+    """
+    try:
+        return UUID(post_data.get('submission_token', ''))
+    except ValueError:
+        return None
 
 
 def _form_error_summary(order_form, formsets):

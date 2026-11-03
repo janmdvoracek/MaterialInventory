@@ -11,7 +11,7 @@ from decimal import Decimal
 
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 from django.utils.formats import localize
 
@@ -64,6 +64,7 @@ class Kind:
     detail_url = ''
     saved_message = ''
     pending_message = ''
+    already_saved_message = ''
     edited_message = ''
     approved_message = ''
     changed_message = ''
@@ -105,17 +106,45 @@ class Kind:
             messages.error(page.request, error)
         return valid and not errors
 
+    def already_saved(self, page):
+        """True if an entry was already saved from the form this POST was sent from."""
+        token = page.posted_token
+        return token is not None and self.model.objects.filter(submission_token=token).exists()
+
+    def _create_once(self, page, own):
+        """The new entry, or None if a request from the same form got there first.
+
+        `already_saved` answers a repeat before it is validated. This is for
+        two copies in flight at once: the unique column makes the second wait
+        for the first, then refuses it.
+        """
+        try:
+            with transaction.atomic():
+                return self.model.objects.create(
+                    created_by=page.author,
+                    submission_token=page.posted_token,
+                    **own,
+                    **_review_on_submit(page.request.user),
+                )
+        except IntegrityError:
+            if self.already_saved(page):
+                return None
+            raise
+
     def save(self, page, entry=None):
         """Create the entry (review on submit) or update `entry`, and write its rows, in one transaction.
 
         An edit locks the row and asks `may_edit` again, so an author's
         correction can't land after an approval; it raises the `revision`, so
-        an approval of the version before it is refused.
+        an approval of the version before it is refused. Returns the entry, or
+        None if this form's entry already exists (`_create_once`).
         """
         own = {name: page.order_form.cleaned_data[name] for name in self.own_fields}
         with transaction.atomic():
             if entry is None:
-                entry = self.model.objects.create(created_by=page.author, **own, **_review_on_submit(page.request.user))
+                entry = self._create_once(page, own)
+                if entry is None:
+                    return None
             else:
                 locked = self.model.objects.select_for_update().get(pk=entry.pk)
                 if not self.may_edit(page.request.user, locked):
@@ -195,6 +224,7 @@ class JobKind(Kind):
     detail_url = 'job_detail'
     saved_message = 'Zpracování bylo zaznamenáno.'
     pending_message = 'Zpracování bylo zaznamenáno a čeká na schválení vedoucím.'
+    already_saved_message = 'Toto zpracování už je zaznamenané, podruhé se neuložilo.'
     edited_message = 'Zpracování bylo upraveno.'
     approved_message = 'Zpracování bylo schváleno.'
     changed_message = 'Zpracování se mezitím změnilo, proto nebylo schváleno. Zkontrolujte ho prosím znovu.'
@@ -273,6 +303,7 @@ class RefuellingKind(Kind):
     detail_url = 'refuel_detail'
     saved_message = 'Tankování bylo zaznamenáno.'
     pending_message = 'Tankování bylo zaznamenáno a čeká na schválení vedoucím.'
+    already_saved_message = 'Toto tankování už je zaznamenané, podruhé se neuložilo.'
     edited_message = 'Tankování bylo upraveno.'
     approved_message = 'Tankování bylo schváleno.'
     changed_message = 'Tankování se mezitím změnilo, proto nebylo schváleno. Zkontrolujte ho prosím znovu.'

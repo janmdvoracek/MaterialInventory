@@ -175,6 +175,8 @@ button:hover, .btn:hover { background: var(--brand-green-dark); }
 /* Load-bearing: the `display` above beats the UA `[hidden]` rule, so without
    this a hidden „− odebrat řádek" still renders. */
 button[hidden], .btn[hidden] { display: none; }
+/* „Odesílám…" (static/js/submit_feedback.js). */
+button:disabled { opacity: 0.7; cursor: progress; }
 .messages { list-style: none; padding: 0; }
 .messages li { padding: 0.75rem; border-radius: 6px; margin-bottom: 0.5rem; }
 .messages .success { background: var(--success-bg); color: var(--success-text); }

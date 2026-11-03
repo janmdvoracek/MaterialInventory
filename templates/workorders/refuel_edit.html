@@ -13,7 +13,7 @@
         <button class="visually-hidden" type="submit" tabindex="-1" aria-hidden="true">Uložit změny</button>
         {% include "workorders/_refuel_form_fields.html" %}
 
-        <button type="submit">Uložit změny</button>
+        <button type="submit" data-sending-text="Odesílám…">Uložit změny</button>
     </form>
     <a class="btn secondary" href="{% url 'refuel_detail' refuelling.pk %}">Zpět bez uložení</a>
 </div>

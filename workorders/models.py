@@ -73,6 +73,11 @@ class WorkOrder(models.Model):
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING, verbose_name='stav')
     # Raised by every edit, so an approval can name the version its reviewer read (`kinds._approve`).
     revision = models.PositiveIntegerField(default=0, editable=False, verbose_name='revize')
+    # The form this job was sent from, so sending it again saves nothing (`kinds.Kind.save`).
+    # Null on jobs from before the column, from the admin, or from a page that had no token.
+    submission_token = models.UUIDField(
+        null=True, blank=True, unique=True, editable=False, verbose_name='token odeslání'
+    )
     reviewed_at = models.DateTimeField(null=True, blank=True, verbose_name='posouzeno')
     reviewed_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -210,6 +215,10 @@ class Refuelling(models.Model):
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING, verbose_name='stav')
     # Raised by every edit, so an approval can name the version its reviewer read (`kinds._approve`).
     revision = models.PositiveIntegerField(default=0, editable=False, verbose_name='revize')
+    # See `WorkOrder.submission_token`.
+    submission_token = models.UUIDField(
+        null=True, blank=True, unique=True, editable=False, verbose_name='token odeslání'
+    )
     reviewed_at = models.DateTimeField(null=True, blank=True, verbose_name='posouzeno')
     reviewed_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
