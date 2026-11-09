@@ -113,7 +113,8 @@ uv sync                                # bring .venv in line with uv.lock
 - **Everything but your own `uv sync` is `--locked`.** The `Dockerfile` and every CI job run `uv sync --locked`, which fails instead of resolving anew when `uv.lock` is out of step with `pyproject.toml`. A pin edited by hand without `uv lock` fails CI.
 - **Three sets.** The app's own dependencies are all the image gets (`--no-dev`). The `dev` group (ruff, pre-commit, coverage) comes with a plain `uv sync`. The `audit` group (pip-audit) is only for the `audit` job.
 - **The project itself is never installed** (`package = false`): it is an application, not a library.
-- **The image's virtualenv is `/opt/venv`**, outside `/app`, so the dev compose file's bind mount can't hide it. `PATH` puts it first, so `python` and `gunicorn` need no `uv run`. The base image's `pip` is uninstalled: nothing uses it, and its vendored libraries were all the image scan ever flagged.
+- **The image's virtualenv is `/opt/venv`**, outside `/app`, so the dev compose file's bind mount can't hide it. `PATH` puts it first, so `python` and `gunicorn` need no `uv run`. The base image's `pip` is uninstalled: nothing uses it, and its vendored libraries were what the image scan used to flag.
+- **The image runs `apt-get upgrade`.** Debian publishes OS fixes before the `python:3.14-slim` tag is rebuilt, and the image scan fails on a fixed CVE (zlib1g, November 2026). Docker caches that layer, so a build picks up new fixes only when the line, the base image, or the cache changes; CI always builds fresh.
 - **uv's own version** is pinned by hand in three places: `required-version` in `pyproject.toml` (a floor, because an older uv may rewrite `uv.lock`), the `uv` stage in the `Dockerfile` (Dependabot bumps it), and `version:` in `ci.yml` and `security.yml`.
 
 ## Seeding data
@@ -191,7 +192,7 @@ On Windows Git Bash, prefix it with `MSYS2_ARG_CONV_EXCL=/etc/caddy`. Don't use 
 | `audit` | a known vulnerability (pip-audit, PyPI advisory data) in a production dependency, at exactly the locked version |
 | `image` | a HIGH or CRITICAL vulnerability with a fix available anywhere in the built image, OS packages included (Trivy) |
 
-- **It never blocks a deploy.** `deploy.yml` checks `ci.yml` only, so a CVE published upstream can't stop you deploying its fix. A red run is still a to-do: bump the package (`uv lock --upgrade-package …`) or rebuild on a newer base image.
+- **It never blocks a deploy.** `deploy.yml` checks `ci.yml` only, so a CVE published upstream can't stop you deploying its fix. A red run is still a to-do: bump the package (`uv lock --upgrade-package …`); an OS package is fixed by the `apt-get upgrade` in the next uncached build.
 - **The weekly run** is what catches a CVE published while nothing in the repo changed.
 - **Unfixed CVEs are ignored**, because there is nothing to upgrade to. Dev tools are not audited; they never reach the server.
 - **Two actions are pinned to a commit**, not a tag. Trivy's tags were hijacked in March 2026, and `setup-uv` publishes no floating major tag, so `@v10` doesn't resolve. Dependabot moves the commit and its version comment together.
