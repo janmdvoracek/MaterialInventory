@@ -98,11 +98,12 @@
     <div class="table-scroll">
     <table>
         <thead>
-            <tr><th>Provedeno</th><th>Stroj</th><th>Hodin na zakázce</th><th>Tuny</th><th>Zakázka</th><th>Kým</th></tr>
+            <tr><th>ID</th><th>Provedeno</th><th>Stroj</th><th>Hodin na zakázce</th><th>Tuny</th><th>Zakázka</th><th>Kým</th><th>Spolupracovníci</th></tr>
         </thead>
         <tbody>
         {% for usage in tables.usages.rows %}
             <tr>
+                <td><a href="{% url 'job_detail' usage.work_order_id %}">#{{ usage.work_order_id }}</a></td>
                 <td>{{ usage.work_order.performed_on|date:"Y-m-d" }}</td>
                 <td>{{ usage.machine.name }}</td>
                 {# Reading minus the previous one, recalculated on every render — see _with_run_hours. #}
@@ -110,9 +111,10 @@
                 <td>{{ usage.tons|floatformat:2|default:"—" }}</td>
                 <td>{{ usage.work_order.description|default:"—" }}</td>
                 <td>{{ usage.work_order.created_by.username }}</td>
+                <td>{% for collaborator in usage.work_order.collaborators.all %}{{ collaborator.username }}{% if not forloop.last %}, {% endif %}{% empty %}—{% endfor %}</td>
             </tr>
         {% empty %}
-            <tr><td colspan="6">Žádné záznamy neodpovídají zadaným filtrům.</td></tr>
+            <tr><td colspan="8">Žádné záznamy neodpovídají zadaným filtrům.</td></tr>
         {% endfor %}
         </tbody>
     </table>

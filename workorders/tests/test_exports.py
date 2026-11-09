@@ -5,7 +5,9 @@ import io
 from datetime import date, timedelta
 from decimal import Decimal
 
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 from accounts.models import User
@@ -339,8 +341,8 @@ class TableExportTests(TestCase):
     def test_usage_detail_export_carries_the_usage_rows(self):
         # „Detail používání strojů": the run time per row, as the page computes
         # it, and a blank cell where the page prints „—" (first reading, no tons).
-        self._job(usage=(Decimal('100'), None), performed_on=date(2026, 9, 1))
-        self._job(usage=(Decimal('112.5'), Decimal('20.5')), performed_on=date(2026, 9, 2))
+        first = self._job(usage=(Decimal('100'), None), performed_on=date(2026, 9, 1))
+        second = self._job(usage=(Decimal('112.5'), Decimal('20.5')), performed_on=date(2026, 9, 2))
         self.client.force_login(self.manager)
         response = self.client.get(reverse('machine_usage_detail_export'))
         self.assertEqual(
@@ -348,14 +350,69 @@ class TableExportTests(TestCase):
             f'attachment; filename="detail-pouzivani-stroju-{date.today().isoformat()}.csv"',
         )
         rows = self._rows(response)
-        self.assertEqual(rows[0], ['Provedeno', 'Stroj', 'Hodin na zakázce', 'Tuny', 'Zakázka', 'Kým'])
+        self.assertEqual(
+            rows[0], ['ID', 'Provedeno', 'Stroj', 'Hodin na zakázce', 'Tuny', 'Zakázka', 'Kým', 'Spolupracovníci']
+        )
         self.assertEqual(
             rows[1:],
             [
-                ['2026-09-02', 'Crusher A', '12,5', '20,50', 'job', 'worker'],
-                ['2026-09-01', 'Crusher A', '', '', 'job', 'worker'],
+                [str(second.pk), '2026-09-02', 'Crusher A', '12,5', '20,50', 'job', 'worker', ''],
+                [str(first.pk), '2026-09-01', 'Crusher A', '', '', 'job', 'worker', ''],
             ],
         )
+
+    def test_usage_detail_rows_link_their_job(self):
+        # As on „Detail položek": the ID tells apart jobs sharing a date, description and author.
+        work_order = self._job(usage=(Decimal('100'), None))
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('machine_dashboard'))
+        self.assertContains(
+            response, f'<a href="{reverse("job_detail", args=[work_order.pk])}">#{work_order.pk}</a>', count=1
+        )
+
+    def _job_with_collaborators(self):
+        """A machine job by `worker` with hours for three people, collaborators derived as on submission."""
+        third = User.objects.create_user(username='anna', password='pw', role=User.Role.WORKER)
+        work_order = self._job(
+            usage=(Decimal('100'), Decimal('5')),
+            hours=[(self.worker, Decimal('2')), (self.other_worker, Decimal('3')), (third, Decimal('1'))],
+        )
+        work_order.derive_collaborators()
+        return work_order
+
+    def test_usage_detail_export_names_the_collaborators(self):
+        # Alphabetical, author left out (that is „Kým"), no hours: this is a machine table.
+        self._job_with_collaborators()
+        self.client.force_login(self.manager)
+        rows = self._rows(self.client.get(reverse('machine_usage_detail_export')))
+        self.assertEqual(rows[1][6:], ['worker', 'anna, other'])
+
+    def test_usage_detail_page_names_the_collaborators(self):
+        self._job_with_collaborators()
+        solo = self._job(usage=(Decimal('110'), Decimal('5')))
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('machine_dashboard'))
+        self.assertContains(response, '<th>Spolupracovníci</th>', html=True)
+        self.assertContains(response, '<td>anna, other</td>', html=True)
+        # The job with no one else on it.
+        today = date.today().isoformat()
+        link = reverse('job_detail', args=[solo.pk])
+        self.assertContains(
+            response,
+            f'<tr><td><a href="{link}">#{solo.pk}</a></td><td>{today}</td><td>Crusher A</td><td>10,0 h</td>'
+            '<td>5,00</td><td>job</td><td>worker</td><td>—</td></tr>',
+            html=True,
+        )
+
+    def test_usage_detail_collaborators_cost_one_query_not_one_per_row(self):
+        self.client.force_login(self.manager)
+        self._job_with_collaborators()
+        with CaptureQueriesContext(connection) as one_row:
+            self.client.get(reverse('machine_usage_detail_export'))
+        for _ in range(3):
+            self._job(usage=(None, Decimal('1')), hours=[(self.other_worker, Decimal('1'))]).derive_collaborators()
+        with self.assertNumQueries(len(one_row)):
+            self.client.get(reverse('machine_usage_detail_export'))
 
     def test_usage_detail_export_is_every_row_not_one_page(self):
         for _ in range(MORE_ROWS + 1):
@@ -373,7 +430,7 @@ class TableExportTests(TestCase):
         response = self.client.get(
             reverse('machine_usage_detail_export'), {'date_from': (date.today() - timedelta(days=7)).isoformat()}
         )
-        self.assertEqual([row[2:4] for row in self._rows(response)[1:]], [['10,0', '1,50']])
+        self.assertEqual([row[3:5] for row in self._rows(response)[1:]], [['10,0', '1,50']])
 
     def test_usage_detail_export_is_gated_and_header_only_on_an_invalid_filter(self):
         self._job(usage=(Decimal('100'), None))

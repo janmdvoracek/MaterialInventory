@@ -419,6 +419,8 @@ The distinction throughout is unknown versus zero:
 
 The two detail tables grow independently: each has its own `vice_<key>`, and its link keeps the other's. `MachineRefuelReportTests` covers this.
 
+„Detail používání strojů" opens with the job's ID (linked to `job_detail` on the page, as on „Detail položek") and names the job's author („Kým") and its `collaborators` („Spolupracovníci", usernames in alphabetical order, „—" for none; a blank cell in the export). `MachineReport.usages` prefetches them, so the column costs one query, not one per row. The „Kým" filter still matches the author only.
+
 ### Materiál
 
 `material_dashboard` (manager only) is the only page that reads line items across jobs: "how much 8/16 did we make last month?"
