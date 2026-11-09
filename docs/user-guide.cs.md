@@ -154,7 +154,7 @@ Tabulky pod jedním filtrem (stroj, autor, datum), počítají se jen **schvále
 
 - **Stav strojů**: souhrn po strojích.
 - **Tankování** a **Detail tankování**: litry a jednotlivá tankování, se zdrojem a odkazem na celý zápis.
-- **Detail používání strojů**: jednotlivé záznamy.
+- **Detail používání strojů**: jednotlivé záznamy, u každého číslo zakázky s odkazem na ni (**ID**), autor zakázky (**Kým**) a ostatní, kdo na ní mají hodiny (**Spolupracovníci**).
 
 Bez filtru jsou vidět všechny stroje. Stroj s **0 h** v daném období neběžel.
 

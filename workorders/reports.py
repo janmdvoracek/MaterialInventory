@@ -7,7 +7,7 @@ from decimal import Decimal
 from functools import cached_property
 
 from django.contrib.auth.decorators import login_required
-from django.db.models import Count, F, Max, OuterRef, Q, QuerySet, Subquery, Sum
+from django.db.models import Count, F, Max, OuterRef, Prefetch, Q, QuerySet, Subquery, Sum
 from django.db.models.functions import Abs, Coalesce
 from django.http import HttpResponse
 from django.shortcuts import render
@@ -70,10 +70,15 @@ class MachineReport:
 
     @cached_property
     def usages(self):
-        """The filtered usage rows, newest first, each with its `run_hours`."""
+        """The filtered usage rows, newest first, each with its `run_hours`.
+
+        Each job's collaborators come prefetched in username order, for the
+        „Spolupracovníci" column: one query per page, not one per row.
+        """
         usages = (
             MachineUsage.objects.filter(work_order__status=WorkOrder.Status.APPROVED)
             .select_related('machine', 'work_order', 'work_order__created_by')
+            .prefetch_related(Prefetch('work_order__collaborators', queryset=User.objects.order_by('username')))
             .order_by('-work_order__performed_on', '-id')
         )
         return self.form.filter(_with_run_hours(usages))
@@ -459,9 +464,11 @@ def machine_usage_detail_export(request):
     """„Detail používání strojů" as a CSV: every filtered usage row, not just the page on screen."""
     return _csv_response(
         'detail-pouzivani-stroju',
-        ['Provedeno', 'Stroj', 'Hodin na zakázce', 'Tuny', 'Zakázka', 'Kým'],
+        ['ID', 'Provedeno', 'Stroj', 'Hodin na zakázce', 'Tuny', 'Zakázka', 'Kým', 'Spolupracovníci'],
         [
             [
+                # Which job the row belongs to, as on „Detail položek".
+                usage.work_order_id,
                 usage.work_order.performed_on.isoformat(),
                 usage.machine.name,
                 # Run time from `_with_run_hours`, as on the page; a first or blank reading is a blank cell.
@@ -469,6 +476,8 @@ def machine_usage_detail_export(request):
                 _csv_number(usage.tons, 2),
                 usage.work_order.description,
                 usage.work_order.created_by.username,
+                # The page prints „—" for none; the file leaves the cell blank.
+                ', '.join(user.username for user in usage.work_order.collaborators.all()),
             ]
             for usage in MachineReport(request.GET or None).usages
         ],
