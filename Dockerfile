@@ -16,8 +16,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq-dev gcc \
+# `upgrade` takes Debian's security fixes now rather than whenever the
+# python:3.14-slim tag is next rebuilt; the image scan fails on a fixed CVE.
+RUN apt-get update && apt-get upgrade -y \
+    && apt-get install -y --no-install-recommends libpq-dev gcc \
     && rm -rf /var/lib/apt/lists/*
 
 # uv installs everything, so the base image's pip is dead weight, and its
