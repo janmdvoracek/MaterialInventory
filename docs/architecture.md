@@ -135,7 +135,7 @@ A typed `0` in either box counts as blank (`_zero_is_blank`). A stored `0` would
 
 `WorkOrder.location` points to a `Location` catalog entry. It is one per job, required on the form, nullable (jobs from before the column, and the few fuel-only jobs with photos that migration `0010` kept, have none) and `PROTECT`ed. It is a **label**: nothing is summed or refused per location.
 
-It is shown and filtered on Přehled and Materiál only, plus `job_detail` and the Materiál detail CSV. It is a plain `<select>`, not a searchable one.
+It is shown and filtered on Přehled and Materiál only, plus `job_detail` and the Materiál detail CSV. On the job form it is a plain `<select>`, not a searchable one; the filters' „Lokace" is searchable like every filter catalog picker.
 
 ### Dates
 
@@ -302,7 +302,7 @@ The machines usually process exactly what the job consumed, so each Použité st
 
 ### The four scripts
 
-`job_rows.js`, `searchable_select.js` and `submit_feedback.js` come with `_row_sections.html`, so they also run on the refuelling form; `photo_picker.js` is the job form's alone. All four are **progressive enhancement**. The test suite has no browser, so the server path must be complete by itself, and with any script blocked the form still works. Each script builds no markup of its own and reads everything off the server-rendered page. The tests cover the contract they read, not their behaviour.
+`job_rows.js`, `searchable_select.js` and `submit_feedback.js` come with `_row_sections.html`, so they also run on the refuelling form; `photo_picker.js` is the job form's alone. `searchable_select.js` is also loaded by `_filter_card.html` (see below). All four are **progressive enhancement**. The test suite has no browser, so the server path must be complete by itself, and with any script blocked the form still works. Each script builds no markup of its own and reads everything off the server-rendered page. The tests cover the contract they read, not their behaviour.
 
 **`static/js/job_rows.js`** resizes sections in the DOM. A new row is the section's `<template>` (Django's `formset.empty_form`) with `__prefix__` replaced, plus a `TOTAL_FORMS` increment.
 
@@ -319,14 +319,16 @@ Tests: `RowTemplateTests`.
 
 **`static/js/searchable_select.js`** puts a type-to-filter box in front of every `<select>` in a row: one per row on the job form, two (stroj and zdroj) on the refuelling form. Each one's `empty_label` is a bare noun, which becomes the placeholder.
 
+It also does the same for every report filter's catalog picker (stroj, materiál, lokace, pracovník, vytvořil). `DateRangeFilterForm.__init__` marks each `ModelChoiceField` with `data-searchable`, so a new filter's catalog picker gets a box with no further work, and the short fixed lists („Stav", „Druh pohybu") stay plain selects. There the `empty_label` is an "all" phrase, so an emptied box means "all". Picking only fills the field; the filter is still sent with „Filtrovat" or Enter. The field's `<label>` is moved onto the box.
+
 - The `<select>` keeps its name and value and is still what gets posted (`hidden` is not `disabled`).
 - The box has an `id` but no `name`, and a 40-character client-side cap (`SEARCH_MAX_LENGTH`).
 - Options are re-read every time the list opens, so it agrees with `_hide_taken_choices` and `job_rows.js` for free. A pick dispatches `change`.
 - Matching is case- and diacritic-insensitive („ster" finds „Štěrk").
 - New rows are found with a `MutationObserver`, so neither script depends on the other.
-- Enter picks when the list is open and does nothing when it is closed.
+- Enter picks when the list is open. When it is closed, Enter does what it does in any other field: nothing on an entry form (its disabled first submit), and it sends a filter.
 
-Tests: `SearchablePickerTests`, including the three `.combo` CSS rules.
+Tests: `SearchablePickerTests`, including the three `.combo` CSS rules, and `SearchableFilterTests` for the filter cards.
 
 **`static/js/photo_picker.js`** hides the two photo inputs behind one „Přidat fotku" button whose menu calls `click()` on one or the other.
 

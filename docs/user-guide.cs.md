@@ -210,6 +210,8 @@ Nahoře je pět zakázek, které jste naposledy **zapsali vy**, seřazené podle
 
 > **Zobrazit více:** tabulky v Souhrnu, Strojích, Materiálu i v Přehledu ukazují nejdřív **pět řádků**. Nad tabulkou je vidět, kolik řádků je zobrazeno a kolik jich je celkem (např. *Zobrazeno 5 z 481 záznamů*). Je-li jich víc, je pod tabulkou tlačítko **Zobrazit více**: každé klepnutí přidá dalších **50 řádků**, nebo kolik jich zbývá (číslo je v závorce). **Zobrazit méně** tabulku zase zkrátí. Filtry zůstanou. Export do Excelu obsahuje vždy všechny řádky.
 
+> **Hledání ve filtru:** do polí jako stroj, materiál, lokace nebo pracovník lze psát. Seznam se zúží na položky, které napsaný text obsahují (velikost písmen ani háčky nehrají roli: „ster" najde „Štěrk"). Vyberte položku a stiskněte **Filtrovat**. Smazáním textu filtr pole zrušíte.
+
 > **Rychlé období:** nad každým filtrem jsou tlačítka **Vše**, **Posledních 7 dní**, **Posledních 30 dní** a **Minulý měsíc**. Ostatní filtry zůstanou. **Vše** filtr data zruší.
 
 ## Stažení do Excelu

@@ -1,8 +1,10 @@
 {% comment %}
 Every filtered list page's filter card: the invalid-filter warning (an invalid
 filter shows no rows, so an empty table needs explaining), the quick date
-ranges and the form. Needs `form` and `date_presets`.
+ranges and the form. Needs `form` and `date_presets`. searchable_select.js
+turns the form's `data-searchable` pickers into type-to-filter boxes.
 {% endcomment %}
+{% load static %}
 {% if form.is_bound and not form.is_valid %}
     <p class="messages error">Filtr je neplatný, proto se nezobrazují žádné výsledky. Opravte prosím zvýrazněná pole.</p>
 {% endif %}
@@ -13,3 +15,4 @@ ranges and the form. Needs `form` and `date_presets`.
         <button type="submit">Filtrovat</button>
     </form>
 </div>
+<script src="{% static 'js/searchable_select.js' %}" defer></script>

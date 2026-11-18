@@ -1,8 +1,10 @@
 /*
- * Type-to-filter pickers for the row sections of the job and refuelling forms.
+ * Type-to-filter pickers for the row sections of the job and refuelling forms,
+ * and for the report filters' catalog pickers (marked `data-searchable` by
+ * DateRangeFilterForm).
  *
- * Progressive enhancement: each row's <select> stays in the DOM, hidden, and is
- * still what the form posts. Without this script the rows are plain selects.
+ * Progressive enhancement: each <select> stays in the DOM, hidden, and is
+ * still what the form posts. Without this script they are plain selects.
  *
  * Options, labels, order and the placeholder (the empty_label) are re-read from
  * the <select> every time the list opens, so options job_rows.js hid as taken
@@ -13,8 +15,10 @@
 (function () {
     'use strict';
 
-    // Every <select> in a row gets a picker; each one's empty_label is a bare noun.
+    // Every <select> in a row gets a picker (its empty_label is a bare noun), and
+    // every filter <select> the server marked (its empty_label is an "all" phrase).
     var ROW_SELECT = '.item-row select';
+    var FILTER_SELECT = 'select[data-searchable]';
 
     // Client-side only; the box posts nothing. Longer chosen labels still show whole.
     var SEARCH_MAX_LENGTH = 40;
@@ -69,7 +73,15 @@
         input.setAttribute('aria-autocomplete', 'list');
         input.setAttribute('aria-expanded', 'false');
         input.setAttribute('aria-controls', listId);
-        input.setAttribute('aria-label', placeholder);
+
+        // A filter's <label> follows the box, which is what the user types in;
+        // a row picker has no label, so its placeholder names it.
+        var label = select.id ? document.querySelector('label[for="' + select.id + '"]') : null;
+        if (label) {
+            label.htmlFor = input.id;
+        } else {
+            input.setAttribute('aria-label', placeholder);
+        }
 
         list.id = listId;
         list.className = 'combo-list';
@@ -179,7 +191,8 @@
                 }
             } else if (event.key === 'Enter') {
                 if (list.hidden) {
-                    return; // Nothing to pick; the form ignores Enter, as in any other field.
+                    // Nothing to pick: an entry form ignores Enter, a filter submits.
+                    return;
                 }
                 event.preventDefault();
                 if (active >= 0) {
@@ -264,4 +277,6 @@
             });
         }).observe(section, { childList: true });
     });
+
+    Array.prototype.forEach.call(document.querySelectorAll(FILTER_SELECT), enhance);
 })();
