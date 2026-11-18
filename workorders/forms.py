@@ -506,6 +506,14 @@ class DateRangeFilterForm(forms.Form):
     date_from = forms.DateField(required=False, widget=forms.DateInput(attrs={'type': 'date'}), label='Datum od')
     date_to = forms.DateField(required=False, widget=forms.DateInput(attrs={'type': 'date'}), label='Datum do')
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # searchable_select.js puts a type-to-filter box on catalog pickers; the
+        # short fixed lists (stav, druh pohybu) stay plain selects.
+        for field in self.fields.values():
+            if isinstance(field, forms.ModelChoiceField):
+                field.widget.attrs['data-searchable'] = ''
+
     def filter(self, queryset):
         """`queryset` narrowed by this form. Unbound shows everything; invalid shows nothing."""
         if not self.is_bound:

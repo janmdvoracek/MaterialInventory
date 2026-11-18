@@ -225,6 +225,61 @@ class SearchablePickerTests(ReviewFixtureMixin, TestCase):
         self.assertRegex(css, r'\.combo select\[hidden\][^{]*\{[^}]*display:\s*none')
 
 
+class SearchableFilterTests(ReviewFixtureMixin, TestCase):
+    """The contract `static/js/searchable_select.js` reads off a report's filter card.
+
+    The server marks catalog pickers with `data-searchable`; short fixed lists stay plain selects.
+    """
+
+    # Page -> {field: empty_label} of the pickers that must be searchable, and the plain ones.
+    PAGES = {
+        'time_worked': ({'worker': 'Všichni pracovníci'}, ()),
+        'machine_dashboard': ({'machine': 'Všechny stroje', 'created_by': 'Všichni uživatelé'}, ()),
+        'material_dashboard': (
+            {'material': 'Všechny materiály', 'location': 'Všechny lokace'},
+            ('movement_type',),
+        ),
+        'job_dashboard': ({'created_by': 'Všichni uživatelé', 'location': 'Všechny lokace'}, ('status',)),
+        'refuel_dashboard': ({'created_by': 'Všichni uživatelé'}, ('status',)),
+    }
+
+    def _select_tag(self, page, name):
+        match = re.search(rf'<select name="{name}"[^>]*>', page)
+        self.assertIsNotNone(match, name)
+        return match.group(0)
+
+    def test_catalog_pickers_are_marked_and_fixed_lists_are_not(self):
+        self.client.force_login(self.manager)
+        for url_name, (searchable, plain) in self.PAGES.items():
+            page = self.client.get(reverse(url_name)).content.decode()
+            for name, empty_label in searchable.items():
+                with self.subTest(page=url_name, field=name):
+                    self.assertIn('data-searchable', self._select_tag(page, name))
+                    # The script lifts it out as the box's placeholder; picking nothing means "all".
+                    self.assertRegex(
+                        page, rf'<select name="{name}"[^>]*>\s*<option value="" selected>{empty_label}</option>'
+                    )
+                    # The script moves the field's <label> onto the box by the select's id.
+                    self.assertIn(f'<label for="id_{name}">', page)
+            for name in plain:
+                with self.subTest(page=url_name, field=name):
+                    self.assertNotIn('data-searchable', self._select_tag(page, name))
+
+    def test_every_filter_page_loads_the_script(self):
+        self.client.force_login(self.manager)
+        for url_name in self.PAGES:
+            with self.subTest(page=url_name):
+                self.assertContains(self.client.get(reverse(url_name)), 'js/searchable_select.js', count=1)
+
+    def test_the_dates_are_not_marked(self):
+        """Only catalog pickers get a box; a date input marked by mistake would be broken by it."""
+        self.client.force_login(self.manager)
+        page = self.client.get(reverse('job_dashboard')).content.decode()
+        for name in ('date_from', 'date_to'):
+            tag = re.search(rf'<input[^>]*name="{name}"[^>]*>', page).group(0)
+            self.assertNotIn('data-searchable', tag)
+
+
 class PhotoPickerTests(ReviewFixtureMixin, TestCase):
     """The contract `static/js/photo_picker.js` reads off the „Fotky" block; the script itself is untested.
 

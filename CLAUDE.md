@@ -56,7 +56,7 @@ Django 6, PostgreSQL, server-rendered templates, Czech mobile-first UI, Django a
 **Scripts.** The app serves its own scripts from `static/` and never loads one from a third party. There are exactly four on the job form (the refuelling form uses all but `photo_picker.js`), plus `pwa.js` on every page:
 
 - `static/js/job_rows.js`: adds and removes formset rows in the DOM. It hides taken choices only in the picker named by the section's `data-unique-field`.
-- `static/js/searchable_select.js`: puts a type-to-filter box in front of every `<select>` in a row.
+- `static/js/searchable_select.js`: puts a type-to-filter box in front of every `<select>` in a row. `_filter_card.html` loads it too, for the report filters' catalog pickers: `DateRangeFilterForm` marks every `ModelChoiceField` `data-searchable`; „Stav" and „Druh pohybu" stay plain. Picking never submits the filter (`SearchableFilterTests`).
 - `static/js/photo_picker.js`: one „Přidat fotku" button that keeps every photo picked.
 - `static/js/submit_feedback.js`: „Odesílám…" on the unnamed `data-sending-text` save button while the form is sent. It comes back after 30 s so a lost response can be retried. Duplicates are stopped by the server's `submission_token`, not by this.
 
