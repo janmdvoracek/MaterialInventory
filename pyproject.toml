@@ -8,7 +8,7 @@ requires-python = "==3.14.*"
 dependencies = [
     "Django==6.1.1",
     "django-axes==9.0.0",
-    "gunicorn==26.2.0",
+    "gunicorn==27.0.1",
     "pillow==13.0.0",
     "pillow-heif==1.8.1",
     "psycopg2-binary==2.9.13",
