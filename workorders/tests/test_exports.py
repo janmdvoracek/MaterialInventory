@@ -172,12 +172,12 @@ class TableExportTests(TestCase):
         self.assertEqual(rows[2], ['Štěrk', '12,50', '0,00', '-12,50'])
 
     def test_hours_export_carries_the_summary_table(self):
-        self._job(hours=[(self.worker, Decimal('2.5'))])
+        self._job(hours=[(self.worker, Decimal('2.5'))], quantity=Decimal('12.5'))
         self._job(hours=[(self.worker, Decimal('1.5'))])
         self.client.force_login(self.manager)
         rows = self._rows(self.client.get(reverse('time_worked_export')))
-        self.assertEqual(rows[0], ['Pracovník', 'Hodiny', 'Zakázek'])
-        self.assertEqual(rows[1], ['worker', '4,0', '2'])
+        self.assertEqual(rows[0], ['Pracovník', 'Hodiny', 'Zakázek', 'Spotřebováno (t)'])
+        self.assertEqual(rows[1], ['worker', '4,0', '2', '12,50'])
 
     def test_export_follows_the_filter_on_the_page(self):
         # The link carries the page's querystring, so the file has to be the
@@ -215,14 +215,14 @@ class TableExportTests(TestCase):
         self._job(hours=[(self.other_worker, Decimal('8'))])
         self.client.force_login(self.worker)
         rows = self._rows(self.client.get(reverse('time_worked_export')))
-        self.assertEqual(rows[1:], [['worker', '2,0', '1']])
+        self.assertEqual(rows[1:], [['worker', '2,0', '1', '0,00']])
 
     def test_hours_export_filtered_to_a_worker_leaves_out_their_colleagues(self):
         self._job(hours=[(self.worker, Decimal('2')), (self.other_worker, Decimal('3'))])
         WorkOrder.objects.get().collaborators.add(self.other_worker)
         self.client.force_login(self.manager)
         rows = self._rows(self.client.get(reverse('time_worked_export'), {'worker': self.other_worker.pk}))
-        self.assertEqual(rows[1:], [['other', '3,0', '1']])
+        self.assertEqual(rows[1:], [['other', '3,0', '1', '0,00']])
 
     def test_worker_cannot_reach_the_manager_only_exports(self):
         # Hiding the link is not access control; all three are gated like their
