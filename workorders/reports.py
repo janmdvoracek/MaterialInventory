@@ -533,9 +533,9 @@ def time_worked_export(request):
     """Souhrn's „Odpracované hodiny" as a CSV, scoped exactly like the page (`HoursReport`)."""
     return _csv_response(
         'souhrn-hodin',
-        ['Pracovník', 'Hodiny', 'Zakázek'],
+        ['Pracovník', 'Hodiny', 'Zakázek', 'Spotřebováno (t)'],
         [
-            [row['user'].username, _csv_number(row['hours'], 1), row['orders']]
+            [row['user'].username, _csv_number(row['hours'], 1), row['orders'], _csv_number(row['tons'], 2)]
             for row in HoursReport(request.GET or None, request.user).summary
         ],
     )
@@ -578,14 +578,28 @@ class HoursReport:
 
     @cached_property
     def summary(self):
-        """Labour hours per person across `jobs`, most hours first. Unrelated to machine motohodiny."""
+        """Labour hours per person across `jobs`, most hours first. Unrelated to machine motohodiny.
+
+        `tons` is the consumed total of the jobs the person has hours on: each
+        job's whole Spotřebováno, not a share of it, so colleagues on one job
+        are each credited the same tonnes.
+        """
         hours = WorkerHours.objects.filter(work_order__in=self.jobs)
         if self.subject is not None:
             hours = hours.filter(user=self.subject)
         totals = hours.values('user').annotate(hours=Sum('hours'), orders=Count('work_order', distinct=True))
         users = User.objects.in_bulk([row['user'] for row in totals])
+        consumed = _consumed_per_job(self.jobs)
+        tons = {}
+        for user, work_order in hours.values_list('user', 'work_order').distinct():
+            tons[user] = tons.get(user, Decimal('0')) + consumed.get(work_order, Decimal('0'))
         rows = [
-            {'user': users[row['user']], 'hours': row['hours'], 'orders': row['orders']}
+            {
+                'user': users[row['user']],
+                'hours': row['hours'],
+                'orders': row['orders'],
+                'tons': tons.get(row['user'], Decimal('0')),
+            }
             for row in totals
             if row['user'] in users
         ]
@@ -598,13 +612,37 @@ class HoursReport:
 
     @cached_property
     def detail(self):
-        """„Detail": the jobs with their total hours, newest first."""
+        """„Detail": the jobs with their total hours and consumed tonnes, newest first."""
+        # A subquery, not a second Sum over a join: joining the line items
+        # beside the hours rows would multiply both totals.
+        consumed = (
+            StockMovement.objects.filter(
+                work_order=OuterRef('pk'), movement_type=StockMovement.MovementType.TRANSFORM_CONSUME
+            )
+            .values('work_order')
+            .annotate(total=Sum('quantity'))
+            .values('total')
+        )
         return (
-            self.jobs.annotate(total_hours=Sum('worker_hours__hours'))
+            self.jobs.annotate(
+                total_hours=Sum('worker_hours__hours'),
+                consumed_tons=Coalesce(Abs(Subquery(consumed)), Decimal('0')),
+            )
             .select_related('created_by')
             .prefetch_related('collaborators', 'worker_hours__user')
             .order_by('-performed_on', '-created_at')
         )
+
+
+def _consumed_per_job(jobs):
+    """{work order pk: consumed tonnes, positive} for `jobs`; a job with no consumed rows is absent."""
+    rows = (
+        StockMovement.objects.filter(work_order__in=jobs, movement_type=StockMovement.MovementType.TRANSFORM_CONSUME)
+        .values('work_order')
+        .annotate(total=Sum('quantity'))
+        .values_list('work_order', 'total')
+    )
+    return {work_order: -total for work_order, total in rows}
 
 
 @login_required

@@ -887,6 +887,74 @@ class TimeWorkedTests(TestCase):
         self.assertEqual(response.context['summary'], [])
         self.assertEqual(len(response.context['rows']), 0)
 
+    def _consume(self, work_order, tons, produce=True):
+        """Line items on `work_order`: `tons` consumed and, by default, the same produced."""
+        raw, _ = Material.objects.get_or_create(sku='RAW', defaults={'name': 'Štěrk'})
+        finished, _ = Material.objects.get_or_create(sku='FIN', defaults={'name': 'Frakce 8/16'})
+        StockMovement.objects.create(
+            material=raw,
+            quantity=-tons,
+            movement_type=StockMovement.MovementType.TRANSFORM_CONSUME,
+            work_order=work_order,
+            created_by=work_order.created_by,
+        )
+        if produce:
+            StockMovement.objects.create(
+                material=finished,
+                quantity=tons,
+                movement_type=StockMovement.MovementType.TRANSFORM_PRODUCE,
+                work_order=work_order,
+                created_by=work_order.created_by,
+            )
+
+    def test_detail_shows_each_jobs_consumed_tonnes(self):
+        job = self._job(self.worker, Decimal('2'))
+        self._consume(job, Decimal('12.5'))
+        self._consume(job, Decimal('3'), produce=False)
+        empty = self._job(self.worker, Decimal('1'))
+        self.client.force_login(self.worker)
+        response = self.client.get(reverse('time_worked'))
+        tons = {order.pk: order.consumed_tons for order in response.context['rows']}
+        # Produced rows don't count; a job without consumed rows is a real zero.
+        self.assertEqual(tons, {job.pk: Decimal('15.500'), empty.pk: Decimal('0')})
+        self.assertContains(response, '<td>15,50 t</td>', html=True)
+
+    def test_consumed_tonnes_do_not_multiply_the_hours(self):
+        # Line items and hours rows hang off the same job; joined together,
+        # each would multiply the other's Sum.
+        job = self._job(self.worker, Decimal('3'), collaborators=[(self.other_worker, Decimal('2'))])
+        self._consume(job, Decimal('10'))
+        self._consume(job, Decimal('5'))
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('time_worked'))
+        listed = response.context['rows'][0]
+        self.assertEqual((listed.total_hours, listed.consumed_tons), (Decimal('5.00'), Decimal('15.000')))
+        row = self._summary_for(response, self.worker)
+        self.assertEqual((row['hours'], row['tons']), (Decimal('3.00'), Decimal('15.000')))
+
+    def test_summary_credits_each_person_the_tonnes_of_their_jobs(self):
+        shared = self._job(self.worker, Decimal('3'), collaborators=[(self.other_worker, Decimal('2'))])
+        self._consume(shared, Decimal('10'))
+        own = self._job(self.worker, Decimal('1'))
+        self._consume(own, Decimal('4'))
+        pending = self._job(self.worker, Decimal('1'), status=WorkOrder.Status.PENDING)
+        self._consume(pending, Decimal('100'))
+        self.client.force_login(self.manager)
+        response = self.client.get(reverse('time_worked'))
+        self.assertEqual(self._summary_for(response, self.worker)['tons'], Decimal('14.000'))
+        self.assertEqual(self._summary_for(response, self.other_worker)['tons'], Decimal('10.000'))
+
+    def test_summary_tonnes_follow_the_filter(self):
+        old = self._job(self.worker, Decimal('4'))
+        self._consume(old, Decimal('20'))
+        WorkOrder.objects.filter(pk=old.pk).update(performed_on=date.today() - timedelta(days=10))
+        self._consume(self._job(self.worker, Decimal('1')), Decimal('6'))
+        self.client.force_login(self.worker)
+        response = self.client.get(
+            reverse('time_worked'), {'date_from': (date.today() - timedelta(days=1)).isoformat()}
+        )
+        self.assertEqual(self._summary_for(response, self.worker)['tons'], Decimal('6.000'))
+
     def test_detail_list_scoped_to_worker(self):
         own = self._job(self.worker, Decimal('2'))
         self._job(self.other_worker, Decimal('8'))

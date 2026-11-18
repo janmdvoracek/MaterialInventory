@@ -195,6 +195,8 @@ Příklad: „kolik frakce 8/16 minulý měsíc?" → **Minulý měsíc**, vyber
 
 **Odpracované hodiny** po lidech a pod nimi **Detail zakázek**. Počítají se **hodiny, které si každý zapsal sám** (ne motohodiny). Pracovník vidí jen své, vedoucí všechny, a když vybere pracovníka, jen jeho. Detail zakázek pak ukazuje zakázky, na kterých ten pracovník byl, s hodinami všech, kdo na nich pracovali.
 
+Obě tabulky mají i sloupec **Spotřebováno (t)**: kolik tun materiálu zakázka spotřebovala. U pracovníka je to součet za všechny zakázky, na kterých byl. Kdo pracoval na stejné zakázce, má započítané celé její tuny, takže se tuny lidí nesčítají.
+
 Pracovník tu má navíc dvě tabulky za **všechny stroje a všechny lidi**, ne jen za sebe:
 
 - **Stroje**: kolik každý stroj v období odběhl (**Hodin za období**) a kolik **tun** zpracoval. Stejná čísla jako u vedoucího ve [Strojích](#stroje), jen bez cen.
