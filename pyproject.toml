@@ -21,7 +21,7 @@ dependencies = [
 dev = [
     "coverage==7.17.3",
     "pre-commit==4.7.0",
-    "ruff==0.17.5",
+    "ruff==0.17.6",
 ]
 # Only for the `audit` job in .github/workflows/security.yml.
 audit = [
